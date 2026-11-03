@@ -1,22 +1,53 @@
 appId: com.tsumigeya.launcher
 productName: Tsumigeya
 copyright: GPL-3.0
+
 directories:
   output: dist
   buildResources: build
+
 files:
   - out/**
   - package.json
-# 核心（GPL fork 的 module.js）不进 asar，运行时按路径 require
+
+# 核心（GPL fork 的 module.js）不进 asar：launcher.js 用相对路径 require 它，
+# 打进 asar 会拿不到真实文件路径。打包后对应 Contents/Resources/core/module.js，
+# 与 src/main/core-host.ts 的 resolveCorePath({ isPackaged: true }) 分支一致。
 extraResources:
   - from: resources/core
     to: core
+
+asar: true
+
 win:
   target: nsis
+  # 不签名（仅供调试 UI），避免 CI 要求证书
+  signAndEditExecutable: false
+
 nsis:
   oneClick: true
+  perMachine: false
+  allowToChangeInstallationDirectory: false
+
 mac:
   category: public.app-category.games
+  # 架构由命令行指定（CI 里 --arm64 / --x64 分开打），这里写目标类型即可，
+  # 否则会和 CLI 的 arch 参数叠加导致重复构建。
   target:
-    - target: dmg
-      arch: [arm64, x64]
+    - dmg
+  # 无证书 → ad-hoc 签名。能装能跑，但首次打开需 右键→打开
+  # （或 xattr -dr com.apple.quarantine /Applications/Tsumigeya.app）。
+  # 要做正式分发（公证）时换成真实 identity 并在 CI 提供 CSC_LINK 等 secrets。
+  identity: null
+  hardenedRuntime: false
+  gatekeeperAssess: false
+
+dmg:
+  # 默认布局：左侧 .app，右侧 Applications 快捷方式，拖过去即可安装
+  contents:
+    - x: 130
+      y: 220
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications

@@ -1,0 +1,146 @@
+name: build
+
+# 触发：手动 + 打 tag（v*）+ 主分支推送
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------- 质量门
+  # 所有平台共用：类型检查 + 单测 + 构建。失败就不进入打包。
+  check:
+    name: 检查（typecheck / test / build）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 类型检查
+        run: npm run typecheck
+
+      - name: 单元测试
+        run: npm test
+
+      - name: 构建（不打包）
+        run: npm run build
+
+  # ---------------------------------------------------------------- macOS
+  # dmg 只能在 macOS 上产出（electron-builder 无法交叉编译 dmg）。
+  # arm64 与 x64 分别打，产物分开命名，避免用户下错架构。
+  build-mac:
+    name: 打包 macOS（${{ matrix.arch }}）
+    needs: check
+    runs-on: macos-14
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [arm64, x64]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 构建（打包前必须先产出 out/）
+        run: npm run build
+
+      - name: 打包 dmg
+        run: npx electron-builder --mac --${{ matrix.arch }} --config electron-builder.yml
+        env:
+          # 未配置证书时走 ad-hoc 签名：能安装、能运行，但不做公证（首次打开需右键→打开）。
+          # 想正式分发时在仓库 Secrets 里加 CSC_LINK / CSC_KEY_PASSWORD / APPLE_ID 等再调整这里。
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 列出产物
+        run: ls -lh dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Tsumigeya-macOS-${{ matrix.arch }}
+          path: |
+            dist/*.dmg
+            dist/*.zip
+          if-no-files-found: error
+          retention-days: 14
+
+  # ---------------------------------------------------------------- Windows
+  # 调试 UI 用；不是交付目标，但能提前暴露 asar / extraResources 的问题。
+  build-win:
+    name: 打包 Windows（x64）
+    needs: check
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 构建（打包前必须先产出 out/）
+        run: npm run build
+
+      - name: 打包安装包
+        run: npx electron-builder --win --x64 --config electron-builder.yml
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 列出产物
+        run: dir dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Tsumigeya-Windows-x64
+          path: |
+            dist/*.exe
+          if-no-files-found: error
+          retention-days: 14
+
+  # ---------------------------------------------------------------- 发布
+  # 只在打 tag（v*）时把产物挂到 GitHub Release。日常提交只上传 artifact。
+  release:
+    name: 发布 Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build-mac, build-win]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: 列出待发布文件
+        run: ls -lh artifacts
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          draft: true
+          generate_release_notes: true
