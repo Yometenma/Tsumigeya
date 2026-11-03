@@ -73,6 +73,21 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: false
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # 自检：dmg 里的布局必须与 src/main/core-host.ts 的 resolveCorePath 假设一致，
+      # 否则装到 Mac 上会「能开窗口但引擎模块加载失败」，而且本地很难发现。
+      - name: 自检 .app 内的关键文件
+        run: |
+          set -e
+          APP="dist/mac-${{ matrix.arch }}/Tsumigeya.app"
+          test -d "$APP" || { echo "❌ 找不到 $APP"; exit 1; }
+          echo "--- Contents/Resources 顶层 ---"
+          ls -1 "$APP/Contents/Resources" | head -20
+          test -f "$APP/Contents/Resources/core/module.js" \
+            || { echo "❌ 缺少 Contents/Resources/core/module.js（extraResources 未生效）"; exit 1; }
+          test -f "$APP/Contents/Resources/app.asar" \
+            || { echo "❌ 缺少 app.asar"; exit 1; }
+          echo "✅ core/module.js 就位：$(wc -c < "$APP/Contents/Resources/core/module.js") 字节"
+          echo "✅ app.asar 就位：$(wc -c < "$APP/Contents/Resources/app.asar") 字节"
       - name: 列出产物
         run: ls -lh dist
 
@@ -110,6 +125,14 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: 自检 win-unpacked 内的关键文件
+        shell: pwsh
+        run: |
+          $app = "dist/win-unpacked"
+          if (-not (Test-Path $app)) { Write-Error "找不到 $app"; exit 1 }
+          $core = Join-Path $app "resources/core/module.js"
+          if (-not (Test-Path $core)) { Write-Error "缺少 resources/core/module.js"; exit 1 }
+          Write-Host "core/module.js 就位：$((Get-Item $core).Length) 字节"
       - name: 列出产物
         run: dir dist
 
