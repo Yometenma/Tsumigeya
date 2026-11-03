@@ -96,6 +96,14 @@ jobs:
             || { echo "❌ 缺少 app.asar"; exit 1; }
           echo "✅ core/module.js 就位：$(wc -c < "$APP/Contents/Resources/core/module.js") 字节"
           echo "✅ app.asar 就位：$(wc -c < "$APP/Contents/Resources/app.asar") 字节"
+          echo "--- 签名状态 ---"
+          # Apple Silicon 要求所有可执行文件至少被 ad-hoc 签名，
+          # 否则 macOS 会直接报「已损坏」而不是「无法验证开发者」。
+          # 这里显式校验，签名缺失或无效就让 job 失败，不产出打不开的包。
+          codesign --verify --deep --strict "$APP" \
+            || { echo "❌ 签名校验失败（app 未签名或签名无效，装到 Mac 会提示已损坏）"; exit 1; }
+          echo "✅ 签名校验通过"
+          codesign -dv "$APP" 2>&1 | grep -E "Signature|Identifier|TeamIdentifier" || true
       - name: 列出产物
         run: ls -lh dist
 

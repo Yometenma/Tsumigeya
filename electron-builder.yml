@@ -35,12 +35,17 @@ mac:
   # 否则会和 CLI 的 arch 参数叠加导致重复构建。
   target:
     - dmg
-  # 无证书 → ad-hoc 签名。能装能跑，但首次打开需 右键→打开
-  # （或 xattr -dr com.apple.quarantine /Applications/Tsumigeya.app）。
+  # 无证书。identity: null 表示「不用证书签名」，
+  # 但**光是这样会让 app 完全未签名**——Apple Silicon 上未签名的 app 会被 macOS
+  # 直接判定为「已损坏」（不是「无法验证开发者」），用户根本无法打开。
+  # 真正的 ad-hoc 签名由 scripts/after-pack.cjs 在打包后执行（codesign --sign -），
+  # 它能让 app 正常加载，代价只是首次打开需 右键→打开。
   # 要做正式分发（公证）时换成真实 identity 并在 CI 提供 CSC_LINK 等 secrets。
   identity: null
   hardenedRuntime: false
   gatekeeperAssess: false
+
+afterPack: ./scripts/after-pack.cjs
 
 dmg:
   # 默认布局：左侧 .app，右侧 Applications 快捷方式，拖过去即可安装
