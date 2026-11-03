@@ -122,6 +122,27 @@ describe('detectFolder 的远端兜底不能挂死', () => {
   }, 20_000)
 })
 
+describe('候选排序：辅助程序不能被当成启动目标', () => {
+  // 回归：NW.js 发行包里 nw.exe 与 notification_helper.exe 同级，
+  // 两者都会被识别成 nwjs；旧的字典序会让 "notification_helper" 排在 "nw" 前面，
+  // 用户点启动就会拉起辅助进程。排序必须把辅助程序压到最后。
+  test('notification_helper.exe 排在 nw.exe 之后', () => {
+    const list = ['C:/g/notification_helper.exe', 'C:/g/nw.exe'].sort(compareCandidates)
+    expect(list[0]).toBe('C:/g/nw.exe')
+    expect(list[1]).toBe('C:/g/notification_helper.exe')
+  })
+
+  test('Game.exe 优先于任意辅助程序', () => {
+    const list = ['C:/g/chrome_crashpad_handler.exe', 'C:/g/Game.exe', 'C:/g/unins000.exe'].sort(compareCandidates)
+    expect(list[0]).toBe('C:/g/Game.exe')
+  })
+
+  test('全都是辅助程序时仍能稳定排序（不会崩）', () => {
+    const list = ['C:/g/unins000.exe', 'C:/g/setup.exe'].sort(compareCandidates)
+    expect(list).toHaveLength(2)
+  })
+})
+
 describe('四个 fixtures 的引擎识别', () => {
   const cases: Array<{ dir: string; exe: string; engine: string }> = [
     { dir: 'rpg-mv', exe: 'Game.exe', engine: 'nwjs' },

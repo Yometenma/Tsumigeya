@@ -328,6 +328,30 @@ const MAX_CANDIDATES = 200
 const SKIP_DIRS = new Set(['node_modules'])
 
 /**
+ * 「看着像主程序、其实是辅助程序」的 exe 名（不含扩展名，小写）。
+ *
+ * 典型来源：NW.js 发行包里除了 `nw.exe`，还会带 `notification_helper.exe`、
+ * `chrome_crashpad_handler.exe` 等。它们同样与 `nw.dll`/`package.json` 同级，
+ * 因此也会被 autodetect 判成 nwjs——**识别没错，但拿它当启动目标就错了**。
+ * 排序时把这些降到最低优先级，避免用户点了启动却拉起一个辅助进程。
+ */
+const HELPER_EXE_NAMES = new Set([
+  'notification_helper',
+  'chrome_crashpad_handler',
+  'crashpad_handler',
+  'crashreporter',
+  'nacl64',
+  'nacl_helper',
+  'uninstall',
+  'unins000',
+  'setup',
+  'installer',
+  'helper',
+  'elevate',
+  'elevation_service'
+])
+
+/**
  * 远端 autodetect 规则拉取的超时（毫秒）。
  * 识别是用户点一下就要有反馈的动作，不能让网络把它拖成「永远卡住」。
  * 正常一次 GitHub 往返约 250–650ms，留 3 秒余量；
@@ -374,9 +398,20 @@ function isCandidateEntry(absolutePath: string, dirent: fs.Dirent): boolean {
 
 /** 排序：文件名含 game → 扩展名权重 → 浅层 → 字典序（§3.3 第 3 条）。 */
 export function compareCandidates(a: string, b: string): number {
-  const lower = (s: string): string => path.basename(s).toLowerCase()
-  const aGame = lower(a).includes('game') ? 0 : 1
-  const bGame = lower(b).includes('game') ? 0 : 1
+  const base = (s: string): string => path.basename(s).toLowerCase()
+  const stem = (s: string): string => {
+    const name = base(s)
+    const dot = name.lastIndexOf('.')
+    return dot >= 0 ? name.slice(0, dot) : name
+  }
+
+  // 辅助程序永远排最后（见 HELPER_EXE_NAMES 的注释：识别对，但启动目标不对）
+  const aHelper = HELPER_EXE_NAMES.has(stem(a)) ? 1 : 0
+  const bHelper = HELPER_EXE_NAMES.has(stem(b)) ? 1 : 0
+  if (aHelper !== bHelper) return aHelper - bHelper
+
+  const aGame = base(a).includes('game') ? 0 : 1
+  const bGame = base(b).includes('game') ? 0 : 1
   if (aGame !== bGame) return aGame - bGame
   const aWeight = EXT_WEIGHT[extensionOf(a)] ?? 0
   const bWeight = EXT_WEIGHT[extensionOf(b)] ?? 0
