@@ -11,6 +11,11 @@ import { registerIpc } from './ipc'
 /** 图片扩展名白名单（§3.7）。 */
 const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'avif', 'ico'])
 
+// 注意：不要在这里调用 app.setName()。
+// 顶层调用 setName 会让本机 Electron 直接 segfault（0xc0000005，可稳定复现），
+// 而且是「不报错、直接崩」的那种，极难排查。数据目录由 app.whenReady 里的
+// resolveDataDir 显式决定，不依赖 app.getName()。
+
 let mainWindow: BrowserWindow | null = null
 let host: CoreHost | null = null
 
@@ -110,7 +115,10 @@ function applyContentSecurityPolicy(): void {
 }
 
 void app.whenReady().then(() => {
-  const dataDir = resolveDataDir({ userData: app.getPath('userData') })
+  // 不传 userData：文件入口下 app.getPath('userData') 会退化成通用的 "%APPDATA%\Electron"
+  // （因为读不到 package.json 的 name），与其它 Electron 应用撞目录，还会撞上权限问题（EPERM）。
+  // resolveDataDir 在不传 userData 时会落到 "%APPDATA%\tsumigeya"（见 core-host.ts）。
+  const dataDir = resolveDataDir({})
   const corePath = resolveCorePath({
     isPackaged: app.isPackaged,
     appPath: app.getAppPath(),

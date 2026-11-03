@@ -549,24 +549,36 @@ export interface QueueOptions {
  */
 export function registerIpc(deps: IpcDeps & QueueOptions): () => void {
   const { ipcMain, dialog, BrowserWindow, shell } = electronModule()
+  const pickPathImpl =
+    deps.pickPath ??
+    (async (kind: 'file' | 'folder') => {
+      const parent = BrowserWindow.getAllWindows()[0]
+      const options: Electron.OpenDialogOptions =
+        kind === 'folder' ? { properties: ['openDirectory', 'createDirectory'] } : { properties: ['openFile'] }
+      const result = parent ? await dialog.showOpenDialog(parent, options) : await dialog.showOpenDialog(options)
+      if (result.canceled || result.filePaths.length === 0) return null
+      return result.filePaths[0]
+    })
+
   const dispatcher = createDispatcher({
     ...deps,
     openPath: deps.openPath ?? ((target) => shell.openPath(target)),
     openExternal: deps.openExternal ?? ((url) => shell.openExternal(url)),
-    pickPath:
-      deps.pickPath ??
-      (async (kind) => {
-        const parent = BrowserWindow.getAllWindows()[0]
-        const options: Electron.OpenDialogOptions =
-          kind === 'folder' ? { properties: ['openDirectory', 'createDirectory'] } : { properties: ['openFile'] }
-        const result = parent ? await dialog.showOpenDialog(parent, options) : await dialog.showOpenDialog(options)
-        if (result.canceled || result.filePaths.length === 0) return null
-        return result.filePaths[0]
-      })
+    pickPath: pickPathImpl
   })
 
   const requests = new Map<string, AbortController>()
   let queue: Promise<unknown> = Promise.resolve()
+
+  // pickPath 直连（不进队列：它是模态对话框，进队列会卡住后面所有请求）。
+  // preload 调的是 ipcRenderer.invoke('tsumi:pick')，必须在这里注册，否则 Promise 永远挂起（点击无反应）。
+  ipcMain.handle('tsumi:pick', async (_event, payload: { kind?: string }) => {
+    try {
+      return await pickPathImpl(payload?.kind === 'folder' ? 'folder' : 'file')
+    } catch {
+      return null
+    }
+  })
 
   ipcMain.handle('tsumi:invoke', async (_event, request: { method?: string; params?: unknown; requestId?: string }) => {
     const method = typeof request?.method === 'string' ? request.method : ''
@@ -623,6 +635,7 @@ export function registerIpc(deps: IpcDeps & QueueOptions): () => void {
   // 取消订阅函数（窗口销毁 / 热重载时用）
   return () => {
     ipcMain.removeHandler('tsumi:invoke')
+    ipcMain.removeHandler('tsumi:pick')
     ipcMain.removeListener('tsumi:cancel', onCancel)
     ipcMain.removeListener('tsumi:dialog', onDialog)
     for (const controller of requests.values()) controller.abort()

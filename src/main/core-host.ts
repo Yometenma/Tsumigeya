@@ -220,10 +220,31 @@ export function resolveCorePath(options: CorePathOptions = {}): string {
   return path.join(options.appPath ?? process.cwd(), relative)
 }
 
-/** 建目录并 realpath 规范化（macOS /var → /private/var，也让 require 缓存失效可靠）。 */
+/**
+ * 建目录并 realpath 规范化（macOS /var → /private/var，也让 require 缓存失效可靠）。
+ *
+ * EPERM/EACCES 在 Windows 上很常见（受限账户、被安全软件锁目录、AppData 被重定向），
+ * 原始错误只有一句 "operation not permitted, mkdir '...'"，用户完全不知道怎么办，
+ * 所以这里改写成可操作的提示，并附上 TSUMIGEYA_DATA_DIR 的绕开办法。
+ */
 export function ensureDataDir(dir: string): string {
-  fs.mkdirSync(dir, { recursive: true })
-  return fs.realpathSync(dir)
+  try {
+    fs.mkdirSync(dir, { recursive: true })
+    return fs.realpathSync(dir)
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code
+    if (code === 'EPERM' || code === 'EACCES') {
+      throw failure(
+        'error.dataDirPermission',
+        `没有权限创建数据目录：${dir}\n` +
+          `该目录被拒绝写入（${code}）。可以：\n` +
+          `  1. 换一个可写目录，启动前设置环境变量 TSUMIGEYA_DATA_DIR（例如 D:\\TsumigeyaData）；\n` +
+          `  2. 或检查该目录是否被安全软件/同步工具占用。`,
+        { path: dir, code }
+      )
+    }
+    throw error
+  }
 }
 
 /**

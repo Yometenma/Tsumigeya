@@ -252,6 +252,7 @@
     "network": "网络请求失败",
     "pathMissing": "路径不存在：{path}",
     "pathNotAllowed": "不允许打开该路径：{path}",
-    "unsupportedProtocol": "只支持 https 链接：{url}"
+    "unsupportedProtocol": "只支持 https 链接：{url}",
+    "dataDirPermission": "没有权限创建数据目录 {path}（{code}）。请设置环境变量 TSUMIGEYA_DATA_DIR 指向可写目录后重启。"
   }
 }

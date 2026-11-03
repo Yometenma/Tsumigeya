@@ -40,6 +40,8 @@
 - **仍未验证（必须在有桌面会话的机器上做）**：
   - 五个页面的**真实交互与视觉**：窗口能渲染（DOM 文本已抓取验证），但本会话看不到画面，
     暗色主题观感、拖拽添加游戏、进度浮层动效仍需人眼验收。
+  - **选择文件夹/文件、安装引擎的真实操作**：`tsumi:pick` 缺失 handler 已修（见已知坑），
+    但「点了真的弹出系统对话框」尚未在本会话目视确认。
   - **真实启动游戏**：需 macOS（引擎二进制是 mac 版）。
 - **已知网络现实（本机）**：`api.github.com` 通，`raw.githubusercontent.com` 直连 DNS 失败，**走系统代理（127.0.0.1:7897）返回 200**。
   Node 原生 `fetch` 不读 WinINET 系统代理，因此纯 Node 下的验收看不到远程 manifest；
@@ -152,6 +154,10 @@ Vue 组件 → Pinia store → api/client → preload(window.tsumi.invoke)
 | 测试里 `as const` 的 manifest 与 `ManifestRaw` 不兼容 | `as const` 产生 readonly 数组，`extensions: readonly ["exe"]` 不能赋给 `string[]`。测试里用 `Record<string, Record<string, unknown>>` |
 | `createCoreHost` 未注入 fetch 时在测试里崩 | 测试必须显式传 `fetchImpl`（建议传会抛错的，顺带断言"断网不崩"） |
 | GPU 缓存目录被拒（`GPUPersistentCache ... 拒绝访问`）刷屏 | 无害噪音，不是崩溃。判据看 **exit code 与窗口是否渲染**，别被这行 ERROR 误导 |
+| **顶层调用 `app.setName()` 会让 Electron 直接 segfault** | 实测可稳定复现（加一行就崩、去掉就好）。不要用 setName 控制数据目录；数据目录由 `resolveDataDir({})` 显式决定（落到 `%APPDATA%\tsumigeya`） |
+| **`tsumi:pick` 忘记注册 handler → 点「选择文件夹/文件」永久无反应** | preload 走 `ipcRenderer.invoke('tsumi:pick')`，而 `registerIpc` 只注册了 `tsumi:invoke`。已在 `registerIpc` 内补 `ipcMain.handle('tsumi:pick')`（直连，不进队列）并加入注销。**新增 preload channel 时务必同步注册 handler** |
+| 文件入口下 `app.getPath('userData')` = `%APPDATA%\Electron` | 因读不到 package.json 的 name。不要把它传给 `resolveDataDir`（会与其它 Electron 应用撞目录 + 撞权限）。用 `resolveDataDir({})` |
+| Windows 上 `%APPDATA%` / `%TEMP%` 可能整体 EPERM | 沙箱/受限账户下很常见。`ensureDataDir` 已把 EPERM/EACCES 改写成带 `TSUMIGEYA_DATA_DIR` 指引的可读错误；本机验证时用 `TSUMIGEYA_DATA_DIR=<项目内目录>` 绕开 |
 
 > **验收 `npm run dev` 的正确姿势**（本机无画面可看时）：启动后用 `BrowserWindow.getAllWindows()` +
 > `webContents.executeJavaScript('document.body.innerText')` 抓 DOM 文本，确认标题/路由/`typeof window.tsumi`。
