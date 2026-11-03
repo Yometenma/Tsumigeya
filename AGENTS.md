@@ -160,6 +160,8 @@ Vue 组件 → Pinia store → api/client → preload(window.tsumi.invoke)
 | Windows 上 `%APPDATA%` / `%TEMP%` 可能整体 EPERM | 沙箱/受限账户下很常见。`resolveDataDirWithFallback` 会按 `%APPDATA%\tsumigeya` → `%TEMP%\tsumigeya-data` → `<cwd>\.dev-data` 依次降级，并弹 dialog 告知；`TSUMIGEYA_DATA_DIR` 可强制指定 |
 | **`failure()` 返回的 Error 没有 `code`** | 它只挂 `translationKey`/`translationArguments`。任何要靠 `err.code` 做分支的地方（如降级判断）都会被误导成 `undefined`。要么显式补 `code`（`ensureDataDir` 已这么做），要么用别的方式判定 |
 | **whenReady 里抛错 = 窗口永不出现，且用户看不到原因** | 曾经 `createCoreHost` 抛 EPERM，用户只看到「软件没弹出来」。主进程启动链上的可预期失败必须降级 + 告知，不能直接 throw |
+| **串行队列会被启动自动更新检查堵死**（实测根因） | `checkEngineUpdates` 最长 60s 且排在队列里，期间任何命令（含「识别引擎」）都在后面干等，UI 表现为永远卡住。已把 `detect` / `detectFolder` / `snapshot` / `versions` 改为**绕开队列**（只读、不写盘，不会与写操作冲突）。**新增只读且用户要等反馈的命令时，考虑加入这个旁路名单** |
+| 端到端验证队列是否真的没堵 | 起应用后用 `webContents.executeJavaScript` 从渲染层真调 `window.tsumi.invoke('detectFolder', ...)` 并计时。实测修复后 **2ms** 返回（修复前会等到 60s 更新检查结束） |
 
 > **验收 `npm run dev` 的正确姿势**（本机无画面可看时）：启动后用 `BrowserWindow.getAllWindows()` +
 > `webContents.executeJavaScript('document.body.innerText')` 抓 DOM 文本，确认标题/路由/`typeof window.tsumi`。

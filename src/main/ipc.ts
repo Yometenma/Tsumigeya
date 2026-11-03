@@ -590,7 +590,7 @@ export function registerIpc(deps: IpcDeps & QueueOptions): () => void {
     const controller = new AbortController()
     requests.set(requestId, controller)
 
-    const task = queue.then(() =>
+    const runRequest = (): Promise<unknown> =>
       deps.host.runInContext({ id: requestId, signal: controller.signal }, async () => {
         try {
           controller.signal.throwIfAborted()
@@ -610,12 +610,20 @@ export function registerIpc(deps: IpcDeps & QueueOptions): () => void {
           requests.delete(requestId)
         }
       })
-    )
+
+    // **只读且用户正在等反馈**的命令不进队列：它们不写磁盘，不会与队列里的写操作冲突，
+    // 但排在一个可能跑 60 秒的 checkEngineUpdates 后面，界面就表现为「永远卡住」
+    // （用户实测：拖入游戏后一直停在「正在识别引擎…」，根因就是启动自动检查更新占着队列）。
+    const TASK = method === 'detect' || method === 'detectFolder' || method === 'snapshot' || method === 'versions'
+    const task = TASK ? runRequest() : queue.then(runRequest)
+
     // 队列不能因为某个请求失败而断掉
-    queue = task.then(
-      () => undefined,
-      () => undefined
-    )
+    if (!TASK) {
+      queue = task.then(
+        () => undefined,
+        () => undefined
+      )
+    }
     try {
       return await task
     } catch {
