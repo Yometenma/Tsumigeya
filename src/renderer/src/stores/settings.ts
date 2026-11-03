@@ -1,0 +1,56 @@
+// 设置 store（§4 settings.ts）：settings / dataPath / 保存（外观即时生效）。
+import { defineStore } from 'pinia'
+import { ref } from 'vue'
+import { api, type Settings, type Snapshot } from '@/api/client'
+
+const DEFAULT_SETTINGS: Settings = {
+  listView: false,
+  deletionConfirmation: true,
+  nonInstalledAutodetect: true,
+  checkModuleUpdatesOnStartup: true,
+  appearance: 'system',
+  language: 'system'
+}
+
+export const useSettingsStore = defineStore('settings', () => {
+  const settings = ref<Settings>({ ...DEFAULT_SETTINGS })
+  const dataPath = ref('')
+  const appVersion = ref('')
+  const nodeVersion = ref('')
+  const platform = ref('')
+
+  /** 把 appearance 落到 <html class="dark">（§4 SettingsPage：改外观立即生效）。 */
+  function applyAppearance(): void {
+    if (typeof document === 'undefined') return
+    const prefersDark =
+      typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+        ? window.matchMedia('(prefers-color-scheme: dark)').matches
+        : false
+    const dark = settings.value.appearance === 'dark' || (settings.value.appearance === 'system' && prefersDark)
+    document.documentElement.classList.toggle('dark', dark)
+  }
+
+  function applySnapshot(snapshot: Snapshot): void {
+    settings.value = snapshot.settings
+    dataPath.value = snapshot.dataPath
+    nodeVersion.value = snapshot.nodeVersion
+    applyAppearance()
+  }
+
+  async function load(): Promise<void> {
+    applySnapshot(await api.snapshot())
+  }
+
+  async function save(partial: Partial<Settings>): Promise<void> {
+    const snapshot = await api.saveSettings(partial)
+    applySnapshot(snapshot)
+  }
+
+  function initMeta(version: string, node: string, os: string): void {
+    appVersion.value = version
+    nodeVersion.value = node
+    platform.value = os
+  }
+
+  return { settings, dataPath, appVersion, nodeVersion, platform, applyAppearance, applySnapshot, load, save, initMeta }
+})

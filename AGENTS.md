@@ -20,20 +20,29 @@
 
 ## 当前项目状态（每次收尾必须更新）
 
-- **阶段**：M1（中文游戏库 + 自动识别 + 一键启动）— **源码未开工**，契约已冻结
+- **阶段**：M1（中文游戏库 + 自动识别 + 一键启动）— **S2–S8 已完成并提交**（S1 由上一会话完成）
 - **已完成**：
   - 仓库初始化（`git init`，首个基线提交）+ 脚手架配置（electron-vite / tsconfig / electron-builder / vitest）
   - `resources/core/module.js`（上游 fork，唯一补丁 = `services.fetch` 注入，详见 `resources/core/FORK-NOTES.md`）
   - 文档：`README.md`、`docs/技术选型-三方案对比.md`、**`docs/M1-实施方案.md`（契约冻结稿）**、`LICENSE`(GPL-3.0)
   - 本机环境：依赖已装、Electron 45.2.1 二进制已下载
-- **未完成（下一会话按 `docs/M1-实施方案.md` 的 S2–S8 执行）**：
-  - `src/` 全部源码：主进程五件套（index / core-host / games-store / extract / ipc）、preload 桥、Vue3 全部页面与组件
-  - `test/` 全部 fixtures 与单测
-  - electron-builder 打 mac 包 + GitHub Actions 工作流（M1 末尾项）
-  - macOS 真机验证「启动真实游戏」— 需用户在 Mac 上执行
-- **当前基线不是全绿**：`src/` 为空，`npm run typecheck` 会报 `TS18003 无输入文件`（web 侧）、`npm test` 会报无测试文件。
-  这是预期状态，S2 落地第一个文件后即恢复；不要为了"绿"去改脚本或塞占位文件。
-- **验证方式**：`npm run typecheck && npm test && npm run build`（Windows 本机全绿即算通过）
+  - **`src/main/` 五件套全部落地**：`index.ts`（窗口 / `tsmg://` / CSP / 生命周期）、`core-host.ts`（数据目录 + core 装载 + 对话框桥 + detectFolder）、`games-store.ts`（原子写 + `.bak` + 校验）、`extract.ts`（系统 bsdtar + 安全校验）、`ipc.ts`（18 条命令全表 + 串行队列 + 取消）
+  - **`src/preload/index.ts`**：`window.tsumi` 全量桥（invoke / startTask / cancel / dialogReply / pickPath / pathForFile / onEvent）
+  - **`src/renderer/`**：i18n + hash 路由 + App 布局 + 4 个 store（library / engines / settings / task / coreDialogs）+ 9 个组件 + 4 个页面 + `locales/zh-CN.json`（含 §3.9 全部 `error.*` 键）
+  - **`test/`**：4 个 fixtures + 3 个测试文件，**62 个测试全绿**（不依赖网络、不依赖 GUI）
+- **验证基线（Windows 本机实测）**：
+  - `npm run typecheck` ✅ exit 0
+  - `npm test` ✅ 62 passed / 3 files，~350 ms
+  - `npm run build` ✅ exit 0，产出 `out/{main,preload,renderer}`
+- **仍未验证（必须在有桌面会话的机器上做）**：
+  - **`npm run dev` 开窗**：本会话的执行环境里 Electron 一创建 `BrowserWindow` 就 segfault（`0xc0000005`），
+    **官方 hello-world 最小项目同样崩**，故确认是环境限制而非本项目代码；主进程 JS 层能正常启动（`--no-sandbox --disable-gpu` 下 `--version` 正常）。
+  - 五个页面的真实交互、暗色主题视觉、拖拽添加游戏、进度浮层的实际体验。
+  - **真实启动游戏**：需 macOS（引擎二进制是 mac 版）。
+- **已知网络现实（本机）**：`api.github.com` 通，`raw.githubusercontent.com` 直连 DNS 失败，**走系统代理（127.0.0.1:7897）返回 200**。
+  Node 原生 `fetch` 不读 WinINET 系统代理，因此纯 Node 下的验收看不到远程 manifest；
+  生产环境注入的 Electron `net.fetch` 继承 Chromium/系统代理，**产品路径本身是正确的**（D9）。详见「已知坑」。
+- **M1 剩余可选项**：electron-builder 打 mac 包 + GitHub Actions 工作流（需 secrets / 签名策略）。
 
 ## 本机准备（Windows 开发机）
 
@@ -59,7 +68,7 @@ npm run build:mac    # 出 mac 包（Windows 上只能出 zip/dir，签名需 Ma
 
 调试数据目录隔离：`TSUMIGEYA_DATA_DIR=D:\YomeXProjects\Tsumigeya\.dev-data npm run dev`
 
-## 目录结构（目标结构；`src/`、`test/` 待 S2–S8 落地）
+## 目录结构（S2–S8 已全部落地）
 
 ```
 ├── AGENTS.md               ← 本文档（现状/决策/规矩）
@@ -123,6 +132,22 @@ Vue 组件 → Pinia store → api/client → preload(window.tsumi.invoke)
 | D12 | 取消（`tsumi:cancel`）与对话框应答（`tsumi:dialog`）**绕开串行队列** | 进队列会死锁（core 在队列里等应答） |
 | D13 | git 基线只提交 配置 + 文档 + core，`src/` 由下一会话从零写 | 交接时工作区必须反映真实状态，不提交空壳 |
 | D14 | **只复用上游 `module.js` 一个文件**，不复用其 UI/外壳/样式/翻译；manifest 格式、模块仓库、数据目录属于"兼容约定"而非代码复制 | 用户只要核心功能，不要整体搬运；同时也是 GPL 边界的最小化 |
+| D15 | `defaultFetch` 保留 `net.fetch` 优先，但要**兜底到全局 `fetch`**（无 electron 的 `net` 时） | 纯 Node / vitest 里 `require('electron')` 返回的是可执行文件路径字符串，没有 `net`；不兜底会直接崩在 fetch 调用上 |
+| D16 | 拖拽取路径用 **`webUtils.getPathForFile`**（preload 暴露 `pathForFile`），**不用 `File.path`** | Electron 32+ 已移除 `File.path`，在 Electron 45 上它恒为 `undefined`，拖拽会静默失败 |
+| D17 | **不给纯 Node 侧加代理回退**（用户 2026-11-04 决定） | 生产注入的 `net.fetch` 天然继承系统代理；测试按 §6 必须不依赖网络。加代理配置会动 Settings 契约 |
+
+## 已知坑
+
+| 坑 | 对策 |
+|---|---|
+| **Electron 窗口在本机执行环境秒崩**（`0xc0000005`，连 `--version` 都崩；`new BrowserWindow()` 必 segfault） | 不是本项目的问题（官方 hello-world 同样崩）。带 `--no-sandbox --disable-gpu` 时 `--version` 能过，但创建窗口仍崩。**要在有真实桌面会话的终端里跑 `npm run dev`** |
+| `npx electron .` 会走到纯 Node（报 `protocol is undefined`） | 本机 shell 继承了 `ELECTRON_RUN_AS_NODE=1` 与 `NODE_OPTIONS`，会让 electron.exe 以 Node 模式跑。启动前 `env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS` 直接调 `node_modules/electron/dist/electron.exe` |
+| `env.d.ts` 里写顶层 `import` → 所有 `.vue` 报 `TS2307` | 顶层 import 让文件变成模块，`declare module '*.vue'` 不再全局。用内联 `import('./api/client').TsumiBridge` |
+| Node 原生 `fetch` 不读 WinINET 系统代理 | 本机 raw.githubusercontent.com 直连 DNS 失败、走代理 200。产品侧靠 `net.fetch`（D9）自动继承；纯 Node 验收看不到远程 manifest 属正常 |
+| 上游 `fetchRemoteManifest` 失败时**静默降级**成 `raw: {}` | 这不是 bug：它会调 `onManifestError` 产生 warning，`checkEngineUpdates` 里表现为 `checkFailed: true` + `remoteVersion: 'N/A'`。UI 用 `el-alert` 展示 warning，不崩 |
+| `settings-row` 里塞 `array` 类型的编辑块 → 布局错乱 | `DynamicArgsForm` 把 array 编辑块放在 `settings-row` **外面**，独立成 `.args-array` |
+| 测试里 `as const` 的 manifest 与 `ManifestRaw` 不兼容 | `as const` 产生 readonly 数组，`extensions: readonly ["exe"]` 不能赋给 `string[]`。测试里用 `Record<string, Record<string, unknown>>` |
+| `createCoreHost` 未注入 fetch 时在测试里崩 | 测试必须显式传 `fetchImpl`（建议传会抛错的，顺带断言"断网不崩"） |
 
 ## 协作规矩（多 AI 接力）
 

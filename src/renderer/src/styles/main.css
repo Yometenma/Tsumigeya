@@ -1,0 +1,459 @@
+/* 基础样式 + 布局 + 主题变量（§4 styles/main.css）。
+   暗色走 html.dark + Element Plus 的 dark css-vars。 */
+
+:root {
+  --tsmg-sidebar-width: 208px;
+  --tsmg-radius: 10px;
+  --tsmg-gap: 16px;
+  --tsmg-bg: #f6f7f9;
+  --tsmg-panel: #ffffff;
+  --tsmg-border: #e4e7ed;
+  --tsmg-text: #303133;
+  --tsmg-text-dim: #909399;
+  --tsmg-accent: #4f7cff;
+}
+
+html.dark {
+  --tsmg-bg: #1b1b1f;
+  --tsmg-panel: #232329;
+  --tsmg-border: #33333c;
+  --tsmg-text: #e6e6ea;
+  --tsmg-text-dim: #9a9aa6;
+  --tsmg-accent: #6c8fff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei',
+    sans-serif;
+  background: var(--tsmg-bg);
+  color: var(--tsmg-text);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--tsmg-accent);
+  text-decoration: none;
+}
+
+/* ===== 布局 ===== */
+
+.app-shell {
+  display: flex;
+  height: 100%;
+  overflow: hidden;
+}
+
+.app-sidebar {
+  width: var(--tsmg-sidebar-width);
+  flex: 0 0 var(--tsmg-sidebar-width);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 18px 12px;
+  background: var(--tsmg-panel);
+  border-right: 1px solid var(--tsmg-border);
+}
+
+.app-brand {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 10px 16px;
+}
+
+.app-brand-name {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+
+.app-brand-tagline {
+  font-size: 11px;
+  color: var(--tsmg-text-dim);
+}
+
+.app-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: var(--tsmg-radius);
+  color: var(--tsmg-text);
+  cursor: pointer;
+  font-size: 14px;
+  transition: background 0.15s ease;
+}
+
+.app-nav-item:hover {
+  background: color-mix(in srgb, var(--tsmg-accent) 10%, transparent);
+}
+
+.app-nav-item.is-active {
+  background: color-mix(in srgb, var(--tsmg-accent) 16%, transparent);
+  color: var(--tsmg-accent);
+  font-weight: 600;
+}
+
+.app-sidebar-footer {
+  margin-top: auto;
+  padding: 10px;
+  font-size: 11px;
+  color: var(--tsmg-text-dim);
+  line-height: 1.6;
+}
+
+.app-main {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  padding: 22px 26px 90px;
+}
+
+.page-title {
+  margin: 0 0 6px;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.page-subtitle {
+  margin: 0 0 20px;
+  color: var(--tsmg-text-dim);
+  font-size: 13px;
+}
+
+.panel {
+  background: var(--tsmg-panel);
+  border: 1px solid var(--tsmg-border);
+  border-radius: var(--tsmg-radius);
+  padding: 16px;
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 72px 16px;
+  text-align: center;
+  color: var(--tsmg-text-dim);
+}
+
+.empty-state-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--tsmg-text);
+}
+
+/* ===== 进度浮层 ===== */
+
+.progress-overlay {
+  position: fixed;
+  left: 50%;
+  bottom: 22px;
+  transform: translateX(-50%);
+  width: min(560px, calc(100% - 48px));
+  z-index: 2000;
+  background: var(--tsmg-panel);
+  border: 1px solid var(--tsmg-border);
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgb(0 0 0 / 18%);
+  padding: 14px 16px;
+}
+
+.progress-overlay-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.progress-overlay-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.progress-overlay-logs {
+  margin-top: 10px;
+  max-height: 92px;
+  overflow: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  color: var(--tsmg-text-dim);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* ===== 游戏卡片 ===== */
+
+.game-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  gap: var(--tsmg-gap);
+}
+
+.game-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  background: var(--tsmg-panel);
+  border: 1px solid var(--tsmg-border);
+  border-radius: var(--tsmg-radius);
+  overflow: hidden;
+  transition:
+    transform 0.14s ease,
+    box-shadow 0.14s ease;
+}
+
+.game-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 22px rgb(0 0 0 / 12%);
+}
+
+.game-card-icon {
+  aspect-ratio: 1 / 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--tsmg-accent) 8%, transparent);
+  overflow: hidden;
+}
+
+.game-card-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.game-card-body {
+  padding: 10px 12px 12px;
+}
+
+.game-card-title {
+  font-weight: 600;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.game-card-meta {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--tsmg-text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.game-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--tsmg-panel);
+  border: 1px solid var(--tsmg-border);
+  border-radius: var(--tsmg-radius);
+}
+
+.game-row + .game-row {
+  margin-top: 8px;
+}
+
+.game-row-icon {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--tsmg-accent) 8%, transparent);
+}
+
+.game-row-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.game-row-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.game-row-title {
+  font-weight: 600;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.game-row-meta {
+  font-size: 11px;
+  color: var(--tsmg-text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.game-row-actions {
+  display: flex;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: var(--tsmg-gap);
+}
+
+.toolbar-spacer {
+  flex: 1;
+}
+
+/* ===== 引擎页 ===== */
+
+.engine-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--tsmg-gap);
+}
+
+.engine-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  background: var(--tsmg-panel);
+  border: 1px solid var(--tsmg-border);
+  border-radius: var(--tsmg-radius);
+}
+
+.engine-card-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.engine-card-name {
+  font-weight: 600;
+  font-size: 14px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.engine-card-desc {
+  font-size: 12px;
+  color: var(--tsmg-text-dim);
+  line-height: 1.55;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.engine-card-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: auto;
+}
+
+.hint {
+  font-size: 12px;
+  color: var(--tsmg-text-dim);
+  line-height: 1.6;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--tsmg-border);
+}
+
+.settings-row:last-child {
+  border-bottom: none;
+}
+
+.settings-row-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-row-title {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.settings-row-hint {
+  margin-top: 3px;
+  font-size: 12px;
+  color: var(--tsmg-text-dim);
+}
+
+.drop-zone {
+  border: 2px dashed var(--tsmg-border);
+  border-radius: 12px;
+  padding: 44px 20px;
+  text-align: center;
+  color: var(--tsmg-text-dim);
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+
+.drop-zone.is-over {
+  border-color: var(--tsmg-accent);
+  background: color-mix(in srgb, var(--tsmg-accent) 8%, transparent);
+}
+
+.wizard-steps {
+  margin-bottom: 22px;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.form-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 20px;
+}
