@@ -343,6 +343,40 @@ export function createDispatcher(deps: IpcDeps): Dispatcher {
     }
     const folder = fs.statSync(game.gamePath).isFile() ? path.dirname(game.gamePath) : game.gamePath
 
+    // 修正 multi-version 参数（典型是 nwjs 的 version）：
+    // 上游 launcher 在用户没选版本时兜底 "0.106.1"，但真实目录是 "v0.106.1"，
+    // 拼出的路径不存在 → exec 静默失败 → 用户点启动「没反应」。
+    // 见 core-host.ts 的 reconcileVersionArgs 注释。
+    const gameArgs = host.reconcileVersionArgs(game.gameEngine, game.gameArgs ?? {})
+
+    // nwjs 特殊处理：上游 launcher 用 `exec` 启动，失败只在控制台 console.error，
+    // **不会把错误抛回来** → 用户看到的是「点启动一点反应都没有」。
+    // 这里在调用前先确认目标可执行文件存在，不存在就给出可读的失败原因。
+    if (game.gameEngine === 'nwjs') {
+      const version = String(gameArgs.version ?? '')
+      const arch = process.arch === 'x64' ? 'x64' : process.arch
+      const nwjsBinary = path.join(
+        host.modulesDir(),
+        'nwjs',
+        'deps',
+        'version',
+        version,
+        `nwjs-sdk-${version}-osx-${arch}`,
+        'nwjs.app',
+        'Contents',
+        'MacOS',
+        'nwjs'
+      )
+      if (!fs.existsSync(nwjsBinary)) {
+        throw failure(
+          'error.launchFailed',
+          `找不到 NW.js 运行时：${nwjsBinary}\n` +
+            `请在「引擎管理」里为 NW.js 安装一个版本（当前记录的版本是 "${version || '未设置'}"）。`,
+          { path: nwjsBinary, version }
+        )
+      }
+    }
+
     // macOS 才补 quarantine 属性；失败只记日志、不阻塞（§3.8 第 6 步）
     if (process.platform === 'darwin') {
       void runFile('/usr/bin/xattr', ['-dr', 'com.apple.quarantine', folder]).catch(() => undefined)
@@ -352,7 +386,7 @@ export function createDispatcher(deps: IpcDeps): Dispatcher {
       await (launcher.launch as (...args: unknown[]) => Promise<void>)(
         game.gamePath,
         folder,
-        game.gameArgs ?? {},
+        gameArgs,
         game.gameTitle ?? '',
         host.dialogs
       )

@@ -144,6 +144,8 @@ export interface CoreHost {
   modulePath(folder: string): string
   scriptPath(root: string, relative: string): string
   loadScript(folder: string, relative: string): Record<string, unknown>
+  /** 修正 multi-version 参数，使其与 deps 下真实安装目录一致（见函数注释）。 */
+  reconcileVersionArgs(folder: string, gameArgs: Record<string, unknown>): Record<string, unknown>
   progress(): ProgressBridge
   detectFolder(input: { path: string; includeRemote?: boolean }): Promise<DetectFolderResult>
 }
@@ -590,6 +592,45 @@ export function createCoreHost(options: CoreHostOptions): CoreHost {
     return file
   }
 
+  /**
+   * 修正 gameArgs 里 multi-version 参数的值，使其与 deps 下真实安装目录一致。
+   *
+   * 为什么需要（实测踩坑）：上游 nwjs/launcher.js 在 user 没选版本时兜底
+   * `gameArgs = { version: "0.106.1" }`，然后拼路径
+   * `deps/version/<version>/nwjs-sdk-<version>-osx-<arch>/nwjs.app/...`。
+   * 但依赖清单的 key 是 `version/v0.106.1`（**带 v**），真实目录叫 `v0.106.1`。
+   * 于是兜底值拼出的路径不存在 → `exec` 找不到可执行文件 → **静默失败**，
+   * 用户点启动就是「一点反应都没有」。
+   *
+   * 这里不改上游模块：启动前探测真实目录名，把它写进 gameArgs。
+   * 目录带不带 v 都能对上；上游将来修了也不冲突。
+   */
+  function reconcileVersionArgs(folder: string, gameArgs: Record<string, unknown>): Record<string, unknown> {
+    const manifests = core.readLocalManifests()
+    const schema = (manifests[folder] as { gameArgs?: Record<string, { type?: string }> } | undefined)?.gameArgs
+    if (!schema) return gameArgs
+
+    const next: Record<string, unknown> = { ...gameArgs }
+    for (const [key, def] of Object.entries(schema)) {
+      if (!def || def.type !== 'multi-version') continue
+      const depsDir = path.join(modulesDir(), folder, 'deps', key)
+      if (!fs.existsSync(depsDir)) continue
+      let installed: string | null = null
+      try {
+        installed =
+          fs
+            .readdirSync(depsDir, { withFileTypes: true })
+            .filter((d) => d.isDirectory() && !d.name.startsWith('.'))
+            .map((d) => d.name)
+            .sort()[0] ?? null
+      } catch {
+        installed = null
+      }
+      if (installed && next[key] !== installed) next[key] = installed
+    }
+    return next
+  }
+
   /** 清 require 缓存后加载模块脚本（launcher.js / version-script）。 */
   function loadScript(folder: string, relative: string): Record<string, unknown> {
     const root = modulePath(folder)
@@ -694,6 +735,7 @@ export function createCoreHost(options: CoreHostOptions): CoreHost {
     modulePath,
     scriptPath,
     loadScript,
+    reconcileVersionArgs,
     progress,
     detectFolder
   }
