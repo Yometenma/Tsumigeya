@@ -16,6 +16,24 @@ macOS 上的 DLsite 游戏启动器——把下载好的游戏文件夹拖进来
 | 通用 Windows 程序 | Wine（beta） | `.exe/.msi/.bat` |
 | macOS .app | 原生 | `.app` 包 |
 
+## 下载安装（macOS）
+
+到 [Releases](https://github.com/Yometenma/Tsumigeya/releases) 下载对应架构的 dmg：
+
+| 芯片 | 下载 |
+|---|---|
+| Apple Silicon（M1/M2/M3…） | `Tsumigeya-0.1.0-arm64.dmg` |
+| Intel | `Tsumigeya-0.1.0-x64.dmg` |
+
+打开 dmg，把 Tsumigeya 拖进 Applications 即可。
+
+> **首次打开会被 Gatekeeper 拦**（当前未做代码签名）。任选其一即可：
+>
+> - 右键点 App → **打开** → 再点一次「打开」
+> - 或在终端执行：`xattr -dr com.apple.quarantine /Applications/Tsumigeya.app`
+>
+> 这只是首次拦截，之后正常使用；不影响任何功能。
+
 ## 开发
 
 ```bash
