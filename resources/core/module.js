@@ -34,6 +34,14 @@
 
     const DEFAULT_REPO = { owner: "m5kro", repo: "Xenolauncher-Modules", branch: "main" };
 
+    // [Tsumigeya fork patch #3 配套] 已知「下载源不可靠、但缺失不影响运行」的依赖。
+    //
+    // easyrpg 的 soundfont 指向 musical-artifacts.com，该站点被 Cloudflare 人机验证保护，
+    // 程序化请求恒定 403（返回 "Just a moment..." 页面）。音源缺失只会让部分音乐退化，
+    // 不该因此让整个 EasyRPG 引擎装不上。
+    // 这里用小写名匹配（依赖名在 manifest 里是 camel/snake 混用）。
+    const OPTIONAL_DEP_NAMES = new Set(["soundfont"]);
+
     // Shared arch map for deps
     const archMap = { x64: "x86_64", arm64: "arm64" };
     const sysArch = archMap[os.arch()] || os.arch();
@@ -655,14 +663,43 @@
             const fileName = path.basename(new URL(spec.link).pathname);
             const archivePath = path.join(depDir, fileName);
 
-            await downloadUrlToFileWithProgress(spec.link, archivePath, progress, `Dependency: ${depName}`, opts);
+            // [Tsumigeya fork patch #3] 单个依赖失败不应中断整个模块安装。
+            //
+            // 背景：easyrpg 的 "soundfont" 依赖指向 musical-artifacts.com，该站点由
+            // Cloudflare 人机验证保护，程序化请求恒定返回 403（"Just a moment..."）。
+            // 上游会直接 throw，导致「EasyRPG 永远装不上」。
+            // 但音源（soundfont）不是必需要素——缺失只会让部分音乐退化，不影响运行。
+            //
+            // 策略：区分「必需」与「可选」。manifest 里可用 "optional": true 标记，
+            // 未标记的仍按原行为抛出（保持上游语义，避免掩盖真正的失败）。
+            // 判断这个依赖是否「可选」。两个来源：
+            //  1) manifest 里显式写了 "optional": true（未来上游可能支持）
+            //  2) 内置清单：已知上游模块里不影响运行、但下载源不可靠的依赖
+            const isOptional =
+                (builds && typeof builds === "object" && builds.optional === true) ||
+                OPTIONAL_DEP_NAMES.has(String(depName).toLowerCase());
+            try {
+                await downloadUrlToFileWithProgress(spec.link, archivePath, progress, `Dependency: ${depName}`, opts);
 
-            if (spec.unzip) {
-                stepper?.next?.(`Extracting dependency: ${depName}`);
-                safeCall(progress?.onStep, { label: `Extracting dependency: ${depName}`, phase: "extracting" });
-                throwIfAborted(signal);
-                await extractArchive(archivePath, depDir, opts);
-                fs.rmSync(archivePath, { force: true });
+                if (spec.unzip) {
+                    stepper?.next?.(`Extracting dependency: ${depName}`);
+                    safeCall(progress?.onStep, { label: `Extracting dependency: ${depName}`, phase: "extracting" });
+                    throwIfAborted(signal);
+                    await extractArchive(archivePath, depDir, opts);
+                    fs.rmSync(archivePath, { force: true });
+                }
+            } catch (depError) {
+                if (signal && signal.aborted) throw mkAbortError();
+                if (!isOptional) throw depError;
+                // 可选依赖失败：清掉半成品，记录一条警告，继续装下一个依赖。
+                try {
+                    fs.rmSync(depDir, { recursive: true, force: true });
+                } catch {}
+                console.warn(`[optional dependency skipped] ${depName}: ${depError && depError.message ? depError.message : depError}`);
+                safeCall(progress?.onStep, {
+                    label: `可选依赖 ${depName} 下载失败，已跳过：${depError && depError.message ? depError.message : depError}`,
+                    phase: "warning"
+                });
             }
         }
 

@@ -58,6 +58,31 @@
   我们只是实现了它（`src/main/extract.ts`），在 Windows/macOS 上统一用系统 `tar`（bsdtar）。
 - 缓存、版本比较、autodetect 打分、依赖更新等逻辑全部未改。
 
+## 补丁 #3 — 可选依赖失败不中断模块安装
+
+- 位置：`installModuleDependenciesWithProgress()` 的依赖循环内部
+- 新增常量（`DEFAULT_REPO` 下方）：
+  ```js
+  const OPTIONAL_DEP_NAMES = new Set(["soundfont"]);
+  ```
+- 循环体内原本是「下载 → 解压，任何错误直接抛」，现改为：
+  ```js
+  const isOptional =
+      (builds && typeof builds === "object" && builds.optional === true) ||
+      OPTIONAL_DEP_NAMES.has(String(depName).toLowerCase());
+  try { /* 下载 + 解压 */ } catch (depError) {
+      if (signal && signal.aborted) throw mkAbortError();
+      if (!isOptional) throw depError;          // 必需依赖照旧失败
+      /* 清掉半成品 + console.warn + 进度里留一条 warning，继续装下一个依赖 */
+  }
+  ```
+- 原因：上游 `easyrpg` manifest 的 `soundfont` 依赖指向 `musical-artifacts.com`，
+  该站点被 **Cloudflare 人机验证**保护，程序化请求（含 `net.fetch`、curl 带 UA）**恒定 403**，
+  返回的是 "Just a moment..." 挑战页。上游因此直接 throw，导致 **EasyRPG 永远装不上**。
+  而 soundfont 只是音源，缺失仅让部分音乐退化，不影响游戏运行。
+- 注意：`OPTIONAL_DEP_NAMES` 是**保守白名单**，只放「已确认缺失不影响运行」的名字。
+  不要为了"让安装成功"而随意扩充——那会把真正的失败掩盖掉。
+
 ## 上游同步步骤
 
 1. 更新 `_xeno_probe`（`git -C _xeno_probe pull`，该目录不入库）。
