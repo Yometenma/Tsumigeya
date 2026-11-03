@@ -22,6 +22,7 @@ const dragging = ref(false)
 const busy = ref(false)
 
 const gamePath = ref('')
+const manualPath = ref('')
 const detection = ref<DetectFolderResult | null>(null)
 const chosen = ref<DetectCandidate | null>(null)
 const engineFolder = ref('')
@@ -46,14 +47,58 @@ const canGoNext = computed(() => {
 
 // ===== 第 1 步：选路径 =====
 
+/**
+ * 识别整体超时（毫秒）。后端 detectFolder 自带 3s 远端护栏，理论上 5s 内必回；
+ * 这里再加一道**前端**护栏，是因为一旦 IPC 那头因任何原因不返回（对话框挂起、
+ * 主进程队列异常），UI 会永远停在「正在识别引擎…」且没有任何出路。
+ * 宁可报一个「识别超时」让用户重试，也不要无声地转圈。
+ */
+const ANALYZE_TIMEOUT_MS = 10_000
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`analyze timeout after ${ms}ms`)), ms)
+    promise.then(
+      (value) => {
+        clearTimeout(timer)
+        resolve(value)
+      },
+      (error) => {
+        clearTimeout(timer)
+        reject(error)
+      }
+    )
+  })
+}
+
 async function pickFolder(): Promise<void> {
-  const picked = await api.pickPath('folder')
-  if (picked) await analyze(picked)
+  try {
+    const picked = await api.pickPath('folder')
+    if (picked) await analyze(picked)
+  } catch (error) {
+    ElMessage.error(translateError(error, t))
+  }
 }
 
 async function pickFile(): Promise<void> {
-  const picked = await api.pickPath('file')
-  if (picked) await analyze(picked)
+  try {
+    const picked = await api.pickPath('file')
+    if (picked) await analyze(picked)
+  } catch (error) {
+    ElMessage.error(translateError(error, t))
+  }
+}
+
+/** 手动输入的路径直接走识别（不依赖系统对话框）。 */
+async function analyzeManual(): Promise<void> {
+  const target = manualPath.value.trim()
+  if (!target) return
+  await analyze(target)
+}
+
+/** 上一步。写成函数是因为模板里不能写 TS 类型断言（`as Step` 会让模板编译报 SyntaxError）。 */
+function goPrev(): void {
+  if (step.value > 0) step.value = (step.value - 1) as Step
 }
 
 /** 拖入的路径：Electron 32+ 的 File.path 已移除，必须经 bridge 的 webUtils 取。 */
@@ -81,7 +126,7 @@ async function analyze(target: string): Promise<void> {
   engineFolder.value = ''
   engineInstalled.value = false
   try {
-    const result = await api.detectFolder(target, true)
+    const result = await withTimeout(api.detectFolder(target, true), ANALYZE_TIMEOUT_MS)
     detection.value = result
     const best = result.best ?? result.candidates.find((candidate) => candidate.engine) ?? null
     chosen.value = best
@@ -213,6 +258,22 @@ function reset(): void {
 
     <div v-if="gamePath" class="hint" style="word-break: break-all">{{ gamePath }}</div>
     <div v-if="busy" class="hint">{{ t('wizard.detecting') }}</div>
+
+    <!-- 手输路径兜底：系统对话框在某些环境（远程桌面 / 沙箱 / 安全软件）可能不响应，
+         不能让用户除了拖拽和对话框之外完全没辙。 -->
+    <div class="row" style="gap: 8px; align-items: center">
+      <el-input
+        v-model="manualPath"
+        :placeholder="t('wizard.manualPathPlaceholder')"
+        clearable
+        style="flex: 1 1 auto"
+        :disabled="busy"
+        @keyup.enter.prevent="analyzeManual"
+      />
+      <el-button :disabled="!manualPath.trim() || busy" @click="analyzeManual">
+        {{ t('wizard.manualPathGo') }}
+      </el-button>
+    </div>
   </section>
 
   <!-- 第 2 步：识别 + 装引擎 -->
@@ -328,7 +389,7 @@ function reset(): void {
   </section>
 
   <div class="form-actions">
-    <el-button v-if="step > 0" @click="step = (step - 1) as Step">{{ t('wizard.prev') }}</el-button>
+    <el-button v-if="step > 0" @click="goPrev">{{ t('wizard.prev') }}</el-button>
     <el-button v-if="step === 0" type="primary" :disabled="!gamePath || busy" @click="step = 1">
       {{ t('wizard.next') }}
     </el-button>

@@ -27,6 +27,14 @@ async function patch(partial: Partial<Settings>): Promise<void> {
   }
 }
 
+/**
+ * 外观切换。写成函数而不是在模板里内联 `$event as Appearance`：
+ * 模板表达式里不能写 TS 类型断言，否则该页面整块渲染会抛 SyntaxError 而白屏。
+ */
+function onAppearanceChange(value: unknown): void {
+  void patch({ appearance: value as Appearance })
+}
+
 async function openDataDir(): Promise<void> {
   try {
     await api.openFolder(settings.dataPath)
@@ -54,7 +62,7 @@ async function copyDataPath(): Promise<void> {
       <div class="settings-row-main">
         <div class="settings-row-title">{{ t('settings.appearance') }}</div>
       </div>
-      <el-radio-group :model-value="appearance" @update:model-value="patch({ appearance: $event as Appearance })">
+      <el-radio-group :model-value="appearance" @update:model-value="onAppearanceChange($event)">
         <el-radio-button v-for="option in appearanceOptions" :key="option.value" :value="option.value">
           {{ option.label }}
         </el-radio-button>

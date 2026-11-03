@@ -29,20 +29,23 @@
   - **`src/main/` 五件套全部落地**：`index.ts`（窗口 / `tsmg://` / CSP / 生命周期）、`core-host.ts`（数据目录 + core 装载 + 对话框桥 + detectFolder）、`games-store.ts`（原子写 + `.bak` + 校验）、`extract.ts`（系统 bsdtar + 安全校验）、`ipc.ts`（18 条命令全表 + 串行队列 + 取消）
   - **`src/preload/index.ts`**：`window.tsumi` 全量桥（invoke / startTask / cancel / dialogReply / pickPath / pathForFile / onEvent）
   - **`src/renderer/`**：i18n + hash 路由 + App 布局 + 4 个 store（library / engines / settings / task / coreDialogs）+ 9 个组件 + 4 个页面 + `locales/zh-CN.json`（含 §3.9 全部 `error.*` 键）
-  - **`test/`**：4 个 fixtures + 3 个测试文件，**66 个测试全绿**（不依赖网络、不依赖 GUI）
+  - **`test/`**：4 个 fixtures + 3 个测试文件，**67 个测试全绿**（不依赖网络、不依赖 GUI）
 - **验证基线（Windows 本机实测）**：
   - `npm run typecheck` ✅ exit 0
-  - `npm test` ✅ 66 passed / 3 files，~400 ms
+  - `npm test` ✅ 67 passed / 3 files，~3.4 s
   - `npm run build` ✅ exit 0，产出 `out/{main,preload,renderer}`
   - **`npm run dev` ✅ 已在本机跑通**：窗口真实渲染出来（标题 `Tsumigeya`、路由 `#/library`、
     游戏库中文界面与空状态、`window.tsumi` 为 object、数据目录生成 `cache/`）。
     启动入口由 `scripts/dev.cjs` 包装，原因见「已知坑」第一条。
+  - **添加游戏向导 ✅ 端到端实测通过**：手输路径框填真实 fixture 路径 → 点「识别此路径」
+    → **1 秒内**显示「识别到引擎：wine（尚未安装）」+ 候选列表 + 安装按钮，组件无崩溃。
+    四个路由（/library、/library/new、/engines、/settings）渲染均正常（htmlLen 3522–5307）。
 - **仍未验证（必须在有桌面会话的机器上做）**：
-  - 五个页面的**真实交互与视觉**：窗口能渲染（DOM 文本已抓取验证），但本会话看不到画面，
-    暗色主题观感、拖拽添加游戏、进度浮层动效仍需人眼验收。
-  - **选择文件夹/文件、安装引擎的真实操作**：`tsumi:pick` 缺失 handler 已修（见已知坑），
-    但「点了真的弹出系统对话框」尚未在本会话目视确认。
-  - **真实启动游戏**：需 macOS（引擎二进制是 mac 版）。
+  - 五个页面的**视觉观感**：DOM 结构与文本已验证，但暗色主题配色、间距、进度浮层动效需人眼验收。
+  - **系统文件对话框的返回值**：`tsumi:pick` handler 已确认注册且被调用（实测调用后挂起＝正在等对话框），
+    但「对话框真的弹出并把路径交回」需真实桌面会话确认。已加**手输路径**兜底。
+  - **安装引擎**：需 mac（引擎二进制是 mac 版）。Windows 上到这一步会失败，属预期。
+  - **真实启动游戏**：需 macOS。
 - **已知网络现实（本机）**：`api.github.com` 通，`raw.githubusercontent.com` 直连 DNS 失败，**走系统代理（127.0.0.1:7897）返回 200**。
   Node 原生 `fetch` 不读 WinINET 系统代理，因此纯 Node 下的验收看不到远程 manifest；
   生产环境注入的 Electron `net.fetch` 继承 Chromium/系统代理，**产品路径本身是正确的**（D9）。详见「已知坑」。
@@ -162,6 +165,9 @@ Vue 组件 → Pinia store → api/client → preload(window.tsumi.invoke)
 | **whenReady 里抛错 = 窗口永不出现，且用户看不到原因** | 曾经 `createCoreHost` 抛 EPERM，用户只看到「软件没弹出来」。主进程启动链上的可预期失败必须降级 + 告知，不能直接 throw |
 | **串行队列会被启动自动更新检查堵死**（实测根因） | `checkEngineUpdates` 最长 60s 且排在队列里，期间任何命令（含「识别引擎」）都在后面干等，UI 表现为永远卡住。已把 `detect` / `detectFolder` / `snapshot` / `versions` 改为**绕开队列**（只读、不写盘，不会与写操作冲突）。**新增只读且用户要等反馈的命令时，考虑加入这个旁路名单** |
 | 端到端验证队列是否真的没堵 | 起应用后用 `webContents.executeJavaScript` 从渲染层真调 `window.tsumi.invoke('detectFolder', ...)` 并计时。实测修复后 **2ms** 返回（修复前会等到 60s 更新检查结束） |
+| **i18n 文案里写 ICU 语法会让整个组件白屏**（本项目最隐蔽的坑） | 项目只装了 `vue-i18n`、**没有** `@intlify/unplugin-vue-i18n` 编译器，所以 `{count, plural, =0 {} other {…}}` 会在运行时抛 `SyntaxError: 2`，而**报错只在 console，界面表现为整块组件消失**（只剩侧边栏）。**文案里只允许 `{simpleIdentifier}` 形式占位符**，复数/格式化请改用普通拼接或 computed |
+| **Vue 模板表达式里不能写 TS 类型断言** | `@click="step = (step - 1) as Step"` 同样导致组件渲染失败白屏。模板里只写运行时代码，类型断言放进 `<script setup>` 的具名函数 |
+| 排查「组件突然消失」的姿势 | 在页面里挂 `window.addEventListener('error')` + 包装 `console.error` 收 `stack`；再对比 `document.querySelector('#app').innerHTML.length` 在操作前后的变化（本例：4198 → 544 即组件被卸载） |
 
 > **验收 `npm run dev` 的正确姿势**（本机无画面可看时）：启动后用 `BrowserWindow.getAllWindows()` +
 > `webContents.executeJavaScript('document.body.innerText')` 抓 DOM 文本，确认标题/路由/`typeof window.tsumi`。
