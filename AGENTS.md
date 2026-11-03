@@ -49,7 +49,11 @@
 - **已知网络现实（本机）**：`api.github.com` 通，`raw.githubusercontent.com` 直连 DNS 失败，**走系统代理（127.0.0.1:7897）返回 200**。
   Node 原生 `fetch` 不读 WinINET 系统代理，因此纯 Node 下的验收看不到远程 manifest；
   生产环境注入的 Electron `net.fetch` 继承 Chromium/系统代理，**产品路径本身是正确的**（D9）。详见「已知坑」。
-- **M1 剩余可选项**：electron-builder 打 mac 包 + GitHub Actions 工作流（需 secrets / 签名策略）。
+- **打包与分发（已就绪，待 CI 首次实跑验证）**：GitHub Actions 出 mac dmg（arm64/x64）+ win 安装包，
+  打 `v*` tag 自动挂 draft Release。配置见 `.github/workflows/build.yml` 与 `electron-builder.yml`，
+  使用说明见 `docs/打包与分发.md`。**无需证书**（ad-hoc 签名，首次打开需右键→打开）。
+  本机因沙箱限制无法验证打包（electron-builder 解压 Electron 时卡在 default_app.asar 的 EPERM），
+  配置正确性以 CI 首次运行结果为准。
 
 ## 本机准备（Windows 开发机）
 
