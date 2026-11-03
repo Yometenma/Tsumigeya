@@ -234,7 +234,7 @@ export function ensureDataDir(dir: string): string {
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code
     if (code === 'EPERM' || code === 'EACCES') {
-      throw failure(
+      const wrapped = failure(
         'error.dataDirPermission',
         `没有权限创建数据目录：${dir}\n` +
           `该目录被拒绝写入（${code}）。可以：\n` +
@@ -242,10 +242,53 @@ export function ensureDataDir(dir: string): string {
           `  2. 或检查该目录是否被安全软件/同步工具占用。`,
         { path: dir, code }
       )
+      // failure() 只挂 translationKey/translationArguments，不保留 errno；降级判断要用到它，
+      // 这里显式补上（否则调用方拿到的 code 是 undefined，会误判成不可降级的错误）。
+      ;(wrapped as NodeJS.ErrnoException).code = code
+      throw wrapped
     }
     throw error
   }
 }
+
+export interface DataDirFallback {
+  /** 实际可用的数据目录。 */
+  dataDir: string
+  /** 首选目录不可写时的降级信息；一切正常则 undefined。 */
+  warning?: { requested: string; switchedTo: string; code: string }
+}
+
+/**
+ * 解析数据目录并**保证可用**：首选目录建不起来（Windows 上 AppData 被锁 / 受限账户很常见）
+ * 就退到系统临时目录，并返回降级信息供 UI 提示。
+ *
+ * 为什么不在主进程直接抛错：whenReady 里抛错会让窗口永远不出现，用户只看到
+ * 「程序没反应」，连原因都看不到。宁可降级运行 + 明确告知。
+ */
+export function resolveDataDirWithFallback(options: DataDirOptions = {}): DataDirFallback {
+  const requested = resolveDataDir(options)
+  try {
+    return { dataDir: ensureDataDir(requested) }
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code
+    if (code !== 'EPERM' && code !== 'EACCES') throw error
+    // 临时目录也可能不可写（本机沙箱就是这样），那就再试项目目录，最后才认输。
+    const candidates = [path.join(os.tmpdir(), 'tsumigeya-data'), path.join(process.cwd(), '.dev-data')]
+    for (const candidate of candidates) {
+      try {
+        fs.mkdirSync(candidate, { recursive: true })
+        return {
+          dataDir: fs.realpathSync(candidate),
+          warning: { requested, switchedTo: candidate, code }
+        }
+      } catch {
+        // 换下一个候选
+      }
+    }
+    throw error
+  }
+}
+
 
 /**
  * 装载 core 工厂（§3.6）：读源码 + new Function 手工执行。

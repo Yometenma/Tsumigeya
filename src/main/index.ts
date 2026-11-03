@@ -4,8 +4,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { app, BrowserWindow, net, protocol, session, shell } from 'electron'
-import { createCoreHost, resolveCorePath, resolveDataDir, type CoreHost } from './core-host'
+import { app, BrowserWindow, dialog, net, protocol, session, shell } from 'electron'
+import { createCoreHost, resolveCorePath, resolveDataDirWithFallback, type CoreHost } from './core-host'
 import { registerIpc } from './ipc'
 
 /** 图片扩展名白名单（§3.7）。 */
@@ -115,10 +115,10 @@ function applyContentSecurityPolicy(): void {
 }
 
 void app.whenReady().then(() => {
-  // 不传 userData：文件入口下 app.getPath('userData') 会退化成通用的 "%APPDATA%\Electron"
-  // （因为读不到 package.json 的 name），与其它 Electron 应用撞目录，还会撞上权限问题（EPERM）。
-  // resolveDataDir 在不传 userData 时会落到 "%APPDATA%\tsumigeya"（见 core-host.ts）。
-  const dataDir = resolveDataDir({})
+  // 数据目录建不起来时不要让整个应用静默死掉：先尝试首选目录，失败则退到临时目录，
+  // 并把这个事实通过 dialog 告诉用户（否则用户只看到「窗口没弹出来」，毫无线索）。
+  const { dataDir, warning } = resolveDataDirWithFallback()
+
   const corePath = resolveCorePath({
     isPackaged: app.isPackaged,
     appPath: app.getAppPath(),
@@ -146,6 +146,18 @@ void app.whenReady().then(() => {
   registerIpc({ host })
 
   host.emit({ event: 'ready', nodeVersion: process.version })
+
+  if (warning) {
+    void dialog.showMessageBox(mainWindow, {
+      type: 'warning',
+      title: '数据目录不可写',
+      message: '无法写入默认数据目录，已临时改用：',
+      detail: `${warning.switchedTo}\n\n原目录（${warning.requested}）报错：${warning.code}\n\n` +
+        `游戏库、引擎与设置在本次运行期间可正常使用，但重启后可能丢失。\n` +
+        `建议设置环境变量 TSUMIGEYA_DATA_DIR 指向一个可写目录后重启。`,
+      buttons: ['我知道了']
+    })
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
