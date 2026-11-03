@@ -75,11 +75,16 @@ jobs:
 
       # 自检：dmg 里的布局必须与 src/main/core-host.ts 的 resolveCorePath 假设一致，
       # 否则装到 Mac 上会「能开窗口但引擎模块加载失败」，而且本地很难发现。
+      # 注意：不要硬编码 dist/mac-<arch>/，electron-builder 的目录命名随平台/架构变化
+      # （x64 可能是 mac/ 也可能是 mac-x64/），所以这里直接 find。
       - name: 自检 .app 内的关键文件
         run: |
           set -e
-          APP="dist/mac-${{ matrix.arch }}/Tsumigeya.app"
-          test -d "$APP" || { echo "❌ 找不到 $APP"; exit 1; }
+          echo "--- dist 顶层 ---"
+          ls -1 dist
+          APP=$(find dist -maxdepth 2 -name "Tsumigeya.app" -type d | head -1)
+          test -n "$APP" || { echo "❌ 在 dist 里找不到 Tsumigeya.app"; exit 1; }
+          echo "找到 app: $APP"
           echo "--- Contents/Resources 顶层 ---"
           ls -1 "$APP/Contents/Resources" | head -20
           test -f "$APP/Contents/Resources/core/module.js" \
