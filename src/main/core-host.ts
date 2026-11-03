@@ -189,7 +189,13 @@ export interface CorePathOptions {
   resourcesPath?: string
 }
 
-/** core 脚本路径（§3.1 末行）：`TSUMIGEYA_CORE_PATH` > 打包 `resourcesPath/core/module.js` > dev `appPath/resources/core/module.js`。 */
+/**
+ * core 脚本路径（§3.1 末行）：`TSUMIGEYA_CORE_PATH` > 打包 `resourcesPath/core/module.js` > dev 向上探测。
+ *
+ * 注意 dev 下 `app.getAppPath()` 并不可靠：用 `electron <目录>` 启动时它等于项目根，
+ * 但用 `electron out/main/index.js`（文件入口，本机唯一不 segfault 的启动方式）启动时它等于 `out/main`。
+ * 所以这里不只拼一层，而是从 appPath 与 cwd 出发逐级向上探测，找到含 `resources/core/module.js` 的根。
+ */
 export function resolveCorePath(options: CorePathOptions = {}): string {
   const env = options.env ?? process.env
   const override = env.TSUMIGEYA_CORE_PATH
@@ -197,7 +203,21 @@ export function resolveCorePath(options: CorePathOptions = {}): string {
   if (options.isPackaged && options.resourcesPath) {
     return path.join(options.resourcesPath, 'core', 'module.js')
   }
-  return path.join(options.appPath ?? process.cwd(), 'resources', 'core', 'module.js')
+
+  const relative = path.join('resources', 'core', 'module.js')
+  const starts = [options.appPath, process.cwd()].filter((dir): dir is string => !!dir)
+  for (const start of starts) {
+    let dir = path.resolve(start)
+    for (let depth = 0; depth < 6; depth += 1) {
+      const candidate = path.join(dir, relative)
+      if (fs.existsSync(candidate)) return candidate
+      const parent = path.dirname(dir)
+      if (parent === dir) break
+      dir = parent
+    }
+  }
+  // 都没找到就退回旧行为，让调用方拿到明确的不存在路径（错误信息更有指向性）
+  return path.join(options.appPath ?? process.cwd(), relative)
 }
 
 /** 建目录并 realpath 规范化（macOS /var → /private/var，也让 require 缓存失效可靠）。 */

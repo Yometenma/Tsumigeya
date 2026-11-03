@@ -29,15 +29,17 @@
   - **`src/main/` 五件套全部落地**：`index.ts`（窗口 / `tsmg://` / CSP / 生命周期）、`core-host.ts`（数据目录 + core 装载 + 对话框桥 + detectFolder）、`games-store.ts`（原子写 + `.bak` + 校验）、`extract.ts`（系统 bsdtar + 安全校验）、`ipc.ts`（18 条命令全表 + 串行队列 + 取消）
   - **`src/preload/index.ts`**：`window.tsumi` 全量桥（invoke / startTask / cancel / dialogReply / pickPath / pathForFile / onEvent）
   - **`src/renderer/`**：i18n + hash 路由 + App 布局 + 4 个 store（library / engines / settings / task / coreDialogs）+ 9 个组件 + 4 个页面 + `locales/zh-CN.json`（含 §3.9 全部 `error.*` 键）
-  - **`test/`**：4 个 fixtures + 3 个测试文件，**62 个测试全绿**（不依赖网络、不依赖 GUI）
+  - **`test/`**：4 个 fixtures + 3 个测试文件，**66 个测试全绿**（不依赖网络、不依赖 GUI）
 - **验证基线（Windows 本机实测）**：
   - `npm run typecheck` ✅ exit 0
-  - `npm test` ✅ 62 passed / 3 files，~350 ms
+  - `npm test` ✅ 66 passed / 3 files，~400 ms
   - `npm run build` ✅ exit 0，产出 `out/{main,preload,renderer}`
+  - **`npm run dev` ✅ 已在本机跑通**：窗口真实渲染出来（标题 `Tsumigeya`、路由 `#/library`、
+    游戏库中文界面与空状态、`window.tsumi` 为 object、数据目录生成 `cache/`）。
+    启动入口由 `scripts/dev.cjs` 包装，原因见「已知坑」第一条。
 - **仍未验证（必须在有桌面会话的机器上做）**：
-  - **`npm run dev` 开窗**：本会话的执行环境里 Electron 一创建 `BrowserWindow` 就 segfault（`0xc0000005`），
-    **官方 hello-world 最小项目同样崩**，故确认是环境限制而非本项目代码；主进程 JS 层能正常启动（`--no-sandbox --disable-gpu` 下 `--version` 正常）。
-  - 五个页面的真实交互、暗色主题视觉、拖拽添加游戏、进度浮层的实际体验。
+  - 五个页面的**真实交互与视觉**：窗口能渲染（DOM 文本已抓取验证），但本会话看不到画面，
+    暗色主题观感、拖拽添加游戏、进度浮层动效仍需人眼验收。
   - **真实启动游戏**：需 macOS（引擎二进制是 mac 版）。
 - **已知网络现实（本机）**：`api.github.com` 通，`raw.githubusercontent.com` 直连 DNS 失败，**走系统代理（127.0.0.1:7897）返回 200**。
   Node 原生 `fetch` 不读 WinINET 系统代理，因此纯 Node 下的验收看不到远程 manifest；
@@ -58,7 +60,7 @@
 
 ```bash
 npm install          # 安装依赖
-npm run dev          # 启动开发（Electron + Vite HMR，会弹窗口）
+npm run dev          # 启动开发（走 scripts/dev.cjs：文件入口 + 清 ELECTRON_RUN_AS_NODE + NO_SANDBOX）
 npm run build        # electron-vite 构建（out/，不打包安装包）
 npm run typecheck    # TS 类型检查（node 侧 + web 侧）
 npm test             # vitest 单测（不需要网络、不需要 GUI）
@@ -140,14 +142,19 @@ Vue 组件 → Pinia store → api/client → preload(window.tsumi.invoke)
 
 | 坑 | 对策 |
 |---|---|
-| **Electron 窗口在本机执行环境秒崩**（`0xc0000005`，连 `--version` 都崩；`new BrowserWindow()` 必 segfault） | 不是本项目的问题（官方 hello-world 同样崩）。带 `--no-sandbox --disable-gpu` 时 `--version` 能过，但创建窗口仍崩。**要在有真实桌面会话的终端里跑 `npm run dev`** |
-| `npx electron .` 会走到纯 Node（报 `protocol is undefined`） | 本机 shell 继承了 `ELECTRON_RUN_AS_NODE=1` 与 `NODE_OPTIONS`，会让 electron.exe 以 Node 模式跑。启动前 `env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS` 直接调 `node_modules/electron/dist/electron.exe` |
+| **用「目录」入口启动 Electron 必 segfault**（`0xc0000005` / exit 139）。判定依据（本机反复验证）：同一最小项目 `electron <文件>` **100% 正常**（连续 3 次 `exit=0` + `LOAD_OK`），`electron <目录>` **100% 崩**。与是否注册协议、是否 sandbox、是否 CSP 无关；`--disable-crash-reporter / --disable-gpu-compositing / --in-process-gpu / --single-process` 全部无效。**注意：上一会话把这条误判为"环境限制、无解"，是错的** | `npm run dev` 已改为走 `scripts/dev.cjs`：强制 `ELECTRON_ENTRY=out/main/index.js`（文件入口）+ 清掉 `ELECTRON_RUN_AS_NODE`/`NODE_OPTIONS` + win32 下 `NO_SANDBOX=1`。**不要把它改回 `electron-vite dev`** |
+| `electron --version` 直接崩 | 本机 shell 继承了 `ELECTRON_RUN_AS_NODE=1` 与 `NODE_OPTIONS`（指向 DSH 的 compat 注入），会让 electron.exe 以纯 Node 模式跑或直接崩。`scripts/dev.cjs` 已统一清除；手动排查时用 `env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS` |
+| **文件入口时 `app.getAppPath()` = `out/main`**，不是项目根 | `resolveCorePath` 不能只拼一层。已改为从 appPath + cwd 出发**向上探测 6 级**找含 `resources/core/module.js` 的根，并有 4 条回归测试锁住（`test/detect.test.ts`） |
 | `env.d.ts` 里写顶层 `import` → 所有 `.vue` 报 `TS2307` | 顶层 import 让文件变成模块，`declare module '*.vue'` 不再全局。用内联 `import('./api/client').TsumiBridge` |
 | Node 原生 `fetch` 不读 WinINET 系统代理 | 本机 raw.githubusercontent.com 直连 DNS 失败、走代理 200。产品侧靠 `net.fetch`（D9）自动继承；纯 Node 验收看不到远程 manifest 属正常 |
 | 上游 `fetchRemoteManifest` 失败时**静默降级**成 `raw: {}` | 这不是 bug：它会调 `onManifestError` 产生 warning，`checkEngineUpdates` 里表现为 `checkFailed: true` + `remoteVersion: 'N/A'`。UI 用 `el-alert` 展示 warning，不崩 |
 | `settings-row` 里塞 `array` 类型的编辑块 → 布局错乱 | `DynamicArgsForm` 把 array 编辑块放在 `settings-row` **外面**，独立成 `.args-array` |
 | 测试里 `as const` 的 manifest 与 `ManifestRaw` 不兼容 | `as const` 产生 readonly 数组，`extensions: readonly ["exe"]` 不能赋给 `string[]`。测试里用 `Record<string, Record<string, unknown>>` |
 | `createCoreHost` 未注入 fetch 时在测试里崩 | 测试必须显式传 `fetchImpl`（建议传会抛错的，顺带断言"断网不崩"） |
+| GPU 缓存目录被拒（`GPUPersistentCache ... 拒绝访问`）刷屏 | 无害噪音，不是崩溃。判据看 **exit code 与窗口是否渲染**，别被这行 ERROR 误导 |
+
+> **验收 `npm run dev` 的正确姿势**（本机无画面可看时）：启动后用 `BrowserWindow.getAllWindows()` +
+> `webContents.executeJavaScript('document.body.innerText')` 抓 DOM 文本，确认标题/路由/`typeof window.tsumi`。
 
 ## 协作规矩（多 AI 接力）
 

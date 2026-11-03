@@ -6,6 +6,37 @@ import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 import { createCoreHost, resolveCorePath, scanCandidates, compareCandidates } from '../src/main/core-host'
 
+describe('resolveCorePath（dev 入口路径探测）', () => {
+  test('appPath 是项目根时直接命中', () => {
+    const resolved = resolveCorePath({ env: {}, appPath: process.cwd() })
+    expect(resolved).toBe(path.join(process.cwd(), 'resources', 'core', 'module.js'))
+  })
+
+  // 回归：用 `electron out/main/index.js`（文件入口）启动时 app.getAppPath() 是 out/main，
+  // 旧实现会拼出 out/main/resources/core/module.js 并抛 ENOENT。
+  test('appPath 是 out/main（文件入口）时向上探测到项目根', () => {
+    const resolved = resolveCorePath({ env: {}, appPath: path.join(process.cwd(), 'out', 'main') })
+    expect(resolved).toBe(path.join(process.cwd(), 'resources', 'core', 'module.js'))
+  })
+
+  test('TSUMIGEYA_CORE_PATH 覆盖优先', () => {
+    const resolved = resolveCorePath({
+      env: { TSUMIGEYA_CORE_PATH: 'D:/custom/core/module.js' },
+      appPath: process.cwd()
+    })
+    expect(resolved).toBe(path.resolve('D:/custom/core/module.js'))
+  })
+
+  test('打包态用 resourcesPath/core/module.js', () => {
+    const resolved = resolveCorePath({
+      env: {},
+      isPackaged: true,
+      resourcesPath: '/Applications/Tsumigeya.app/Contents/Resources'
+    })
+    expect(resolved).toBe(path.join('/Applications/Tsumigeya.app/Contents/Resources', 'core', 'module.js'))
+  })
+})
+
 /** 与上游模块仓库一致的 autodetect 规则（§6 要求）。 */
 const MANIFESTS: Record<string, Record<string, unknown>> = {
   nwjs: {
