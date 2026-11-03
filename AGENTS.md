@@ -48,7 +48,8 @@
   - **真实启动游戏**：需 macOS。
 - **已知网络现实（本机）**：`api.github.com` 通，`raw.githubusercontent.com` 直连 DNS 失败，**走系统代理（127.0.0.1:7897）返回 200**。
   Node 原生 `fetch` 不读 WinINET 系统代理，因此纯 Node 下的验收看不到远程 manifest；
-  生产环境注入的 Electron `net.fetch` 继承 Chromium/系统代理，**产品路径本身是正确的**（D9）。详见「已知坑」。
+  产品侧靠注入的 `net.fetch` + `session.setProxy({ mode: 'system' })` 走系统代理（D9）。
+  **注意这条是踩过坑才补上的**：只注入 net.fetch 不设 setProxy 时，macOS 上系统代理不生效。
 - **打包与分发（已就绪，待 CI 首次实跑验证）**：GitHub Actions 出 mac dmg（arm64/x64）+ win 安装包，
   打 `v*` tag 自动挂 draft Release。配置见 `.github/workflows/build.yml` 与 `electron-builder.yml`，
   使用说明见 `docs/打包与分发.md`。**无需证书**（ad-hoc 签名，首次打开需右键→打开）。
@@ -137,7 +138,7 @@ Vue 组件 → Pinia store → api/client → preload(window.tsumi.invoke)
 | D6 | 不暴露 `installDependency`（上游 bug：参数错位，module.js:1688 vs :1646） | — |
 | D7 | IPC 移植自 `_xeno_probe/native/Backend/worker.cjs`（原子写/队列/回滚/路径安全） | 该文件质量高，是现成范本 |
 | D8 | 图片用 `tsmg://` 自定义协议（扩展名白名单），不用 file:// | contextIsolation 下的安全实践 |
-| D9 | fetch 注入 Electron `net.fetch`（走系统代理） | 国内网络环境 |
+| D9 | fetch 注入 Electron `net.fetch`，**并显式 `session.setProxy({ mode: 'system' })`** | `net.fetch` 用的是 session 的代理设置，而 session **默认不读系统代理**（不是"继承 Chromium 代理"，那是浏览器 window 的行为）。不显式设置的话，用户开着系统代理引擎却下载失败 |
 | D10 | 游戏记录 schema 与上游完全一致：`{gameTitle,gamePath,iconPath,tags,gameEngine,gameArgs}` → games.json | 双向兼容 |
 | D11 | core 用「读源码 + `new Function` + `createRequire`」装载，不用 `require(corePath)` | 裸 require 会被 Vite/rollup 改写或外置，打包后必炸 |
 | D12 | 取消（`tsumi:cancel`）与对话框应答（`tsumi:dialog`）**绕开串行队列** | 进队列会死锁（core 在队列里等应答） |
@@ -145,7 +146,7 @@ Vue 组件 → Pinia store → api/client → preload(window.tsumi.invoke)
 | D14 | **只复用上游 `module.js` 一个文件**，不复用其 UI/外壳/样式/翻译；manifest 格式、模块仓库、数据目录属于"兼容约定"而非代码复制 | 用户只要核心功能，不要整体搬运；同时也是 GPL 边界的最小化 |
 | D15 | `defaultFetch` 保留 `net.fetch` 优先，但要**兜底到全局 `fetch`**（无 electron 的 `net` 时） | 纯 Node / vitest 里 `require('electron')` 返回的是可执行文件路径字符串，没有 `net`；不兜底会直接崩在 fetch 调用上 |
 | D16 | 拖拽取路径用 **`webUtils.getPathForFile`**（preload 暴露 `pathForFile`），**不用 `File.path`** | Electron 32+ 已移除 `File.path`，在 Electron 45 上它恒为 `undefined`，拖拽会静默失败 |
-| D17 | **不给纯 Node 侧加代理回退**（用户 2026-11-04 决定） | 生产注入的 `net.fetch` 天然继承系统代理；测试按 §6 必须不依赖网络。加代理配置会动 Settings 契约 |
+| D17 | **不给纯 Node 侧加代理回退**（用户 2026-11-04 决定） | 代理交给主进程的 `session.setProxy({ mode: 'system' })`（D9）处理，纯 Node 测试按 §6 必须不依赖网络。**修正**：原写"生产注入的 net.fetch 天然继承系统代理"是错的，详见「已知坑」 |
 
 ## 已知坑
 
@@ -155,7 +156,9 @@ Vue 组件 → Pinia store → api/client → preload(window.tsumi.invoke)
 | `electron --version` 直接崩 | 本机 shell 继承了 `ELECTRON_RUN_AS_NODE=1` 与 `NODE_OPTIONS`（指向 DSH 的 compat 注入），会让 electron.exe 以纯 Node 模式跑或直接崩。`scripts/dev.cjs` 已统一清除；手动排查时用 `env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS` |
 | **文件入口时 `app.getAppPath()` = `out/main`**，不是项目根 | `resolveCorePath` 不能只拼一层。已改为从 appPath + cwd 出发**向上探测 6 级**找含 `resources/core/module.js` 的根，并有 4 条回归测试锁住（`test/detect.test.ts`） |
 | `env.d.ts` 里写顶层 `import` → 所有 `.vue` 报 `TS2307` | 顶层 import 让文件变成模块，`declare module '*.vue'` 不再全局。用内联 `import('./api/client').TsumiBridge` |
-| Node 原生 `fetch` 不读 WinINET 系统代理 | 本机 raw.githubusercontent.com 直连 DNS 失败、走代理 200。产品侧靠 `net.fetch`（D9）自动继承；纯 Node 验收看不到远程 manifest 属正常 |
+| Node 原生 `fetch` 不读 WinINET 系统代理 | 本机 raw.githubusercontent.com 直连 DNS 失败、走代理 200。纯 Node 验收看不到远程 manifest 属正常 |
+| **`net.fetch` 不会自动走系统代理**（macOS 实测踩坑） | Electron 的 `net.fetch` 用 session 的代理设置，session 默认 `mode: direct`。必须 `session.defaultSession.setProxy({ mode: 'system' })`。实测：设置后同一请求 1083ms → 346ms，`resolveProxy` 返回 `PROXY 127.0.0.1:7897`。症状是「浏览器能上网、引擎下载报网络连接关闭」 |
+| 主进程没注入 `fetchImpl` 时静默降级到全局 fetch | `index.ts` 必须显式传 `fetchImpl: (i, init) => net.fetch(i, init)`。否则 core-host 的兜底会用全局 fetch，更不可能走代理，且不会报错、只会「下载失败」 |
 | 上游 `fetchRemoteManifest` 失败时**静默降级**成 `raw: {}` | 这不是 bug：它会调 `onManifestError` 产生 warning，`checkEngineUpdates` 里表现为 `checkFailed: true` + `remoteVersion: 'N/A'`。UI 用 `el-alert` 展示 warning，不崩 |
 | `settings-row` 里塞 `array` 类型的编辑块 → 布局错乱 | `DynamicArgsForm` 把 array 编辑块放在 `settings-row` **外面**，独立成 `.args-array` |
 | 测试里 `as const` 的 manifest 与 `ManifestRaw` 不兼容 | `as const` 产生 readonly 数组，`extensions: readonly ["exe"]` 不能赋给 `string[]`。测试里用 `Record<string, Record<string, unknown>>` |

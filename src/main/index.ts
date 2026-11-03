@@ -114,7 +114,21 @@ function applyContentSecurityPolicy(): void {
   })
 }
 
-void app.whenReady().then(() => {
+void app.whenReady().then(async () => {
+  // 代理：必须显式让 session 读取系统代理，并且**必须 await**。
+  //
+  // 1) 为什么必须显式设置：Electron 的 `net.fetch` 用的是 session 的代理设置，
+  //    而 session 默认 `mode: direct`——**不会**自动读系统代理。
+  //    （「继承 Chromium 代理」是浏览器 window 的行为，主进程的 net 不享受。）
+  //    后果：用户在 macOS 上开着 Clash/Surge，引擎却下载失败，报「网络连接关闭」之类，
+  //    而浏览器明明能上网，极难排查。
+  // 2) 为什么要 await：setProxy 是异步的。不等待就创建 host，
+  //    用户点「安装引擎」时第一次请求可能仍在 direct 模式下发出，表现为偶发失败。
+  await session.defaultSession.setProxy({ mode: 'system' }).then(
+    () => console.info('[tsumigeya] 已启用系统代理读取（mode: system）'),
+    (error) => console.warn('[tsumigeya] 启用系统代理失败（将直连）:', error)
+  )
+
   // 数据目录建不起来时不要让整个应用静默死掉：先尝试首选目录，失败则退到临时目录，
   // 并把这个事实通过 dialog 告诉用户（否则用户只看到「窗口没弹出来」，毫无线索）。
   const { dataDir, warning } = resolveDataDirWithFallback()
@@ -129,6 +143,11 @@ void app.whenReady().then(() => {
     dataDir,
     corePath,
     dataDirWarning: warning,
+    // 显式注入 Electron 的 net.fetch，**不要依赖 core-host 里的懒加载兜底**。
+    // 兜底逻辑在拿不到 electron.net 时会退回全局 fetch，而全局 fetch 完全不读系统代理，
+    // 会出现「浏览器能上网、引擎下载却失败」的割裂现象，且很难排查。
+    // net.fetch + session.setProxy({ mode: 'system' }) 才能让下载走用户的代理。
+    fetchImpl: (input, init) => net.fetch(input, init as never),
     onEvent: (event) => {
       for (const window of BrowserWindow.getAllWindows()) {
         if (!window.isDestroyed()) window.webContents.send('tsumi:event', event)
