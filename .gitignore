@@ -1,0 +1,17 @@
+node_modules/
+out/
+dist/
+*.local
+.DS_Store
+.vite/
+# TypeScript 增量构建缓存（tsc --noEmit + composite 也会写）
+*.tsbuildinfo
+# 上游参考 clone（只读，不入库）
+_xeno_probe/
+# 本机调试数据目录
+.dev-data/
+# 上一会话遗留的计划副本（方案已落到 docs/M1-实施方案.md）
+.zcode/
+# 打包产物与日志
+release/
+*.log

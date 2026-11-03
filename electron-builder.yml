@@ -1,0 +1,22 @@
+appId: com.tsumigeya.launcher
+productName: Tsumigeya
+copyright: GPL-3.0
+directories:
+  output: dist
+  buildResources: build
+files:
+  - out/**
+  - package.json
+# 核心（GPL fork 的 module.js）不进 asar，运行时按路径 require
+extraResources:
+  - from: resources/core
+    to: core
+win:
+  target: nsis
+nsis:
+  oneClick: true
+mac:
+  category: public.app-category.games
+  target:
+    - target: dmg
+      arch: [arm64, x64]

@@ -1,0 +1,16 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false
+
+# 上游 fork 的 module.js 沿用 4 空格，保持与上游一致（方便 diff / 重放补丁）
+[*.js]
+indent_size = 4
