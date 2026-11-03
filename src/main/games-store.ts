@@ -42,6 +42,8 @@ export interface Snapshot {
   modules: unknown[]
   settings: Settings
   dataPath: string
+  /** 数据目录被降级时填：{ requested, switchedTo, code }。正常时为 null（§3.2）。 */
+  dataDirWarning: { requested: string; switchedTo: string; code: string } | null
   nodeVersion: string
   engineUpdates: unknown
 }
@@ -138,8 +140,13 @@ export interface GameStore {
   saveSettings(partial: Record<string, unknown>): Settings
   saveGame(input: { id?: string; game: GameDraft }): GameMap
   removeGame(id: string): GameMap
-  /** 组装 Snapshot；modules / engineUpdates 由 core-host / ipc 传进来。 */
-  snapshot(extra?: { modules?: unknown[]; nodeVersion?: string; engineUpdates?: unknown }): Snapshot
+  /** 组装 Snapshot；modules / engineUpdates / dataDirWarning 由 core-host / ipc 传进来。 */
+  snapshot(extra?: {
+    modules?: unknown[]
+    nodeVersion?: string
+    engineUpdates?: unknown
+    dataDirWarning?: Snapshot['dataDirWarning']
+  }): Snapshot
 }
 
 export function createGameStore(dataDir: string): GameStore {
@@ -216,12 +223,14 @@ export function createGameStore(dataDir: string): GameStore {
     modules?: unknown[]
     nodeVersion?: string
     engineUpdates?: unknown
+    dataDirWarning?: Snapshot['dataDirWarning']
   } = {}): Snapshot {
     return {
       games: Object.entries(loadGames()).map(([id, value]) => ({ ...value, id })),
       modules: extra.modules ?? [],
       settings: settings(),
       dataPath: dataDir,
+      dataDirWarning: extra.dataDirWarning ?? null,
       nodeVersion: extra.nodeVersion ?? process.version,
       engineUpdates: extra.engineUpdates ?? null
     }

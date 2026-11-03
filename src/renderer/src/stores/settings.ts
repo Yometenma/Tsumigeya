@@ -15,6 +15,7 @@ const DEFAULT_SETTINGS: Settings = {
 export const useSettingsStore = defineStore('settings', () => {
   const settings = ref<Settings>({ ...DEFAULT_SETTINGS })
   const dataPath = ref('')
+  const dataDirWarning = ref<Snapshot['dataDirWarning']>(null)
   const appVersion = ref('')
   const nodeVersion = ref('')
   const platform = ref('')
@@ -33,6 +34,7 @@ export const useSettingsStore = defineStore('settings', () => {
   function applySnapshot(snapshot: Snapshot): void {
     settings.value = snapshot.settings
     dataPath.value = snapshot.dataPath
+    dataDirWarning.value = snapshot.dataDirWarning ?? null
     nodeVersion.value = snapshot.nodeVersion
     applyAppearance()
   }
@@ -52,5 +54,17 @@ export const useSettingsStore = defineStore('settings', () => {
     platform.value = os
   }
 
-  return { settings, dataPath, appVersion, nodeVersion, platform, applyAppearance, applySnapshot, load, save, initMeta }
+  return {
+    settings,
+    dataPath,
+    dataDirWarning,
+    appVersion,
+    nodeVersion,
+    platform,
+    applyAppearance,
+    applySnapshot,
+    load,
+    save,
+    initMeta
+  }
 })

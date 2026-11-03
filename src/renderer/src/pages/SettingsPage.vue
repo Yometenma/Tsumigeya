@@ -129,6 +129,19 @@ async function copyDataPath(): Promise<void> {
         <el-button @click="copyDataPath">{{ t('settings.copyPath') }}</el-button>
       </div>
     </div>
+    <el-alert
+      v-if="settings.dataDirWarning"
+      type="warning"
+      :closable="false"
+      style="margin-top: 10px"
+      :title="t('settings.dataDirFallbackTitle')"
+      :description="
+        t('settings.dataDirFallbackDesc', {
+          requested: settings.dataDirWarning.requested,
+          code: settings.dataDirWarning.code
+        })
+      "
+    />
   </section>
 
   <section class="panel" style="margin-top: 16px">

@@ -128,6 +128,8 @@ export interface RequestContext {
 export interface CoreHost {
   readonly dataDir: string
   readonly corePath: string
+  /** 数据目录被降级时非 null（透传到 snapshot，设置页展示）。 */
+  readonly dataDirWarning: { requested: string; switchedTo: string; code: string } | null
   readonly store: GameStore
   readonly core: CoreApi
   /** 注入的 fetch（生产是 net.fetch，走系统代理；D9）。 */
@@ -149,6 +151,8 @@ export interface CoreHost {
 export interface CoreHostOptions {
   dataDir: string
   corePath: string
+  /** 数据目录被降级时的信息（resolveDataDirWithFallback 返回），透传到 snapshot 供设置页展示。 */
+  dataDirWarning?: { requested: string; switchedTo: string; code: string }
   /** 注入 fetch（Electron 里传 net.fetch，测试里传全局 fetch），默认懒加载 electron 的 net.fetch。 */
   fetchImpl?: (input: string, init?: unknown) => Promise<Response>
   /** 事件出口；默认什么都不做（测试用）。 */
@@ -597,6 +601,7 @@ export function createCoreHost(options: CoreHostOptions): CoreHost {
   return {
     dataDir,
     corePath: options.corePath,
+    dataDirWarning: options.dataDirWarning ?? null,
     store,
     core,
     fetch: fetchImpl,

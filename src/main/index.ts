@@ -4,7 +4,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { app, BrowserWindow, dialog, net, protocol, session, shell } from 'electron'
+import { app, BrowserWindow, net, protocol, session, shell } from 'electron'
 import { createCoreHost, resolveCorePath, resolveDataDirWithFallback, type CoreHost } from './core-host'
 import { registerIpc } from './ipc'
 
@@ -128,6 +128,7 @@ void app.whenReady().then(() => {
   host = createCoreHost({
     dataDir,
     corePath,
+    dataDirWarning: warning,
     onEvent: (event) => {
       for (const window of BrowserWindow.getAllWindows()) {
         if (!window.isDestroyed()) window.webContents.send('tsumi:event', event)
@@ -147,16 +148,13 @@ void app.whenReady().then(() => {
 
   host.emit({ event: 'ready', nodeVersion: process.version })
 
+  // 降级不弹模态框：这里不是「用户做错了什么」，弹窗只会打断启动流程。
+  // 改为把降级信息带进 snapshot（settings 页展示），并在日志里留痕。
   if (warning) {
-    void dialog.showMessageBox(mainWindow, {
-      type: 'warning',
-      title: '数据目录不可写',
-      message: '无法写入默认数据目录，已临时改用：',
-      detail: `${warning.switchedTo}\n\n原目录（${warning.requested}）报错：${warning.code}\n\n` +
-        `游戏库、引擎与设置在本次运行期间可正常使用，但重启后可能丢失。\n` +
-        `建议设置环境变量 TSUMIGEYA_DATA_DIR 指向一个可写目录后重启。`,
-      buttons: ['我知道了']
-    })
+    console.warn(
+      `[tsumigeya] 默认数据目录不可写（${warning.requested}：${warning.code}），` +
+        `已临时改用 ${warning.switchedTo}。可设置 TSUMIGEYA_DATA_DIR 固定目录。`
+    )
   }
 
   app.on('activate', () => {

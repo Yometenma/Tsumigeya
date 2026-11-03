@@ -130,7 +130,8 @@ export function createDispatcher(deps: IpcDeps): Dispatcher {
     return host.store.snapshot({
       modules: Object.entries(manifests).map(([id, value]) => ({ ...value, id })),
       nodeVersion: process.version,
-      engineUpdates: report
+      engineUpdates: report,
+      dataDirWarning: host.dataDirWarning
     })
   }
 

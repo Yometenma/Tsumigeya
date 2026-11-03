@@ -94,6 +94,8 @@ export interface Snapshot {
   modules: ModuleInfo[]
   settings: Settings
   dataPath: string
+  /** 数据目录被降级时非 null：{ requested, switchedTo, code }。 */
+  dataDirWarning: { requested: string; switchedTo: string; code: string } | null
   nodeVersion: string
   engineUpdates: EngineUpdateReport | null
 }

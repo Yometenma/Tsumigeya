@@ -182,6 +182,8 @@
     "dataDirectory": "数据目录",
     "openDataDirectory": "打开目录",
     "copyPath": "复制路径",
+    "dataDirFallbackTitle": "默认数据目录不可写，已临时改用备用目录",
+    "dataDirFallbackDesc": "原目录 {requested} 报错 {code}。游戏库与引擎仍可正常使用，但换回可写目录前数据可能无法长期保留；可设置环境变量 TSUMIGEYA_DATA_DIR 固定数据目录。",
     "about": "关于",
     "version": "版本 {version}",
     "electron": "Electron {version}",
