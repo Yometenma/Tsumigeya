@@ -327,6 +327,40 @@ const EXT_WEIGHT: Record<string, number> = {
 const MAX_CANDIDATES = 200
 const SKIP_DIRS = new Set(['node_modules'])
 
+/**
+ * 远端 autodetect 规则拉取的超时（毫秒）。
+ * 识别是用户点一下就要有反馈的动作，不能让网络把它拖成「永远卡住」。
+ * 正常一次 GitHub 往返约 250–650ms，留 3 秒余量；
+ * 超时就当作「远端不可用」，直接返回本地识别结果（UI 会提示未识别，用户可手动选）。
+ */
+const REMOTE_AUTODETECT_TIMEOUT_MS = 3_000
+
+/** 给不可取消的 Promise 加超时护栏（core 的 fetchModulesForAutodetect 没有 signal 参数）。 */
+function withTimeout<T>(promise: Promise<T>, ms: number, key: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    let settled = false
+    const timer = setTimeout(() => {
+      if (settled) return
+      settled = true
+      reject(failure(key, `Operation timed out after ${ms}ms`, { ms }))
+    }, ms)
+    promise.then(
+      (value) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        resolve(value)
+      },
+      (error) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        reject(error)
+      }
+    )
+  })
+}
+
 function extensionOf(p: string): string {
   return path.extname(p).replace(/^\./, '').toLowerCase()
 }
@@ -579,10 +613,20 @@ export function createCoreHost(options: CoreHostOptions): CoreHost {
       list.find((c) => c.installed && c.engine) ?? list.find((c) => c.engine) ?? null
 
     let best = pickBest(local)
+    // 只有「本地一个都没识别出来」才值得去问远端；本地已命中就别让用户等网络。
     if (!best && input.includeRemote !== false) {
-      // 未装引擎时用远端 autodetect 规则再猜一轮，命中记为 installed: false（§3.3 第 6 条）
+      // 未装引擎时用远端 autodetect 规则再猜一轮，命中记为 installed: false（§3.3 第 6 条）。
+      //
+      // 必须加超时：core.fetchModulesForAutodetect(repo, installedSet) 的第二个参数是
+      // 「已装模块集合」而不是 opts，**没有 signal 可传**，无法取消。
+      // 网络不通（例如 GitHub 直连 DNS 失败）时它会一直挂住，UI 就永远停在「正在识别引擎…」。
+      // 这里用 Promise.race 兜住，超时就当作「远端不可用」，本地识别结果照常返回。
       try {
-        const definitions = await core.fetchModulesForAutodetect()
+        const definitions = await withTimeout(
+          core.fetchModulesForAutodetect(),
+          REMOTE_AUTODETECT_TIMEOUT_MS,
+          'error.remoteDetectTimeout'
+        )
         const remote = local.map((candidate) => {
           if (candidate.engine) return candidate
           const engine = core.detectEngineFromAutodetectMap(candidate.path, definitions) ?? null

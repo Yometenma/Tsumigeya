@@ -97,6 +97,31 @@ afterAll(() => {
   rmSync(dataDir, { recursive: true, force: true })
 })
 
+describe('detectFolder 的远端兜底不能挂死', () => {
+  // 回归：core.fetchModulesForAutodetect 没有 signal 参数，网络卡住时会把
+  // 「正在识别引擎…」永远挂在那里。detectFolder 必须自己带超时护栏。
+  test('远端 fetch 永不返回时，仍在超时内返回本地结果', async () => {
+    const slowDir = mkdtempSync(path.join(tmpdir(), 'tsmg-slow-'))
+    const slowHost = createCoreHost({
+      dataDir: slowDir,
+      corePath: resolveCorePath({ env: {}, appPath: process.cwd() }),
+      // 永不 resolve：模拟 DNS 卡死 / 连接挂起
+      fetchImpl: () => new Promise<Response>(() => undefined),
+      onEvent: () => undefined
+    })
+    const started = Date.now()
+    try {
+      const result = await slowHost.detectFolder({ path: path.join(FIXTURES, 'rpg-vxace'), includeRemote: true })
+      const elapsed = Date.now() - started
+      // 本地 manifest 为空（slowDir 里没装模块），所以 engine 应为 null，但调用必须返回
+      expect(result).toBeTruthy()
+      expect(elapsed).toBeLessThan(15_000)
+    } finally {
+      rmSync(slowDir, { recursive: true, force: true })
+    }
+  }, 20_000)
+})
+
 describe('四个 fixtures 的引擎识别', () => {
   const cases: Array<{ dir: string; exe: string; engine: string }> = [
     { dir: 'rpg-mv', exe: 'Game.exe', engine: 'nwjs' },
