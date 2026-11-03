@@ -29,10 +29,10 @@
   - **`src/main/` 五件套全部落地**：`index.ts`（窗口 / `tsmg://` / CSP / 生命周期）、`core-host.ts`（数据目录 + core 装载 + 对话框桥 + detectFolder）、`games-store.ts`（原子写 + `.bak` + 校验）、`extract.ts`（系统 bsdtar + 安全校验）、`ipc.ts`（18 条命令全表 + 串行队列 + 取消）
   - **`src/preload/index.ts`**：`window.tsumi` 全量桥（invoke / startTask / cancel / dialogReply / pickPath / pathForFile / onEvent）
   - **`src/renderer/`**：i18n + hash 路由 + App 布局 + 4 个 store（library / engines / settings / task / coreDialogs）+ 9 个组件 + 4 个页面 + `locales/zh-CN.json`（含 §3.9 全部 `error.*` 键）
-  - **`test/`**：4 个 fixtures + 3 个测试文件，**67 个测试全绿**（不依赖网络、不依赖 GUI）
+  - **`test/`**：4 个 fixtures + 4 个测试文件，**76 个测试全绿**（不依赖网络、不依赖 GUI）
 - **验证基线（Windows 本机实测）**：
   - `npm run typecheck` ✅ exit 0
-  - `npm test` ✅ 67 passed / 3 files，~3.4 s
+  - `npm test` ✅ 76 passed / 4 files，~3.4 s
   - `npm run build` ✅ exit 0，产出 `out/{main,preload,renderer}`
   - **`npm run dev` ✅ 已在本机跑通**：窗口真实渲染出来（标题 `Tsumigeya`、路由 `#/library`、
     游戏库中文界面与空状态、`window.tsumi` 为 object、数据目录生成 `cache/`）。
@@ -45,7 +45,10 @@
   - **系统文件对话框的返回值**：`tsumi:pick` handler 已确认注册且被调用（实测调用后挂起＝正在等对话框），
     但「对话框真的弹出并把路径交回」需真实桌面会话确认。已加**手输路径**兜底。
   - **安装引擎**：需 mac（引擎二进制是 mac 版）。Windows 上到这一步会失败，属预期。
-  - **真实启动游戏**：需 macOS。
+  - **真实启动游戏（部分已验证）**：用户在自己的 Mac 上实测——
+    NW.js 游戏（Karryn's Prison 等 4 个）在 v0.1.4 修掉版本号 bug 后**能正常启动**；
+    纯 `.rgss3a` 加密游戏（傭兵の冒険）报 `No script file`，属已知限制（见 M3）。
+    **仍需继续验证**：引擎安装全流程、其他引擎类型（mkxp-z 普通未加密游戏、EasyRPG）。
 - **已知网络现实（本机）**：`api.github.com` 通，`raw.githubusercontent.com` 直连 DNS 失败，**走系统代理（127.0.0.1:7897）返回 200**。
   Node 原生 `fetch` 不读 WinINET 系统代理，因此纯 Node 下的验收看不到远程 manifest；
   产品侧靠注入的 `net.fetch` + `session.setProxy({ mode: 'system' })` 走系统代理（D9）。
@@ -197,6 +200,14 @@ Vue 组件 → Pinia store → api/client → preload(window.tsumi.invoke)
 - **M1（进行中）**：中文游戏库 + 自动识别 + 一键安装引擎 + 启动 ← 当前
 - **M2**：DLsite 元数据（RJ 号→标题/社团/封面/标签，封面墙）
 - **M3**：故障自愈（RTP 缺失、字体/乱码修复、一键修复启动）
+  - 【新增】**加密发行检测与引导**（用户 2026-11-04 拍板）：识别「只有 `Game.rgss3a`/`Game.rgssad`、
+    没有 `Data/Scripts.rvdata2`」的游戏，给出可操作的中文提示。
+    **只做检测 + 提示 + 引导，不实现解包算法**（理由见下）。
+    - `.rgss3a`/`.rgss2a`/`.rgssad` 的存在本身是强信号，可直接判为对应 RGSS 版本
+    - 现在用户只会看到英文 `No script file has been specified. Check the game's INI`，
+      完全不知道该怎么办——这是最低成本、最高收益的一步
+    - **不代劳的原因**：rgss3a 是作者的加密发行（DRM），自动解包涉及规避技术保护措施的法律风险；
+      产品应「告诉用户怎么自己处理」，把责任边界留在用户一侧
 - **M4**：存档管理（集中查看/备份/导出）+ 增强（Cheat 注入/变速）
 - **M5**：手柄、无边框全屏、像素缩放、dmg 公证分发
 
