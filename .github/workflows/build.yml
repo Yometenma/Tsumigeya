@@ -66,12 +66,15 @@ jobs:
         run: npm run build
 
       - name: 打包 dmg
-        run: npx electron-builder --mac --${{ matrix.arch }} --config electron-builder.yml
+        # --publish never：禁止 electron-builder 自己上传。
+        # 原因：在 tag 构建时它会自动尝试 publish，但 GITHUB_TOKEN 对「创建 draft release」
+        # 的权限不足，且 arm64/x64 两个 job 会争抢同一个 release，实测直接 403 Forbidden。
+        # 发布统一交给下面的 release job（softprops/action-gh-release）做。
+        run: npx electron-builder --mac --${{ matrix.arch }} --publish never --config electron-builder.yml
         env:
           # 未配置证书时走 ad-hoc 签名：能安装、能运行，但不做公证（首次打开需右键→打开）。
           # 想正式分发时在仓库 Secrets 里加 CSC_LINK / CSC_KEY_PASSWORD / APPLE_ID 等再调整这里。
           CSC_IDENTITY_AUTO_DISCOVERY: false
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # 自检：dmg 里的布局必须与 src/main/core-host.ts 的 resolveCorePath 假设一致，
       # 否则装到 Mac 上会「能开窗口但引擎模块加载失败」，而且本地很难发现。
@@ -126,9 +129,8 @@ jobs:
         run: npm run build
 
       - name: 打包安装包
-        run: npx electron-builder --win --x64 --config electron-builder.yml
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # 同 mac：禁止自动 publish，统一由 release job 上传（见上方说明）。
+        run: npx electron-builder --win --x64 --publish never --config electron-builder.yml
 
       - name: 自检 win-unpacked 内的关键文件
         shell: pwsh
