@@ -7,6 +7,7 @@ import {
   type DetectFolderResult,
   type DlsiteSearchHit,
   type DlsiteWork,
+  type EditableField,
   type GameDraft,
   type GameMeta,
   type GameRecord,
@@ -111,15 +112,22 @@ export const useLibraryStore = defineStore('library', () => {
   }
 
   /** M2：把查询结果落盘（用户点「保存」时才调）。 */
-  async function saveGameMeta(gameId: string, work: DlsiteWork): Promise<Snapshot> {
-    const snapshot = await api.saveGameMeta(gameId, { work })
+  async function saveGameMeta(
+    gameId: string,
+    work: DlsiteWork,
+    editedFields?: EditableField[]
+  ): Promise<Snapshot> {
+    const snapshot = await api.saveGameMeta(gameId, { work, editedFields })
     applySnapshot(snapshot)
     return snapshot
   }
 
-  /** M2：按已存的 RJ 重新获取并落盘。 */
-  async function refreshGameMeta(gameId: string, refresh?: boolean): Promise<Snapshot> {
-    const snapshot = await api.refreshGameMeta(gameId, refresh)
+  /**
+   * M2：按已存的 RJ 重新获取并落盘。
+   * `force:true` = §B.2 的「强制覆盖全部」（清空编辑标记，整体取 DLsite 值）。
+   */
+  async function refreshGameMeta(gameId: string, refresh?: boolean, force?: boolean): Promise<Snapshot> {
+    const snapshot = await api.refreshGameMeta(gameId, refresh, force)
     applySnapshot(snapshot)
     return snapshot
   }

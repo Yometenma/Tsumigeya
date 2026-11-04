@@ -166,6 +166,119 @@ describe('未知命令', () => {
   })
 })
 
+// ===== M2.5-B：可编辑元数据的 IPC 行为（§B.2）=====
+//
+// 这两条是 S3 的核心验收：**被编辑字段刷新不丢**。
+// 用真 fixture 走 dlsiteLookup，让「新抓到的值」与「用户改过的值」真的不同。
+
+const workFixture = readFileSync(path.join(__dirname, 'fixtures', 'dlsite', 'RJ294126.html'), 'utf8')
+
+/** 造一个能返回作品页的 host（refreshGameMeta 会真的重新抓一次）。 */
+function lookupHost(dir: string, body = workFixture) {
+  return createCoreHost({
+    dataDir: dir,
+    corePath: resolveCorePath({ isPackaged: false, appPath: process.cwd() }),
+    fetchImpl: (async () => new Response(body, { status: 200 })) as never
+  })
+}
+
+describe('saveGameMeta 带 editedFields', () => {
+  test('保存 editedFields 后 snapshot.meta 里能看到标记', async () => {
+    host.store.saveGame({ game: { gameTitle: 'g', gamePath: '/g', gameEngine: 'mkxpz' } })
+    const d = dispatcher()
+    await d.dispatch(
+      'saveGameMeta',
+      {
+        gameId: '1',
+        work: { rj: 'RJ294126', title: '我自己改的标题', circle: 'DLsite 社团', fetchedAt: 'now' },
+        editedFields: ['title']
+      },
+      new AbortController().signal
+    )
+    const snapshot = (await d.dispatch('snapshot', {}, new AbortController().signal)) as {
+      meta: Record<string, { title: string; edited?: boolean; editedFields?: string[] }>
+    }
+    expect(snapshot.meta['1'].title).toBe('我自己改的标题')
+    expect(snapshot.meta['1'].edited).toBe(true)
+    expect(snapshot.meta['1'].editedFields).toEqual(['title'])
+  })
+
+  test('不传 editedFields 时不会误判成「被编辑过」', async () => {
+    host.store.saveGame({ game: { gameTitle: 'g', gamePath: '/g', gameEngine: 'mkxpz' } })
+    const d = dispatcher()
+    await d.dispatch(
+      'saveGameMeta',
+      { gameId: '1', work: { rj: 'RJ294126', title: 'DLsite 标题' } },
+      new AbortController().signal
+    )
+    const snapshot = (await d.dispatch('snapshot', {}, new AbortController().signal)) as {
+      meta: Record<string, { edited?: boolean }>
+    }
+    expect(snapshot.meta['1'].edited).toBe(false)
+  })
+})
+
+describe('refreshGameMeta 的合并规则（被编辑字段刷新不丢）', () => {
+  test('用户改过的标题不被 DLsite 新值覆盖，其余字段照常更新', async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'tsmg-merge-btn-'))
+    const host2 = lookupHost(dir)
+    const d = createDispatcher({ host: host2 })
+    host2.store.saveGame({ game: { gameTitle: 'g', gamePath: '/g', gameEngine: 'mkxpz' } })
+
+    // ① 用户手动改标题（其余字段是 DLsite 真值）
+    await d.dispatch(
+      'saveGameMeta',
+      {
+        gameId: '1',
+        work: {
+          rj: 'RJ294126',
+          title: '我自己改的标题',
+          circle: '旧社团',
+          registDate: '2020/08/30',
+          fetchedAt: '2026-11-04T00:00:00.000Z'
+        },
+        editedFields: ['title']
+      },
+      new AbortController().signal
+    )
+
+    // ② 点「重新获取」→ 走 refreshGameMeta（内部真抓 fixture）
+    await d.dispatch('refreshGameMeta', { gameId: '1' }, new AbortController().signal)
+
+    const snapshot = (await d.dispatch('snapshot', {}, new AbortController().signal)) as {
+      meta: Record<string, { title: string; circle?: string; editedFields?: string[]; edited?: boolean }>
+    }
+    // 标题保留用户的（这是 §B.2 的核心）
+    expect(snapshot.meta['1'].title).toBe('我自己改的标题')
+    // 社团没被编辑过 → 用 DLsite 的新值（fixture 里是 青春×フェティシズム）
+    expect(snapshot.meta['1'].circle).toBe('青春×フェティシズム')
+    expect(snapshot.meta['1'].edited).toBe(true)
+    expect(snapshot.meta['1'].editedFields).toEqual(['title'])
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  test('force:true（强制覆盖全部）→ 清空编辑标记，标题取回 DLsite 值', async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'tsmg-merge-force-'))
+    const host2 = lookupHost(dir)
+    const d = createDispatcher({ host: host2 })
+    host2.store.saveGame({ game: { gameTitle: 'g', gamePath: '/g', gameEngine: 'mkxpz' } })
+
+    await d.dispatch(
+      'saveGameMeta',
+      { gameId: '1', work: { rj: 'RJ294126', title: '我自己改的标题' }, editedFields: ['title'] },
+      new AbortController().signal
+    )
+    await d.dispatch('refreshGameMeta', { gameId: '1', force: true }, new AbortController().signal)
+
+    const snapshot = (await d.dispatch('snapshot', {}, new AbortController().signal)) as {
+      meta: Record<string, { title: string; edited?: boolean; editedFields?: string[] }>
+    }
+    expect(snapshot.meta['1'].title).toBe('純愛おま○こ当番【アップデート版】')
+    expect(snapshot.meta['1'].edited).toBe(false)
+    expect(snapshot.meta['1'].editedFields).toEqual([])
+  })
+  }, 30_000)
+
 // ===== M2.5-A：dlsiteSearch =====
 
 const searchFixture = readFileSync(

@@ -262,7 +262,20 @@
     "searchResultsCount": "找到 {count} 个候选作品",
     "searchTruncated": "只显示前 {count} 条，没搜到想要的作品就换个更准确的关键词",
     "searchPick": "点选",
-    "searchClose": "收起"
+    "searchClose": "收起",
+    "fieldTitle": "标题",
+    "fieldCover": "封面地址",
+    "fieldPriceBase": "价格（日元）",
+    "editField": "编辑",
+    "resetField": "重置此字段",
+    "editedBadge": "已修改",
+    "fieldSaved": "已保存修改",
+    "fieldReset": "已恢复为 DLsite 的值（下次刷新生效）",
+    "forceRefresh": "强制覆盖全部",
+    "forceRefreshed": "已用 DLsite 的值覆盖全部字段",
+    "invalidPrice": "价格必须是数字",
+    "invalidCover": "封面地址必须是 https://img.dlsite.jp/ 开头",
+    "editHint": "手动改过的字段在「重新获取」时不会被 DLsite 覆盖；点「重置此字段」可恢复。"
   },
   "error": {
     "invalidObject": "数据文件格式不正确：{file}",

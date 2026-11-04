@@ -17,6 +17,7 @@ import { promisify } from 'node:util'
 import { component, failure, type GameDraft } from './games-store'
 import { extractArchive } from './extract'
 import { detectRjFromPath } from './dlsite'
+import { mergeWork, normalizeEditedFields } from './library-meta'
 import type { CoreHost, CoreEvent, ProgressBridge, RemoteManifest } from './core-host'
 
 const runFile = promisify(execFile)
@@ -634,7 +635,11 @@ export function createDispatcher(deps: IpcDeps): Dispatcher {
           const fetched = await host.dlsite.fetchWork({ rj, signal })
           host.meta.save(gameId, fetched)
         } else {
-          host.meta.save(gameId, work as never)
+          // M2.5-B：editedFields 由渲染层显式传入（用户改了哪几个字段）。
+          // 不传 → 沿用磁盘已有标记（见 library-meta 的 save 注释）。
+          const editedFields =
+            params.editedFields === undefined ? undefined : normalizeEditedFields(params.editedFields)
+          host.meta.save(gameId, work as never, editedFields)
         }
         return snapshot()
       }
@@ -651,7 +656,11 @@ export function createDispatcher(deps: IpcDeps): Dispatcher {
           refresh: params.refresh !== false,
           signal
         })
-        host.meta.save(gameId, work)
+        // M2.5-B（§B.2）：用户改过的字段不被新数据覆盖；其余字段全部更新。
+        // force=true（「强制覆盖全部」）→ 丢掉编辑标记，整体用 DLsite 值。
+        const force = params.force === true
+        const merged = force ? work : mergeWork(current, work)
+        host.meta.save(gameId, merged, force ? [] : undefined)
         return snapshot()
       }
 

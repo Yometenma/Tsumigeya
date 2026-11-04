@@ -66,6 +66,13 @@ export interface DlsiteWork {
   coverUrl?: string
   description?: string
   fetchedAt: string
+  /**
+   * M2.5-B：该条目是否被用户手动编辑过（由 editedFields 派生，不单独写入）。
+   * 抓取产生的 work **永远不带**这两个字段，只有 library-meta.json 里的条目才带。
+   */
+  edited?: boolean
+  /** M2.5-B：哪些字段是用户改的（后续刷新不覆盖这些字段，见 §B.2）。 */
+  editedFields?: ('title' | 'circle' | 'coverUrl' | 'registDate' | 'price')[]
 }
 
 // ===== RJ 号 =====

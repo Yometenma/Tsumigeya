@@ -7,7 +7,17 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import DynamicArgsForm from '@/components/DynamicArgsForm.vue'
 import VersionManagerDialog from '@/components/VersionManagerDialog.vue'
-import { api, iconUrl, translateError, type DlsiteSearchHit, type DlsiteWork, type GameArgDef, type ManifestRaw } from '@/api/client'
+import {
+  api,
+  iconUrl,
+  translateError,
+  EDITABLE_FIELDS,
+  type DlsiteSearchHit,
+  type DlsiteWork,
+  type EditableField,
+  type GameArgDef,
+  type ManifestRaw
+} from '@/api/client'
 import { useLibraryStore } from '@/stores/library'
 import { useEnginesStore } from '@/stores/engines'
 
@@ -62,6 +72,15 @@ const searchHits = ref<DlsiteSearchHit[]>([])
 const searching = ref(false)
 /** 搜过的关键词（用于「找到 N 个」之类提示，以及与当前输入区分）。 */
 const searchedKeyword = ref('')
+
+// ===== M2.5-B：可编辑元数据（§B.4）=====
+//
+// ⚠️ 同样必须声明在 fill() 之前（见上方 TDZ 注释）。
+/** 正在编辑哪个字段（null = 没有打开编辑框）。 */
+const editingField = ref<EditableField | null>(null)
+/** 编辑框里的草稿值（字符串统一处理，price 保存时再转数字）。 */
+const editDraft = ref('')
+const savingField = ref(false)
 
 /** 当前引擎的 manifest（已装模块才有 raw）。 */
 const manifest = computed<ManifestRaw | null>(() => {
@@ -283,7 +302,8 @@ async function saveMeta(): Promise<void> {
   }
   savingMeta.value = true
   try {
-    await library.saveGameMeta(gameId.value, work)
+    // preview 也可能是响应式对象，统一剥成纯对象再传（见 plainWork 的注释）
+    await library.saveGameMeta(gameId.value, plainWork(work))
     preview.value = null
     ElMessage.success(t('dlsite.saved'))
   } catch (error) {
@@ -343,6 +363,174 @@ watch(
     metaCoverBroken.value = false
   }
 )
+
+// ===== M2.5-B：字段编辑逻辑（§B.4）=====
+//
+// 关键设计：编辑是**就地改 work 再整条保存**，而不是拼一个 patch 对象。
+// 因为 library-meta 的 save 语义是「整条写 + 标记并集」（见 src/main/library-meta.ts），
+// 整条传过去最不容易出现「某个字段被漏写」的错。
+
+/** 该字段当前是否被用户编辑过（用来显示「已修改」角标 + 是否可重置）。 */
+function isFieldEdited(field: EditableField): boolean {
+  return (shownMeta.value?.editedFields ?? []).includes(field)
+}
+
+/** 某字段当前显示的值（统一转成字符串给编辑框用）。 */
+function fieldValue(field: EditableField): string {
+  const meta = shownMeta.value
+  if (!meta) return ''
+  const value = meta[field]
+  if (value === undefined || value === null) return ''
+  return String(value)
+}
+
+/** 字段的中文标签（模板里不写三元链，避免模板里出现类型断言式的复杂表达式）。 */
+function fieldLabel(field: EditableField): string {
+  const labels: Record<EditableField, string> = {
+    title: t('dlsite.fieldTitle'),
+    circle: t('dlsite.fieldCircle'),
+    coverUrl: t('dlsite.fieldCover'),
+    registDate: t('dlsite.fieldReleased'),
+    price: t('dlsite.fieldPriceBase')
+  }
+  return labels[field]
+}
+
+/** 打开某字段的编辑框（草稿 = 当前值）。 */
+function beginEdit(field: EditableField): void {
+  editingField.value = field
+  editDraft.value = fieldValue(field)
+}
+
+/** 取消编辑（不动任何数据）。 */
+function cancelEdit(): void {
+  editingField.value = null
+  editDraft.value = ''
+}
+
+/**
+ * 把（可能是 Vue 响应式 Proxy 的）元数据条目剥成**纯对象**再交给 IPC。
+ *
+ * ⚠️ 这是一条真 bug 的修复（S4 端到端探针实测抓到）：
+ * 直接 `{ ...meta }` 只做了浅拷贝，`editedFields` 数组仍是 Proxy，
+ * contextBridge 结构化克隆时报 **"An object could not be cloned."**，
+ * 用户点「保存」会静默失败（只有一行英文报错，字段看起来没动）。
+ * 所以这里逐字段取值 + 复制数组，保证传出去的全是普通值。
+ */
+function plainWork(meta: DlsiteWork): DlsiteWork {
+  return {
+    rj: meta.rj,
+    title: meta.title,
+    titleFull: meta.titleFull,
+    circle: meta.circle,
+    circleId: meta.circleId,
+    seriesName: meta.seriesName,
+    category: meta.category,
+    workType: meta.workType,
+    registDate: meta.registDate,
+    price: meta.price,
+    priceWithTax: meta.priceWithTax,
+    officialPrice: meta.officialPrice,
+    discount: meta.discount,
+    coverUrl: meta.coverUrl,
+    description: meta.description,
+    fetchedAt: meta.fetchedAt,
+    editedFields: [...(meta.editedFields ?? [])]
+  }
+}
+
+/**
+ * 保存单个字段。
+ *
+ * 与「保存 DLsite 信息」按钮的区别：这里改的是**用户自己的值**，
+ * 所以无论如何都要进 editedFields（否则下次刷新会被 DLsite 值冲掉）。
+ */
+async function commitEdit(): Promise<void> {
+  const field = editingField.value
+  const meta = shownMeta.value
+  if (!field || !meta) return
+  if (!gameId.value) {
+    // 新游戏还没有 id → 元数据无处可挂（与 saveMeta 同一条提示）
+    ElMessage.warning(t('error.dlsiteGameRequired'))
+    return
+  }
+
+  const draft = editDraft.value.trim()
+  // 空值 = 让用户清空这个字段（price 存 undefined，文本存 ''→会被 sanitize 转成 undefined）
+  let next: DlsiteWork = plainWork(meta)
+  if (field === 'price') {
+    if (draft === '') {
+      next = { ...next, price: undefined }
+    } else {
+      const parsed = Number(draft.replace(/[^\d.-]/g, ''))
+      if (!Number.isFinite(parsed)) {
+        ElMessage.warning(t('dlsite.invalidPrice'))
+        return
+      }
+      next = { ...next, price: parsed }
+    }
+  } else if (field === 'coverUrl') {
+    // 封面地址必须是 img.dlsite.jp（D22 在保存时也会再校一次，这里提前给友好提示）
+    if (draft && !/^https:\/\/img\.dlsite\.jp\//i.test(draft)) {
+      ElMessage.warning(t('dlsite.invalidCover'))
+      return
+    }
+    next = { ...next, coverUrl: draft || undefined }
+  } else {
+    next = { ...next, [field]: draft || undefined }
+  }
+
+  // editedFields：保留已有的 + 本次这个字段
+  const fields: EditableField[] = [...(next.editedFields ?? [])]
+  if (!fields.includes(field)) fields.push(field)
+
+  savingField.value = true
+  try {
+    await library.saveGameMeta(gameId.value, next, fields)
+    editingField.value = null
+    editDraft.value = ''
+    ElMessage.success(t('dlsite.fieldSaved'))
+  } catch (error) {
+    ElMessage.error(translateError(error, t))
+  } finally {
+    savingField.value = false
+  }
+}
+
+/** 重置单个字段：从 editedFields 移除，下次刷新会取回 DLsite 值（§B.2）。 */
+async function resetField(field: EditableField): Promise<void> {
+  const meta = shownMeta.value
+  if (!meta || !gameId.value) return
+  const fields = (meta.editedFields ?? []).filter((item) => item !== field)
+  savingField.value = true
+  try {
+    // 同样要剥成纯对象再传（Proxy 过不了 contextBridge，见 plainWork 的注释）
+    await library.saveGameMeta(gameId.value, plainWork(meta), fields)
+    ElMessage.success(t('dlsite.fieldReset'))
+  } catch (error) {
+    ElMessage.error(translateError(error, t))
+  } finally {
+    savingField.value = false
+  }
+}
+
+/** 「强制覆盖全部」：清空所有编辑标记后整体刷新（§B.2）。 */
+async function forceRefresh(): Promise<void> {
+  if (!gameId.value) return
+  looking.value = true
+  try {
+    await library.refreshGameMeta(gameId.value, true, true)
+    preview.value = null
+    ElMessage.success(t('dlsite.forceRefreshed'))
+  } catch (error) {
+    ElMessage.error(translateError(error, t))
+  } finally {
+    looking.value = false
+  }
+}
+
+/** 当前条目是否有任何被编辑过的字段（决定「强制覆盖全部」按钮是否值得显示）。 */
+const hasEdits = computed(() => (shownMeta.value?.editedFields ?? []).length > 0)
 
 async function save(): Promise<void> {
   if (!title.value.trim()) {
@@ -558,23 +746,52 @@ async function save(): Promise<void> {
           />
           <span v-else>{{ t('dlsite.coverMissing') }}</span>
         </div>
-        <div class="stack" style="gap: 4px; flex: 1">
-          <div class="dlsite-title">{{ shownMeta.title }}</div>
-          <div v-if="shownMeta.circle" class="hint">
-            {{ t('dlsite.fieldCircle') }}：{{ shownMeta.circle }}
+        <div class="stack" style="gap: 6px; flex: 1">
+          <!-- M2.5-B：可编辑字段。每个字段：值 + 铅笔 + 已修改标记 + 重置 -->
+          <div v-for="field in EDITABLE_FIELDS" :key="field" class="meta-field">
+            <div class="meta-field-main">
+              <!-- 编辑态：输入框 + 保存 / 取消 -->
+              <div v-if="editingField === field" class="meta-field-edit">
+                <span class="meta-field-label">{{ fieldLabel(field) }}</span>
+                <el-input
+                  v-model="editDraft"
+                  size="small"
+                  :placeholder="t('dlsite.editField') + fieldLabel(field)"
+                  @keyup.enter="commitEdit"
+                  @keyup.esc="cancelEdit"
+                />
+                <el-button size="small" type="primary" :loading="savingField" @click="commitEdit">
+                  {{ t('common.save') }}
+                </el-button>
+                <el-button size="small" text @click="cancelEdit">{{ t('common.cancel') }}</el-button>
+              </div>
+              <!-- 展示态 -->
+              <div v-else class="meta-field-view">
+                <span class="meta-field-label">{{ fieldLabel(field) }}</span>
+                <span class="meta-field-value">
+                  {{ fieldValue(field) || '—' }}
+                </span>
+                <el-tag v-if="isFieldEdited(field)" size="small" type="warning">
+                  {{ t('dlsite.editedBadge') }}
+                </el-tag>
+                <el-button size="small" text @click="beginEdit(field)">
+                  {{ t('dlsite.editField') }}
+                </el-button>
+                <el-button v-if="isFieldEdited(field)" size="small" text @click="resetField(field)">
+                  {{ t('dlsite.resetField') }}
+                </el-button>
+              </div>
+            </div>
           </div>
+
+          <!-- 不可编辑的只读字段（rj 不给改：改它等于换作品，§B.3） -->
           <div v-if="shownMeta.seriesName" class="hint">
             {{ t('dlsite.fieldSeries') }}：{{ shownMeta.seriesName }}
-          </div>
-          <div v-if="shownMeta.registDate" class="hint">
-            {{ t('dlsite.fieldReleased') }}：{{ shownMeta.registDate }}
-          </div>
-          <div v-if="shownMeta.priceWithTax" class="hint">
-            {{ t('dlsite.fieldPrice') }}：{{ t('dlsite.priceYen', { price: shownMeta.priceWithTax }) }}
           </div>
           <div v-if="shownMeta.workType" class="hint">
             {{ t('dlsite.fieldType') }}：{{ shownMeta.workType }}
           </div>
+          <div class="hint">{{ t('dlsite.editHint') }}</div>
         </div>
       </div>
 
@@ -586,6 +803,9 @@ async function save(): Promise<void> {
         </el-button>
         <el-button v-if="savedMeta && !preview" :loading="looking" @click="refreshMeta">
           {{ t('dlsite.refresh') }}
+        </el-button>
+        <el-button v-if="hasEdits && savedMeta && !preview" :loading="looking" @click="forceRefresh">
+          {{ t('dlsite.forceRefresh') }}
         </el-button>
         <el-button v-if="savedMeta && !preview" text type="danger" @click="clearMeta">
           {{ t('dlsite.clear') }}

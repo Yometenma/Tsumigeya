@@ -491,6 +491,48 @@ a {
   white-space: nowrap;
 }
 
+/* ===== M2.5-B：可编辑元数据字段（编辑页）===== */
+
+.meta-field {
+  display: flex;
+  align-items: center;
+  padding: 3px 0;
+}
+
+.meta-field-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.meta-field-view,
+.meta-field-edit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.meta-field-label {
+  flex: 0 0 84px;
+  font-size: 12px;
+  color: var(--tsmg-text-dim);
+}
+
+.meta-field-value {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 编辑态输入框占满剩余宽度 */
+.meta-field-edit .el-input {
+  flex: 1;
+  min-width: 120px;
+}
+
 .drop-zone {
   border: 2px dashed var(--tsmg-border);
   border-radius: 12px;

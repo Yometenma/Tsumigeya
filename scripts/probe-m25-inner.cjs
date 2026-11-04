@@ -257,6 +257,137 @@ app.whenReady().then(async () => {
     }
 
     record('finalConsoleErrors', consoleErrors.slice())
+
+    // ===== ⑦ S4：可编辑元数据（改标题 → 持久化 → 刷新不丢）=====
+    // 先把点选到的 RJ 真存进库里（否则编辑页没有 meta 可改）
+    record(
+      'editSeed',
+      await evaluate(
+        window,
+        `window.tsumi.invoke('dlsiteLookup', { rj: 'RJ306254' })
+           .then((work) => window.tsumi.invoke('saveGameMeta', { gameId: ${JSON.stringify(gameId)}, work }))
+           .then(
+             (snapshot) => ({ ok: true, metaTitle: snapshot.meta[${JSON.stringify(gameId)}]?.title }),
+             (error) => ({ ok: false, message: (error && error.message) || String(error) })
+           )`
+      )
+    )
+
+    // ⚠️ 必须用主进程的 webContents.reload()，不能在渲染层里 location.reload()：
+    // 后者会销毁 JS 上下文，executeJavaScript 的 promise 直接挂住（AGENTS.md 已知坑）。
+    const loadedAfterSeed = new Promise((resolve) => window.webContents.once('did-finish-load', resolve))
+    window.webContents.reload()
+    await loadedAfterSeed
+    // store 的 snapshot 在 App.onMounted 里异步拉，等它落定
+    await new Promise((resolve) => setTimeout(resolve, 1500))
+
+    await evaluate(window, `location.hash = '#/game/${gameId}'`)
+    await new Promise((resolve) => setTimeout(resolve, 1500))
+
+    record('editPageAfterSeed', {
+      htmlLen: await evaluate(window, 'document.querySelector("#app").innerHTML.length'),
+      metaFieldCount: await evaluate(window, 'document.querySelectorAll(".meta-field").length'),
+      diag: await evaluate(
+        window,
+        `(() => {
+           const hasDlsiteSection = document.body.innerText.includes('DLsite 信息')
+           const hasNoMetaHint = document.body.innerText.includes('尚未获取 DLsite 信息')
+           const hasPreview = !!document.querySelector('.dlsite-preview')
+           return { hasDlsiteSection, hasNoMetaHint, hasPreview, hash: location.hash }
+         })()`
+      )
+    })
+
+    // 点标题那一行的「编辑」按钮
+    record(
+      'clickEditTitle',
+      await evaluate(
+        window,
+        `(() => {
+           const fields = Array.from(document.querySelectorAll('.meta-field-view'))
+           const titleRow = fields.find((row) => (row.textContent || '').includes('标题'))
+           if (!titleRow) return { clicked: false, rows: fields.length }
+           const btn = Array.from(titleRow.querySelectorAll('button'))
+             .find((b) => (b.textContent || '').trim() === '编辑')
+           if (!btn) return { clicked: false, reason: 'no edit button' }
+           btn.click()
+           return { clicked: true }
+         })()`
+      )
+    )
+    await new Promise((resolve) => setTimeout(resolve, 400))
+    record('editInputOpen', await evaluate(window, '!!document.querySelector(".meta-field-edit .el-input")'))
+
+    // 填新标题并保存
+    record(
+      'fillAndSaveTitle',
+      await evaluate(
+        window,
+        `(async () => {
+           const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+           const input = document.querySelector('.meta-field-edit input')
+           if (!input) return { ok: false, reason: 'no input' }
+           const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+           setter.call(input, '我改的标题 E2E')
+           input.dispatchEvent(new Event('input', { bubbles: true }))
+           await sleep(300)
+           const row = document.querySelector('.meta-field-edit')
+           if (!row) return { ok: false, reason: 'row gone', inputValue: input.value }
+           const buttons = Array.from(row.querySelectorAll('button')).map((b) => (b.textContent || '').trim())
+           const saveBtn = Array.from(row.querySelectorAll('button'))
+             .find((b) => (b.textContent || '').trim() === '保存')
+           if (!saveBtn) return { ok: false, reason: 'no save button', buttons, inputValue: input.value }
+           saveBtn.click()
+           await sleep(800)
+           const snapshot = await window.tsumi.invoke('snapshot')
+           const meta = snapshot.meta[${JSON.stringify(gameId)}]
+           return {
+             ok: true,
+             buttons,
+             inputValueBeforeSave: input.value,
+             title: meta && meta.title,
+             edited: meta && meta.edited,
+             editedFields: meta && meta.editedFields,
+             editInputClosed: !document.querySelector('.meta-field-edit'),
+             bodyHasNewTitle: document.body.innerText.includes('我改的标题 E2E'),
+             messages: Array.from(document.querySelectorAll('.el-message')).map((el) => (el.textContent || '').trim())
+           }
+         })()`
+      )
+    )
+
+    // ⑧ §B.2 核心验收：重新获取不该覆盖用户改过的标题
+    record(
+      'refreshKeepsEditedTitle',
+      await evaluate(
+        window,
+        `(async () => {
+           const snapshot = await window.tsumi.invoke('refreshGameMeta', { gameId: ${JSON.stringify(gameId)} })
+           const meta = snapshot.meta[${JSON.stringify(gameId)}]
+           return {
+             title: meta && meta.title,
+             circle: meta && meta.circle,
+             edited: meta && meta.edited,
+             editedFields: meta && meta.editedFields
+           }
+         })()`
+      )
+    )
+
+    // ⑨ 强制覆盖全部 → 标题回到 DLsite 值
+    record(
+      'forceRefreshRestores',
+      await evaluate(
+        window,
+        `(async () => {
+           const snapshot = await window.tsumi.invoke('refreshGameMeta', { gameId: ${JSON.stringify(gameId)}, force: true })
+           const meta = snapshot.meta[${JSON.stringify(gameId)}]
+           return { title: meta && meta.title, edited: meta && meta.edited, editedFields: meta && meta.editedFields }
+         })()`
+      )
+    )
+
+    record('finalConsoleErrors2', consoleErrors.slice())
   } catch (error) {
     console.error('[probe] 探针本身出错：', error)
     results.probeError = String(error)

@@ -135,10 +135,25 @@ export interface DlsiteWork {
   coverUrl?: string
   description?: string
   fetchedAt: string
+  /** M2.5-B：该条目是否被用户手动编辑过（由 editedFields 派生）。 */
+  edited?: boolean
+  /** M2.5-B：哪些字段是用户改的（后续刷新不覆盖这些字段，见 §B.2）。 */
+  editedFields?: EditableField[]
 }
 
 /** 落盘的元数据条目（= DlsiteWork，单独起名方便 UI 读）。 */
 export type GameMeta = DlsiteWork
+
+// ===== M2.5-B：可编辑元数据（docs/M2.5-实施方案.md §B）=====
+
+/**
+ * 可被用户手动编辑的字段白名单（§B.3，用户 2026-11-04 确认这五个）。
+ * **不含 `rj`**：改 RJ 等于换作品，应该走「重新搜索 / 填 RJ」流程。
+ * 与主进程 `src/main/library-meta.ts` 的 EDITABLE_FIELDS 必须保持一致。
+ */
+export const EDITABLE_FIELDS = ['title', 'circle', 'coverUrl', 'registDate', 'price'] as const
+
+export type EditableField = (typeof EDITABLE_FIELDS)[number]
 
 // ===== M2.5-A：按名字搜索（docs/M2.5-实施方案.md §A.1）=====
 
@@ -298,12 +313,17 @@ export const api = {
     bridge().invoke<DlsiteSearchResult>('dlsiteSearch', { keyword, category }),
 
   /** 落盘元数据。传 work 直接存；只传 rj 则由主进程拉一次再存。 */
-  saveGameMeta: (gameId: string, input: { rj?: string; work?: DlsiteWork }): Promise<Snapshot> =>
-    bridge().invoke<Snapshot>('saveGameMeta', { gameId, ...input }),
+  saveGameMeta: (
+    gameId: string,
+    input: { rj?: string; work?: DlsiteWork; editedFields?: EditableField[] }
+  ): Promise<Snapshot> => bridge().invoke<Snapshot>('saveGameMeta', { gameId, ...input }),
 
-  /** 按已存的 RJ 重新拉取并落盘。 */
-  refreshGameMeta: (gameId: string, refresh?: boolean): Promise<Snapshot> =>
-    bridge().invoke<Snapshot>('refreshGameMeta', { gameId, refresh }),
+  /**
+   * 按已存的 RJ 重新拉取并落盘。
+   * `force:true` = §B.2 的「强制覆盖全部」：清空编辑标记，整体取 DLsite 值。
+   */
+  refreshGameMeta: (gameId: string, refresh?: boolean, force?: boolean): Promise<Snapshot> =>
+    bridge().invoke<Snapshot>('refreshGameMeta', { gameId, refresh, force }),
 
   clearGameMeta: (gameId: string): Promise<Snapshot> => bridge().invoke<Snapshot>('clearGameMeta', { gameId })
 }
