@@ -28,6 +28,7 @@ import { randomUUID } from 'node:crypto'
 import { createGameStore, component, failure, type GameStore } from './games-store'
 import { createDlsiteService, type DlsiteService } from './dlsite'
 import { createLibraryMetaStore, type LibraryMetaStore } from './library-meta'
+import { createCategoryStore, type CategoryStore } from './category-store'
 import { ENGINES } from './engines/registry'
 import {
   definitionsFromRegistry,
@@ -109,6 +110,8 @@ export interface CoreHost {
   readonly store: GameStore
   /** DLsite 元数据的旁挂存储（M2 §3.2；删掉它不影响启动）。 */
   readonly meta: LibraryMetaStore
+  /** M5.0 S7：自定义分类（定义表 + 归属表，同在 library-meta.json 里）。 */
+  readonly categories: CategoryStore
   /** DLsite 抓取服务（M2 §4；复用注入的 fetch，即 net.fetch + 系统代理）。 */
   readonly dlsite: DlsiteService
   /** 注入的 fetch（生产是 net.fetch，走系统代理；D9）。 */
@@ -482,6 +485,10 @@ export function createCoreHost(options: CoreHostOptions): CoreHost {
 
   // M2：DLsite 旁挂存储 + 抓取服务。两者都不碰 games.json，删掉 library-meta.json 只是丢封面。
   const meta = createLibraryMetaStore(dataDir)
+  // M5.0 S7（U2）：分类的读写句柄。它和 meta 共用**同一个文件**（library-meta.json），
+  // 但经由不同的 store 类操作各自的顶层键 —— 分开是为了让两个模块的职责清晰，
+  // 共用文件是为了让「删分类要同时动定义与归属」是一次原子写。
+  const categories = createCategoryStore(dataDir)
   const dlsite = createDlsiteService({
     dataDir,
     fetch: fetchImpl,
@@ -622,6 +629,7 @@ export function createCoreHost(options: CoreHostOptions): CoreHost {
     dataDirWarning: options.dataDirWarning ?? null,
     store,
     meta,
+    categories,
     dlsite,
     fetch: fetchImpl,
     emit,

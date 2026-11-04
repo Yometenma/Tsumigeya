@@ -17,6 +17,7 @@ import {
   type LanguageGroup,
   type LaunchResult,
   type PlayStat,
+  type CategoryDef,
   type RepairResult,
   type RunningGameLite,
   type Snapshot,
@@ -26,6 +27,11 @@ import {
 // `An object could not be cloned.`（症状：点保存没反应，只弹一句英文）。见 plain.ts 注释。
 import { toPlain } from '../../../shared/plain'
 import { filterGames, unboundCount, type LibraryFilter } from '../../../shared/library-filter'
+import {
+  matchesCategory,
+  normalizeAssignments,
+  sortedCategories
+} from '../../../shared/categories'
 
 export const useLibraryStore = defineStore('library', () => {
   const games = ref<GameRecord[]>([])
@@ -60,12 +66,23 @@ export const useLibraryStore = defineStore('library', () => {
    * 渲染层一律只做投影，绝不自己累加（否则关掉应用再开就对不上了）。
    */
   const playStats = ref<Record<string, PlayStat>>({})
+  /**
+   * M5.0 S7：自定义分类 —— 定义表 + 归属表。
+   *
+   * 与 meta 一样是**主进程的投影**：这里只存从 snapshot 拿到的副本，
+   * 任何改动都走 api 再拿新 snapshot 覆盖（绝不本地先改再同步 —— 那样
+   * 「已删分类但归属还在」这类中间态会短暂显示出来）。
+   */
+  const categoryDefs = ref<Record<string, CategoryDef>>({})
+  const categoryAssignments = ref<Record<string, string[]>>({})
 
   /** 用 Snapshot 整体覆盖（唯一的状态来源）。 */
   function applySnapshot(snapshot: Snapshot): void {
     games.value = snapshot.games
     meta.value = snapshot.meta ?? {}
     playStats.value = snapshot.playStats ?? {}
+    categoryDefs.value = snapshot.categories?.defs ?? {}
+    categoryAssignments.value = snapshot.categories?.assignments ?? {}
     running.value = indexRunning(snapshot.running ?? [])
   }
 
@@ -129,7 +146,13 @@ export const useLibraryStore = defineStore('library', () => {
   /** M5.0 S2：筛选条件（判据在 shared/library-filter.ts，有单测）。 */
   const filter = computed<LibraryFilter>(() => ({ keyword: search.value, onlyUnbound: onlyUnbound.value }))
 
-  const filtered = computed(() => filterGames(games.value, meta.value, filter.value))
+  const filtered = computed(() => {
+    const base = filterGames(games.value, meta.value, filter.value)
+    // M5.0 S7：分类筛选叠在搜索/未绑定之上（多归属：命中任一归属即通过）
+    if (!categoryFilter.value) return base
+    const active = categoryFilter.value
+    return base.filter((game) => matchesCategory(categoriesOf(game.id), active))
+  })
 
   /** M5.0 U4：「未绑定」有多少个（工具栏显示待办规模）。 */
   const unboundTotal = computed(() => unboundCount(games.value, meta.value))
@@ -249,6 +272,58 @@ export const useLibraryStore = defineStore('library', () => {
     return api.detectFolder(path, includeRemote)
   }
 
+  /** 某个游戏的分类归属（归一到已知分类，丢掉悬空 id）。 */
+  function categoriesOf(gameId: string): string[] {
+    return normalizeAssignments(categoryAssignments.value[gameId], new Set(Object.keys(categoryDefs.value)))
+  }
+
+  /**
+   * M5.0 S7：当前选中的分类筛选（`null` = 不筛；`UNCATEGORIZED_ID` = 只看未分类）。
+   *
+   * 放在 store 而不是 URL：点侧边栏的分类不该改路由（用户还是停在库页），
+   * 而库页与侧边栏要共享这一份状态 —— store 是唯一不重复的放处。
+   */
+  const categoryFilter = ref<string | null>(null)
+
+  /** 侧边栏用的分类列表（已排序）。 */
+  const categoryList = computed(() => sortedCategories(categoryDefs.value))
+
+  /**
+   * 「未分类」的游戏数（某个归属都没有的）。
+   *
+   * 为什么按 `categoriesOf`（归一后）算，而不是看 assignments 里有没有键：
+   * 归属表可能残留指向已删分类的 id —— 那种游戏**实际**未分类，
+   * 但按"有没有键"算会被当成已分类，侧边栏的计数就与点进去看到的对不上。
+   */
+  const uncategorizedTotal = computed(
+    () => games.value.filter((game) => categoriesOf(game.id).length === 0).length
+  )
+
+  /** 点侧边栏的分类 → 只筛这类游戏。 */
+  function setCategoryFilter(id: string | null): void {
+    categoryFilter.value = id
+  }
+
+  // ===== M5.0 S7：分类的四条写操作（全部拿新 snapshot 覆盖）=====
+
+  async function createCategory(name: string): Promise<void> {
+    applySnapshot(await api.createCategory(name))
+  }
+
+  async function renameCategory(id: string, name: string): Promise<void> {
+    applySnapshot(await api.renameCategory(id, name))
+  }
+
+  async function deleteCategory(id: string): Promise<void> {
+    applySnapshot(await api.deleteCategory(id))
+  }
+
+  async function assignCategory(id: string, gameIds: string[], remove?: boolean): Promise<void> {
+    // 空数组直接返回：主进程那边会走一遍读改写，纯浪费时间
+    if (gameIds.length === 0) return
+    applySnapshot(await api.assignCategory(id, gameIds, remove))
+  }
+
   /** M2：从游戏路径识别 RJ 候选（毫秒级、只读本地、绕队列）。 */
   async function detectRj(gamePath: string): Promise<string[]> {
     const result = await api.dlsiteDetectRJ(gamePath)
@@ -326,9 +401,17 @@ export const useLibraryStore = defineStore('library', () => {
     alternatesOf.value = alternates
   }
 
+  /**
+   * 清除全部筛选。
+   *
+   * M5.0 S7：**连分类筛选一起清**。侧边栏的分类是筛选的一种，
+   * 用户点「清除筛选」时如果他正停在某个分类下，只清搜索的话
+   * 列表看起来"还是空的"，那句「清除筛选」就等于没生效。
+   */
   function clearFilters(): void {
     search.value = ''
     onlyUnbound.value = false
+    categoryFilter.value = null
   }
 
   return {
@@ -345,6 +428,16 @@ export const useLibraryStore = defineStore('library', () => {
     metaFor,
     isRunning,
     playStats,
+    categoryDefs,
+    categoryFilter,
+    setCategoryFilter,
+    categoryList,
+    categoriesOf,
+    uncategorizedTotal,
+    createCategory,
+    renameCategory,
+    deleteCategory,
+    assignCategory,
     handleProcessEvent,
     refreshRunning,
     load,

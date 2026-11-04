@@ -22,6 +22,7 @@ import {
   selectAllState,
   selectedCount
 } from '../../../shared/bulk-select'
+import { UNCATEGORIZED_ID } from '../../../shared/categories'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -49,6 +50,18 @@ const selectedCountValue = computed(() => selectedCount(selected.value, visibleI
 const allState = computed(() => selectAllState(selected.value, visibleIds.value))
 /** 批量删除的进度（null = 没在跑）。 */
 const batchProgress = ref<{ done: number; total: number } | null>(null)
+
+/**
+ * 当前分类筛选的显示名（副标题用）。
+ *
+ * 「未分类」是虚拟分类，要从 locales 取名字而不是查定义表（它不在表里）。
+ */
+const activeCategoryName = computed(() => {
+  const id = library.categoryFilter
+  if (!id) return ''
+  if (id === UNCATEGORIZED_ID) return t('category.uncategorized')
+  return library.categoryDefs[id]?.name ?? ''
+})
 
 /**
  * 进入批量模式。
@@ -153,6 +166,35 @@ async function toggleView(next: boolean): Promise<void> {
 }
 
 /**
+ * M5.0 S7（U2）：把选中的游戏批量归入某分类。
+ *
+ * 方案 §4.2.3 要求批量工具栏里加一档「设为分类 ▾」，与 U1 的多选直接复用。
+ *
+ * ⚠️ 用 `deletableSelection` 同一套交集逻辑（选中 ∩ 当前可见）—— 不是巧合：
+ * 归入与删除都用"用户此刻看得见的那批"，否则会出现
+ * 「工具栏说已选 3 个，却把 5 个游戏归了类」这种最难解释的不一致。
+ */
+async function assignSelectedToCategory(categoryId: string): Promise<void> {
+  const ids = deletableSelection(selected.value, visibleIds.value)
+  if (ids.length === 0) {
+    ElMessage.warning(t('library.bulkNothingSelected'))
+    return
+  }
+  const name = library.categoryDefs[categoryId]?.name ?? categoryId
+  try {
+    await library.assignCategory(categoryId, ids, false)
+    ElMessage.success(t('library.bulkAssigned', { count: ids.length, name }))
+  } catch (error) {
+    ElMessage.error(translateError(error, t))
+  }
+}
+
+/** 批量模式的分类下拉（用下拉而不是弹窗：归入是"选一个就走"的动作）。 */
+async function onAssignCommand(command: string): Promise<void> {
+  await assignSelectedToCategory(command)
+}
+
+/**
  * M5.0 U1：批量删除。
  *
  * 方案 §4.1 的三条硬约束：
@@ -247,6 +289,7 @@ function buildConfirmMessage(plan: ReturnType<typeof deleteConfirmPlan>, hidden:
       <p class="page-subtitle">
         {{ t('library.count', { count: library.filtered.length }) }}
         <template v-if="library.onlyUnbound"> · {{ t('library.onlyUnboundActive') }}</template>
+        <template v-if="activeCategoryName"> · {{ t('library.categoryFilterActive', { name: activeCategoryName }) }}</template>
       </p>
     </div>
     <el-button type="primary" @click="router.push('/library/new')">{{ t('library.addGame') }}</el-button>
@@ -262,7 +305,7 @@ function buildConfirmMessage(plan: ReturnType<typeof deleteConfirmPlan>, hidden:
       clearable
       style="width: 260px"
     />
-    <el-button v-if="library.search || library.onlyUnbound" text @click="library.clearFilters()">
+    <el-button v-if="library.search || library.onlyUnbound || library.categoryFilter" text @click="library.clearFilters()">
       {{ t('library.clearFilter') }}
     </el-button>
 
@@ -305,6 +348,19 @@ function buildConfirmMessage(plan: ReturnType<typeof deleteConfirmPlan>, hidden:
     <span v-if="batchProgress" class="hint">
       {{ t('library.bulkProgress', { done: batchProgress.done, total: batchProgress.total }) }}
     </span>
+    <!-- M5.0 S7：批量归入分类（多归属，所以是"设为分类"，不是"移到分类"） -->
+    <el-dropdown v-if="library.categoryList.length > 0" :disabled="selectedCountValue === 0" @command="onAssignCommand">
+      <el-button :disabled="selectedCountValue === 0">
+        {{ t('library.bulkAssign') }}
+      </el-button>
+      <template #dropdown>
+        <el-dropdown-menu>
+          <el-dropdown-item v-for="category in library.categoryList" :key="category.id" :command="category.id">
+            {{ category.name }}
+          </el-dropdown-item>
+        </el-dropdown-menu>
+      </template>
+    </el-dropdown>
     <el-button
       type="danger"
       :disabled="selectedCountValue === 0"

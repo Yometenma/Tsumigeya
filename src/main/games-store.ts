@@ -98,6 +98,8 @@ export interface Snapshot {
    * 那正是 D44 踩过两次的老毛病。
    */
   playStats: Record<string, unknown>
+  /** M5.0 S7（U2）：分类定义表 + 归属表（与 meta 同在 library-meta.json，但独立顶层键）。 */
+  categories: { defs: Record<string, unknown>; assignments: Record<string, unknown> }
 }
 
 /** snapshot 里的运行态条目（比主进程内部的 RunningGame 少几个字段：UI 用不到命令串）。 */
@@ -242,6 +244,8 @@ export interface GameStore {
     dataDirNotice?: string | null
     /** M5.0 N1：游玩记录（不传 = 没有记录）。 */
     playStats?: Record<string, unknown>
+    /** M5.0 S7：分类（不传 = 空表）。 */
+    categories?: Snapshot['categories']
   }): Snapshot
 }
 
@@ -347,6 +351,7 @@ export function createGameStore(dataDir: string): GameStore {
     dataDirNotice?: string | null
     /** M5.0 N1：游玩记录（不传 = 没有记录）。由 ipc 层读 play-stats.json 后传入。 */
     playStats?: Record<string, unknown>
+    categories?: Snapshot['categories']
   } = {}): Snapshot {
     return {
       games: Object.entries(loadGames()).map(([id, value]) => ({ ...value, id })),
@@ -361,7 +366,8 @@ export function createGameStore(dataDir: string): GameStore {
       running: extra.running ?? [],
       dataDirNotice: extra.dataDirNotice ?? null,
       // M5.0 N1：默认空对象（不传 = 还没有任何游玩记录）。
-      playStats: extra.playStats ?? {}
+      playStats: extra.playStats ?? {},
+      categories: extra.categories ?? { defs: {}, assignments: {} }
     }
   }
 

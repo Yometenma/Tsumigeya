@@ -107,6 +107,128 @@ a {
   font-weight: 600;
 }
 
+/* ===== M5.0 S7（U2）：侧边栏分类 ===== */
+
+.app-categories {
+  /*
+   * 可滚动 + 限高：分类是用户会长期累积的（可能几十个），
+   * 不设限高会把「引擎管理 / 设置」两个导航推到看不见的地方。
+   * min-height: 0 是 flex 容器里让子元素真能滚的必要条件（经典坑）。
+   */
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--el-border-color-lighter);
+  overflow-y: auto;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.app-categories-title {
+  padding: 0 12px 6px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--tsmg-text-dim);
+  text-transform: uppercase;
+}
+
+.app-category-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.app-category-item {
+  /* button 重置：它本来是块级按钮，要长成与导航项一样 */
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 7px 12px;
+  border: 0;
+  border-radius: var(--tsmg-radius);
+  background: transparent;
+  color: var(--tsmg-text);
+  cursor: pointer;
+  font-size: 13px;
+  font-family: inherit;
+  text-align: left;
+  transition: background 0.15s ease;
+}
+
+.app-category-item:hover {
+  background: color-mix(in srgb, var(--tsmg-accent) 10%, transparent);
+}
+
+.app-category-item.is-active {
+  background: color-mix(in srgb, var(--tsmg-accent) 16%, transparent);
+  color: var(--tsmg-accent);
+  font-weight: 600;
+}
+
+.app-category-name {
+  /* 长分类名截断而不是把侧边栏撑宽 */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-category-count {
+  margin-left: auto;
+  color: var(--tsmg-text-dim);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.app-category-more {
+  padding: 4px 6px;
+  border-radius: 4px;
+  color: var(--tsmg-text-dim);
+  cursor: pointer;
+  font-size: 12px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+/* ⋯ 只在 hover 那一行时出现：不 hover 时它是纯视觉噪音 */
+.app-category-row:hover .app-category-more {
+  opacity: 1;
+}
+
+.app-categories-divider {
+  height: 1px;
+  margin: 6px 12px;
+  background: var(--el-border-color-lighter);
+}
+
+.app-category-add {
+  width: 100%;
+  padding: 7px 12px;
+  border: 0;
+  border-radius: var(--tsmg-radius);
+  background: transparent;
+  color: var(--tsmg-text-dim);
+  cursor: pointer;
+  font-size: 12px;
+  font-family: inherit;
+  text-align: left;
+}
+
+.app-category-add:hover {
+  background: color-mix(in srgb, var(--tsmg-accent) 10%, transparent);
+  color: var(--tsmg-accent);
+}
+
+.app-category-new {
+  padding: 4px 8px 8px;
+}
+
+.app-category-new-actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+}
+
 .app-sidebar-footer {
   margin-top: auto;
   padding: 10px;

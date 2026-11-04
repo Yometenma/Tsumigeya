@@ -37,6 +37,15 @@ import { component, failure, type GameDraft } from './games-store'
 import { extractArchive } from './extract'
 import { detectRjFromPath } from './dlsite'
 import { mergeWork, normalizeEditedFields } from './library-meta'
+import {
+  isDuplicateName,
+  nextCategoryOrder,
+  normalizeAssignments,
+  normalizeCategoryName,
+  uniqueCategoryId,
+  validateCategoryName,
+  withoutCategory
+} from '../shared/categories'
 import { diagnoseGame, type Diagnosis, type DiagnosisFix } from './diagnose'
 import { DATA_DIR_NOTICE_KEY, DATA_DIR_NOTICE_TEXT, shouldShowDataDirNotice } from './data-dir-notice'
 import { createPlayStatsStore, sessionSeconds, type PlayStatsStore } from './play-stats'
@@ -382,6 +391,9 @@ export function createDispatcher(deps: IpcDeps): Dispatcher {
       // M2：旁挂元数据随 snapshot 一起下发（只增字段，GameRecord 不动，D18）。
       // 读失败不能让整页崩——meta 是附属品，读不出来就当没有。
       meta: readMetaSafely(),
+      // M5.0 S7（U2）：分类的定义表与归属表（与 meta 同一个文件，但各自独立的顶层键）。
+      // 与 meta 同理：读失败不能让整页崩 —— 分类是整理工具，坏了不该让游戏库不可用。
+      categories: readCategoriesSafely(),
       // M3.5：运行态（只读投影，D50 不落盘）。少带 command/execPath：UI 用不到，
       // 而且命令串里可能有用户的本地路径，没必要过桥。
       running: registry.list().map((item) => ({
@@ -431,6 +443,23 @@ export function createDispatcher(deps: IpcDeps): Dispatcher {
       console.warn(`[tsumigeya] 写数据目录提示标记失败（已忽略，下次还会提示）：${(error as Error).message}`)
     }
     return DATA_DIR_NOTICE_TEXT
+  }
+
+  /**
+   * M5.0 S7：读分类数据，失败按空处理。
+   *
+   * 与 `readMetaSafely` 同一取向：library-meta.json 损坏时 readJSON 会抛
+   * （它绝不静默覆盖用户数据，那是正确行为），但一份整理工具的数据坏了
+   * 不该让用户连游戏库都看不见。
+   */
+  function readCategoriesSafely(): { defs: Record<string, unknown>; assignments: Record<string, unknown> } {
+    try {
+      const { defs, assignments } = host.categories.loadAll()
+      return { defs, assignments }
+    } catch (error) {
+      console.warn(`[tsumigeya] 读取分类数据失败（已按空处理）：${(error as Error).message}`)
+      return { defs: {}, assignments: {} }
+    }
   }
 
   function readMetaSafely(): Record<string, unknown> {
@@ -1182,6 +1211,17 @@ export function createDispatcher(deps: IpcDeps): Dispatcher {
         } catch (error) {
           console.warn(`[tsumigeya] 清理游玩记录失败（已忽略）：${(error as Error).message}`)
         }
+        // M5.0 S7（U2）：**第四处**旁挂数据 —— 分类归属。
+        //
+        // 漏掉它的后果与 play-stats 一样：id 会被复用（saveGame 的 Math.max(...)+1），
+        // 于是新游戏继承上一个游戏的分类归属，侧边栏的「未分类」计数也会偏小
+        // （assignments 里有个指向不存在游戏的键，永远不会被算进任何一边）。
+        // 同样是"不报错、只是数字悄悄不对"，所以用测试钉住（test/category-ipc.test.ts）。
+        try {
+          host.categories.removeGame(id)
+        } catch (error) {
+          console.warn(`[tsumigeya] 清理分类归属失败（已忽略）：${(error as Error).message}`)
+        }
         return snapshot()
       }
 
@@ -1412,6 +1452,106 @@ export function createDispatcher(deps: IpcDeps): Dispatcher {
 
       case 'clearGameMeta': {
         host.meta.remove(String(params.gameId ?? ''))
+        return snapshot()
+      }
+
+      // ===== M5.0 S7（U2）：自定义分类（多归属 / 扁平）=====
+      //
+      // 四条命令都在**队列内**（都写 library-meta.json，与 saveGameMeta 同一个文件）。
+      // 分类操作全是批量改写（删一个要从所有游戏上摘），必须与其它写操作串行。
+
+      /**
+       * 新建分类。
+       *
+       * 校验三件事（都在 shared/categories.ts，有单测）：
+       *  · 名字非空、不超长（`validateCategoryName`）
+       *  · 名字查重（大小写不敏感）—— 两个同名分类在侧边栏里无法区分
+       *  · id 唯一（`uniqueCategoryId`）—— 撞 id 会把两个分类静默合并
+       */
+      case 'createCategory': {
+        const name = String(params.name ?? '')
+        const nameError = validateCategoryName(name)
+        if (nameError === 'empty') throw failure('error.categoryNameRequired', 'Category name is required')
+        if (nameError === 'too-long') throw failure('error.categoryNameTooLong', 'Category name is too long')
+        const defs = host.categories.loadDefs()
+        if (isDuplicateName(defs, name)) {
+          throw failure('error.categoryDuplicate', 'A category with this name already exists')
+        }
+        const id = uniqueCategoryId(defs, name)
+        const next = { ...defs, [id]: { name: normalizeCategoryName(name), order: nextCategoryOrder(defs) } }
+        host.categories.save(next, host.categories.loadAssignments())
+        return snapshot()
+      }
+
+      /**
+       * 重命名：**只改 name，id 不变** → 所有游戏的引用自动跟随（方案 §4.2.2）。
+       *
+       * 这一条是「用 slug 而不是自增数字」这个决定的全部收益所在。
+       * 若改了 id，就得遍历所有游戏改引用 —— 那既是 O(n) 的批量写，又可能半途失败。
+       */
+      case 'renameCategory': {
+        const id = String(params.id ?? '')
+        const name = String(params.name ?? '')
+        const defs = host.categories.loadDefs()
+        if (!Object.hasOwn(defs, id)) throw failure('error.categoryNotFound', 'Category not found')
+        const nameError = validateCategoryName(name)
+        if (nameError === 'empty') throw failure('error.categoryNameRequired', 'Category name is required')
+        if (nameError === 'too-long') throw failure('error.categoryNameTooLong', 'Category name is too long')
+        // excludeId 传自己：改自己的名字不该和自己冲突
+        if (isDuplicateName(defs, name, id)) {
+          throw failure('error.categoryDuplicate', 'A category with this name already exists')
+        }
+        const next = { ...defs, [id]: { name: normalizeCategoryName(name), order: defs[id]!.order } }
+        host.categories.save(next, host.categories.loadAssignments())
+        return snapshot()
+      }
+
+      /**
+       * 删分类：**只删定义 + 从所有游戏上移除该 id，绝不删游戏**（方案 §4.2.2 / D31）。
+       * 实现见 `removeCategory()`（它同时会清掉摘成空的归属键）。
+       */
+      case 'deleteCategory': {
+        const id = String(params.id ?? '')
+        if (!Object.hasOwn(host.categories.loadDefs(), id)) {
+          throw failure('error.categoryNotFound', 'Category not found')
+        }
+        host.categories.removeCategory(id)
+        return snapshot()
+      }
+
+      /**
+       * 批量归入 / 移出分类（复用 U1 的多选）。
+       *
+       * `assign` 里是 gameId 数组 —— 与批量删除同一套 id 来源，所以同样**逐个校验**：
+       * 有一个不存在的游戏不该让整批失败（用户可能选中了已被别处删掉的游戏）。
+       * 但这里选择**整体成功/失败**：分类归属不是"删了就没"的破坏性操作，
+       * 用户重试一次即可；而逐条部分成功会让"哪些进去了哪些没进去"难以解释。
+       */
+      case 'assignCategory': {
+        const categoryId = String(params.id ?? '')
+        const ids = Array.isArray(params.gameIds) ? params.gameIds.map((item) => String(item)) : []
+        if (!Object.hasOwn(host.categories.loadDefs(), categoryId)) {
+          throw failure('error.categoryNotFound', 'Category not found')
+        }
+        const games = host.store.loadGames()
+        for (const gameId of ids) {
+          if (!Object.hasOwn(games, gameId)) throw failure('error.gameNotFound', 'Game not found', { id: gameId })
+        }
+        if (params.remove === true) {
+          // 移出：从每个游戏的归属里摘掉这个分类
+          const { defs, assignments } = host.categories.loadAll()
+          const known = new Set(Object.keys(defs))
+          const next: Record<string, string[]> = { ...assignments }
+          for (const gameId of ids) {
+            const current = normalizeAssignments(next[gameId], known)
+            const remaining = withoutCategory(current, categoryId)
+            if (remaining.length > 0) next[gameId] = remaining
+            else delete next[gameId]
+          }
+          host.categories.save(defs, next)
+        } else {
+          host.categories.assignGames(ids, categoryId)
+        }
         return snapshot()
       }
 

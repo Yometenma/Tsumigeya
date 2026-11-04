@@ -140,6 +140,14 @@ export interface Snapshot {
    */
   playStats: Record<string, PlayStat>
   /**
+   * M5.0 S7（U2）：自定义分类 —— 定义表 + 归属表。
+   *
+   * 与 meta 同在 library-meta.json（同一次原子写），但**独立的顶层键**：
+   * 这样既不用改已存条目的形状（零迁移），也让没绑 DLsite 的游戏照样能分类。
+   * 详见 src/main/category-store.ts 的顶部注释。
+   */
+  categories: CategoryPayload
+  /**
    * M4.0 S6.5（D58）：数据目录切换的一次性中文说明。
    * 有值 = 这次该给用户看（info，不是错误）；null = 不提示。
    */
@@ -176,6 +184,25 @@ export interface PlayStat {
   lastPlayedAt: string
   playCount: number
   totalSeconds: number
+}
+
+/** M5.0 S7：一条分类定义。 */
+export interface CategoryDef {
+  /** 显示名（用户建的）。 */
+  name: string
+  /** 侧边栏排序权重（稳定值，不是数组下标 —— 删中间一个时不会让后面的整体前移）。 */
+  order: number
+}
+
+/**
+ * M5.0 S7：分类数据（snapshot 里下发的那一块）。
+ *
+ * `defs` 键是 slug（`action` / `favorite`），`assignments` 键是 gameId。
+ * 「未分类」是**虚拟分类**（不在这两个表里），判据是归属数组为空。
+ */
+export interface CategoryPayload {
+  defs: Record<string, CategoryDef>
+  assignments: Record<string, string[]>
 }
 
 // ===== M2：DLsite 元数据（docs/M2-实施方案.md §3.4）=====
@@ -504,6 +531,28 @@ export const api = {
     bridge().invoke<{ groups: LanguageGroup[] }>('languageGroups', { threshold }),
 
   clearGameMeta: (gameId: string): Promise<Snapshot> => bridge().invoke<Snapshot>('clearGameMeta', { gameId }),
+
+  // ===== M5.0 S7（U2）：自定义分类（全部走既有 tsumi:invoke，无新 preload channel）=====
+  //
+  // 四条都是写操作 → 主进程侧在**队列内**执行（与 saveGameMeta 同一个文件，必须串行）。
+  // 返回完整 Snapshot（与 saveGame / deleteGame 同一契约：改完立刻给新状态）。
+
+  /** 新建分类。名字查重与 id 唯一性都在主进程校验（渲染层的检查只是提前给提示）。 */
+  createCategory: (name: string): Promise<Snapshot> => bridge().invoke<Snapshot>('createCategory', { name }),
+
+  /** 重命名：只改 name，id 不变 → 所有归属自动跟随。 */
+  renameCategory: (id: string, name: string): Promise<Snapshot> =>
+    bridge().invoke<Snapshot>('renameCategory', { id, name }),
+
+  /** 删分类：只删定义 + 从所有游戏摘掉该 id，**绝不删游戏**。 */
+  deleteCategory: (id: string): Promise<Snapshot> => bridge().invoke<Snapshot>('deleteCategory', { id }),
+
+  /**
+   * 批量归入 / 移出（`remove: true` 时移出）。
+   * 复用 U1 的多选：`gameIds` 就是那批 id。
+   */
+  assignCategory: (id: string, gameIds: string[], remove?: boolean): Promise<Snapshot> =>
+    bridge().invoke<Snapshot>('assignCategory', { id, gameIds, remove }),
 
   // ===== M3：故障自愈（全部走既有 tsumi:invoke，无新 preload channel）=====
 

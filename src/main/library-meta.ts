@@ -186,7 +186,27 @@ export function createLibraryMetaStore(dataDir: string): LibraryMetaStore {
   const metaFile = path.join(dataDir, 'library-meta.json')
 
   /** 损坏文件会抛 error.invalidObject（由 readJSON 抛），原文件保持不动。 */
-  const load = (): GameMetaMap => readJSON<GameMetaMap>(metaFile)
+  /**
+   * 读盘。
+   *
+   * ⚠️ M5.0 S7：本文件**多了两个非游戏顶层键**（`categories` 定义表与
+   * `assignments` 归属表，见 category-store.ts）。这里必须把它们过滤掉，
+   * 否则 `categories` 会被当成一个**游戏 id** 混进 meta ——
+   * 渲染层 `library.meta['categories']` 会拿到定义表，
+   * 而任何"遍历 meta"的逻辑（U4 的 unboundCount 等）会把它算成一个未绑定游戏。
+   * 不报错，只是数字悄悄不对。
+   *
+   * 过滤判据是**键必须是纯数字**（与 games-store 的 gameId 规则一致），
+   * 而不是"排除已知的那两个键"——后者在将来再加顶层键时会再踩一次。
+   */
+  const load = (): GameMetaMap => {
+    const raw = readJSON<Record<string, unknown>>(metaFile)
+    const out: GameMetaMap = {}
+    for (const [gameId, value] of Object.entries(raw)) {
+      if (/^\d+$/.test(gameId)) out[gameId] = value as GameMeta
+    }
+    return out
+  }
 
   /**
    * 保存一条元数据。
@@ -218,7 +238,7 @@ export function createLibraryMetaStore(dataDir: string): LibraryMetaStore {
     }
 
     all[id] = sanitize(id, { ...meta, editedFields: merged })
-    writeJSON(metaFile, all)
+    writeJSON(metaFile, withTopLevelKeys(all))
     return all
   }
 
@@ -229,8 +249,29 @@ export function createLibraryMetaStore(dataDir: string): LibraryMetaStore {
     // 不存在也算成功：删游戏时顺手清 meta，不该因为「本来就没有」而报错
     if (!Object.hasOwn(all, id)) return all
     delete all[id]
-    writeJSON(metaFile, all)
+    writeJSON(metaFile, withTopLevelKeys(all))
     return all
+  }
+
+  /**
+   * ⚠️ M5.0 S7 的关键：把**非游戏顶层键**带回写入内容里。
+   *
+   * `load()` 已经把它们过滤掉了（那是 `GameMetaMap` 的契约：键全是 gameId）。
+   * 如果 `save()` / `remove()` 把 `load()` 的结果直接整体 writeJSON，
+   * **用户新建的分类与全部归属会在下一次保存 DLsite 信息时无声消失** ——
+   * 这是本文件最危险的一处，而且完全不会报错（写进去的是合法 JSON）。
+   *
+   * 所以每次写回前都要把原始文件里那些我们不懂的键搬过来。
+   * 这里刻意不区分具体键名（除了我们自己的两个），因为**用户的数据不该被我们删**。
+   */
+  const withTopLevelKeys = (entries: GameMetaMap): Record<string, unknown> => {
+    const raw = fs.existsSync(metaFile) ? readJSON<Record<string, unknown>>(metaFile) : {}
+    const out: Record<string, unknown> = {}
+    for (const [key, value] of Object.entries(raw)) {
+      // 游戏条目以内存里的为准（可能是刚改过的），其余顶层键原样保留
+      if (!/^\d+$/.test(key)) out[key] = value
+    }
+    return { ...out, ...entries }
   }
 
   return { metaFile, load, save, remove }
