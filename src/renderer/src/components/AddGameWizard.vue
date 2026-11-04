@@ -6,6 +6,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { api, translateError, type DetectCandidate, type DetectFolderResult } from '@/api/client'
 import { buildImportAttempts, importOutcome, type ImportDetection } from '../../../shared/import-target'
+import { canAdvanceEngineStep, engineOptionsFrom, engineSourceBadge } from '../../../shared/wizard-engine'
 import { useLibraryStore } from '@/stores/library'
 import { useEnginesStore } from '@/stores/engines'
 import { useTaskStore } from '@/stores/task'
@@ -28,6 +29,22 @@ const detection = ref<DetectFolderResult | null>(null)
 const chosen = ref<DetectCandidate | null>(null)
 const engineFolder = ref('')
 const engineInstalled = ref(false)
+/**
+ * M5.0 U6：引擎是不是**用户自己改的**（而不是自动识别出的）。
+ *
+ * 为什么要单独记：自动识别的结果会被「改引擎」下拉覆盖，而重新识别时
+ * 又要把用户的选择让位给新的识别结果。分不清这两者就会出现
+ * 「用户手选了 mkxp-z，一改路径又被自动改回 nwjs」这种气愤行为。
+ */
+const engineManual = ref(false)
+/**
+ * M5.0 U6：安装引擎失败过（断网 / 服务器抽风）。
+ *
+ * 与「跳过」的区别：跳过是**没试就放行**（用户根本不知道会出问题），
+ * 而这里是他**点过安装、装了但没成功** —— 此时再把游戏卡死在这步毫无意义，
+ * 不如让他存下来，稍后去引擎页重试。方案 §7.1 的容错路径。
+ */
+const installFailed = ref(false)
 
 const title = ref('')
 const tags = ref<string[]>([])
@@ -42,9 +59,21 @@ function isInstalled(engineId: string | null): boolean {
 
 const canGoNext = computed(() => {
   if (step.value === 0) return !!gamePath.value
-  if (step.value === 1) return !!engineFolder.value && engineInstalled.value
+  // M5.0 U6：原来这里要求「引擎已装」才放行，配合「跳过，稍后安装」当逃生门。
+  // 现在不设那个按钮了，逃生门改成「装过但失败了」：判据在 shared/wizard-engine.ts
+  //（有单测：断网用户必须能往下走，否则整个添加流程在这台机器上彻底不可用）。
+  if (step.value === 1) {
+    return canAdvanceEngineStep({
+      engine: engineFolder.value,
+      installed: engineInstalled.value,
+      installFailed: installFailed.value
+    })
+  }
   return !!title.value.trim()
 })
+
+/** 第 2 步那行「自动识别 / 已手动修改」徽标（判据同上）。 */
+const engineBadge = computed(() => engineSourceBadge(engineManual.value, engineFolder.value))
 
 // ===== 第 1 步：选路径 =====
 
@@ -71,6 +100,20 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
     )
   })
 }
+
+/**
+ * M5.0 U6：一打开向导就把「可安装引擎」列表拉下来。
+ *
+ * 为什么必须在这里拉：那个列表是**懒加载**的（正常只在引擎页拉）。
+ * 而这一轮新加的「改引擎」下拉要列出四个引擎（含**还没装**的 —— 用户认出 nwjs
+ * 但装的是 mkxp-z 时，他要能选到一个未装的项然后去装）。
+ * 不提前拉的话，第一次用的人会看到下拉里只有已装的那一两个，甚至空着 ——
+ * 那就是「修了个假的入口」。
+ *
+ * 失败不影响流程：loadRemote 自己 catch 掉并且只 console.warn（它读本地 registry、
+ * 零网络），最坏情况就是下拉退回已装列表（engineOptionsFrom 的兜底）。
+ */
+void engines.loadRemote()
 
 async function pickFile(): Promise<void> {
   try {
@@ -129,6 +172,8 @@ async function analyze(target: string): Promise<void> {
   chosen.value = null
   engineFolder.value = ''
   engineInstalled.value = false
+  // 重新识别时用户的手选让位给新的识别结果（否则改了个路径引擎还停留在旧的手选值上）
+  engineManual.value = false
   const detections: ImportDetection[] = []
   let result: DetectFolderResult | null = null
   try {
@@ -186,11 +231,51 @@ function selectCandidate(candidate: DetectCandidate): void {
   engineInstalled.value = isInstalled(candidate.engine)
 }
 
-// ===== 第 2 步：装引擎 =====
+/**
+ * M5.0 U6：手动改引擎。
+ *
+ * 方案 §7.2 查实的现状：`wizard.notDetectedHint` 文案写着「可以从下面的候选里手动选择」，
+ * 但**识别成功时根本没有改的入口** —— 只有识别失败才有候选列表。识别错了（或者
+ * 规则判歪了）用户就卡在那一步，只能先存下来再去编辑页改，白白多绕一圈。
+ *
+ * 改法：不管识别成功还是失败，都显示一行「引擎：xxx　[改]」，
+ * 点开是一个**四选一的下拉**（registry 里那四个引擎的唯一来源是引擎页的「可安装」列表）。
+ *
+ * 为什么用下拉而不是候选列表：候选列表是「同一个游戏目录里的不同可执行文件」
+ * （选错了入口 exe 的那种情况），而这里要改的是**引擎判定**本身 ——
+ * 两者是不同的东西，不能混成一个控件。
+ */
+const engineOptions = computed(() =>
+  // 选项来源与「下拉不能是空的」都在 shared/wizard-engine.ts（有单测）：
+  // 可安装列表是懒加载的，向导可能先于引擎页打开，那时要退回已装列表。
+  engineOptionsFrom(engines.remoteModules, engines.modules)
+)
 
+/** 用户从下拉里换了引擎。 */
+function changeEngine(value: string): void {
+  engineFolder.value = value
+  engineInstalled.value = isInstalled(value)
+  engineManual.value = true
+  // 换了引擎就把「改选候选」的高亮清掉：候选是按旧引擎算出来的，留着会误导
+  chosen.value = null
+}
+
+/**
+ * M5.0 U6：引擎没装时**装**，不提供「跳过，稍后安装」。
+ *
+ * 删掉那个按钮的理由（用户说「感觉没必要」，本鱼同意）：
+ * 引擎没装游戏**根本跑不起来**，让他跳过等于让他后面必踩一次「点启动失败」。
+ * 不如就装。
+ *
+ * 但删按钮 ≠ 强制（方案 §7.1 的容错路径）：下载失败（断网 / 服务器抽风）时
+ * 仍然要把游戏**先存下来**，提示改成「游戏已保存，引擎可稍后在引擎页安装」。
+ * 所以这里失败时不是把用户卡住，而是把 `engineReady` 这类阻断解开 ——
+ * 具体见下方 `canGoNext` 与 `installFailed`。
+ */
 async function installEngine(): Promise<void> {
   if (!engineFolder.value) return
   busy.value = true
+  installFailed.value = false
   try {
     const snapshot = await task.run(
       engineFolder.value,
@@ -200,7 +285,11 @@ async function installEngine(): Promise<void> {
     engineInstalled.value = isInstalled(engineFolder.value)
     ElMessage.success(t('wizard.installed'))
   } catch (error) {
-    if (!task.isCancelled(error)) ElMessage.error(translateError(error, t))
+    if (!task.isCancelled(error)) {
+      // 失败不卡住用户：显示提示，允许直接往下走（游戏先存下来）
+      installFailed.value = true
+      ElMessage.warning(translateError(error, t))
+    }
   } finally {
     busy.value = false
   }
@@ -308,29 +397,44 @@ function reset(): void {
   <section v-else-if="step === 1" class="panel stack">
     <el-alert v-if="busy" :title="t('wizard.detecting')" type="info" :closable="false" show-icon />
 
-    <template v-if="engineFolder">
-      <el-alert
-        :title="
-          engineInstalled
-            ? t('wizard.detected', { engine: engineFolder })
-            : t('wizard.detectedRemote', { engine: engineFolder })
-        "
-        :type="engineInstalled ? 'success' : 'warning'"
-        :closable="false"
-        show-icon
-      />
-
-      <div v-if="!engineInstalled" class="row">
-        <el-button type="primary" :loading="busy" @click="installEngine">
-          {{ t('wizard.installEngine') }}
-        </el-button>
-        <span class="hint">{{ t('wizard.engineMissing', { engine: engineFolder }) }}</span>
+    <!-- M5.0 U6：不管识别成功还是失败，都给出「改引擎」入口。
+         原来只有识别失败才有候选列表，识别错了用户只能先存下来再去编辑页改。 -->
+    <div class="settings-row">
+      <div class="settings-row-main">
+        <div class="settings-row-title">
+          {{ t('wizard.engineLabel') }}
+          <el-tag v-if="engineBadge === 'manual'" size="small" type="info" style="margin-left: 6px">
+            {{ t('wizard.engineManual') }}
+          </el-tag>
+          <el-tag v-else-if="engineBadge === 'detected'" size="small" type="success" style="margin-left: 6px">
+            {{ t('wizard.engineDetected') }}
+          </el-tag>
+        </div>
+        <div v-if="engineFolder && !engineInstalled" class="settings-row-hint">
+          {{ t('wizard.engineMissing', { engine: engineFolder }) }}
+        </div>
+        <div v-else-if="engineInstalled" class="settings-row-hint">{{ t('wizard.engineInstalled') }}</div>
       </div>
-      <div v-else class="hint">{{ t('wizard.engineInstalled') }}</div>
-    </template>
+      <el-select
+        :model-value="engineFolder"
+        :placeholder="t('wizard.enginePick')"
+        style="width: 180px"
+        @update:model-value="changeEngine"
+      >
+        <el-option v-for="option in engineOptions" :key="option.value" :label="option.label" :value="option.value" />
+      </el-select>
+    </div>
+
+    <!-- 装引擎：不装类按钮，失败后也不卡住 -->
+    <div v-if="engineFolder && !engineInstalled" class="row">
+      <el-button type="primary" :loading="busy" @click="installEngine">
+        {{ t('wizard.installEngine') }}
+      </el-button>
+      <span v-if="installFailed" class="hint">{{ t('wizard.installFailedHint') }}</span>
+    </div>
 
     <el-alert
-      v-else
+      v-if="!engineFolder"
       :title="t('wizard.notDetected')"
       :description="t('wizard.notDetectedHint')"
       type="warning"
@@ -338,7 +442,7 @@ function reset(): void {
       show-icon
     />
 
-    <!-- 候选列表：让用户改选 -->
+    <!-- 候选列表：让用户改选**同目录下的不同可执行文件**（与上面「改引擎」是两回事） -->
     <div v-if="detection && detection.candidates.length" class="stack" style="gap: 6px">
       <div class="settings-row-title">{{ t('wizard.candidates', { count: detection.candidates.length }) }}</div>
       <el-radio-group
@@ -362,9 +466,9 @@ function reset(): void {
       </el-radio-group>
     </div>
 
-    <div class="row">
-      <el-button :disabled="!engineFolder" @click="step = 2">{{ t('wizard.skipInstall') }}</el-button>
-    </div>
+    <!-- M5.0 U6：「跳过，稍后安装」按钮已删。
+         引擎没装游戏根本跑不起来，让用户跳过等于让他后面必踩一次「点启动失败」。
+         容错路径改为「装了但失败」时放行（见 canGoNext 与 installFailed）。 -->
   </section>
 
   <!-- 第 3 步：完善信息 -->
@@ -386,8 +490,17 @@ function reset(): void {
     <div class="settings-row">
       <div class="settings-row-main">
         <div class="settings-row-title">{{ t('wizard.engineLabel') }}</div>
+        <!-- M5.0 U6：第 3 步也留改的入口。原来这里是个只读 tag，
+             用户在第 2 步没改、走到这一步才发现不对，就只能返回去。 -->
       </div>
-      <el-tag>{{ engineFolder || t('common.unknown') }}</el-tag>
+      <el-select
+        :model-value="engineFolder"
+        :placeholder="t('wizard.enginePick')"
+        style="width: 180px"
+        @update:model-value="changeEngine"
+      >
+        <el-option v-for="option in engineOptions" :key="option.value" :label="option.label" :value="option.value" />
+      </el-select>
     </div>
 
     <div class="settings-row">
