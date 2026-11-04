@@ -20,7 +20,8 @@
 
 ## 当前项目状态（每次收尾必须更新）
 
-- **阶段**：**M1 / M2 / M2.5 / M3 / M2.6 / M2.7 已完成**（v0.3.1 已发布）
+- **阶段**：**M1 / M2 / M2.5 / M3 / M2.6 / M2.7 已完成**（v0.3.1 已发布）；**M3.5（进程管理）方案已冻结待实施**
+  - M3.5 = 「好用」地基：启动后进程追踪 + 关闭游戏 + 游玩记录（见 `docs/M3.5-实施方案.md`，D48–D52）
   - M2.7 = 编辑页重构（见 `docs/M2.7-实施方案.md`）：保存 bug 修复 + 封面与标签合并 + 标题来源提示
   - M2.6 = 海报墙与详情页重构（见 `docs/M2.6-实施方案.md`，**D39–D43**）——**已实施完毕**（详见下方「M2.6 全套」）
   - ⚠️ 注意编号：M2.6 方案初稿写的是 D36–D38，但那三个号已被 **M3 实际占用**，
@@ -225,6 +226,7 @@ npm run build:mac    # 出 mac 包（Windows 上只能出 zip/dir，签名需 Ma
 │   ├── 竞品功能对照表.md    ← MTool / RPGMakerUtils 功能面调研（判断哪些值得加）
 │   ├── 需求-游戏内文本汉化.md ← 汉化需求记录（**暂不实现**，只沉淀格式与坑）
 │   ├── M2.7-实施方案.md    ← ★ M2.7 交接稿（编辑页重构 + 保存 bug）
+│   ├── M3.5-实施方案.md    ← ★ M3.5 交接稿（进程管理：追踪/关闭/游玩记录）——**待实施**
 │   └── 技术选型-三方案对比.md
 ├── _xeno_probe/            # 上游 Xenolauncher clone，只读参考，gitignore
 ├── resources/core/
@@ -337,6 +339,11 @@ Vue 组件 → Pinia store → api/client → preload(window.tsumi.invoke)
 | D45 | 图标**不删除，折叠为「高级」**；封面与图标合并成一个「封面预览」区块并标明来源 | 图标在没有 DLsite 信息时是唯一兜底（用户拍板「保留手动改」）；合并是为了让用户看清「卡片到底显示哪张」，而不是面对两个独立区块猜 |
 | D46 | 标题**不改存储**，只做来源提示（manual/dlsite/dirname 三态）+ 「用 DLsite 标题」快捷按钮 | 自动改 `gameTitle` 会写进 `games.json`（上游 schema，D10）；显示层回落更安全，且 M2.6 卡片/详情页本来就有回落逻辑 |
 | D47 | 标签**必须保留**，并在 UI 上说明「DLsite 不提供分类标签」 | D19/D40 已实测 DLsite 的 genre 拿不到（`work_genre` 区块为空）；删了标签就没有任何标签来源 |
+| D48 | 进程追踪用**「加载 launcher 时注入 `child_process`」**，不改上游 modules 仓库 | 上游一更新就会冲掉我们的改动，且要改 4 个模块（nwjs/mkxpz/easyrpg/renpy 全用 exec）。注入方案零上游改动，launcher 以为自己调的是原生 exec。可行性已用最小实验验证 |
+| D49 | 注入**只替换 `exec`**，其余 `child_process` 方法原样透传 | 上游可能改实现；透传保证「最坏失去追踪」而不是崩溃 |
+| D50 | 进程状态**只在内存**，不落盘 | 进程是运行时事实；落盘会产生「显示在运行但进程早没了」的假象 |
+| D51 | 游玩记录（`lastPlayedAt`/`playCount`/`totalSeconds`）落**独立的 `play-stats.json`** | 不放 `GameRecord`（守 D10）；不放 `library-meta.json`（语义不同，那是 DLsite 元数据）。独立文件可单独删 |
+| D52 | `stopGame` 走 **SIGTERM → 等 5 秒 → SIGKILL** 两段式 | 温和优先（游戏可能要保存），但卡死时也要能救 |
 
 ## 已知坑
 
@@ -425,6 +432,10 @@ Vue 组件 → Pinia store → api/client → preload(window.tsumi.invoke)
   - 数据层新增 `summary`/`author`/`salesCount`/`rating`（**只有搜索结果页有后三项**，见 D42）
   - 端到端验收：`node scripts/probe-m26.cjs`
   - **视觉观感仍未人眼验收**（卡片悬停、简介截断、窄窗口塌陷、R18 模糊强度）
+- **M3.5（方案已冻结，待实施）**：进程管理 —— 见 [`docs/M3.5-实施方案.md`](./docs/M3.5-实施方案.md)（D48–D52）
+  - 三项：①启动后**进程追踪**（`Snapshot.running`）②**关闭游戏**（SIGTERM→5s→SIGKILL）③**游玩记录**（`play-stats.json`）
+  - 为什么先做：用户要的「好用」缺口里，①② 严重度最高，且是「最近游玩/排序/收藏」的地基
+  - **关键实现**：加载 launcher 时**注入 `child_process`**（不改上游 modules 仓库），已验证可行
 - **M4**：存档管理（集中查看/备份/导出）+ 增强（Cheat 注入/变速）
 - **M5**：手柄、无边框全屏、像素缩放、dmg 公证分发
 
