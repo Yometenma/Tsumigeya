@@ -160,6 +160,9 @@ function proceedAnyway(): void {
       </el-alert>
 
       <div v-if="items.length === 0" class="diagnosis-empty">{{ t('diagnose.noProblems') }}</div>
+
+      <!-- 修复进行中的整体提示（方案 §5 要求的 repairing 文案）：修复可能下 244MB，不能只有按钮转圈 -->
+      <div v-if="repairing" class="diagnosis-hint">{{ t('diagnose.repairing') }}</div>
     </div>
 
     <template #footer>

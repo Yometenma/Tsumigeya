@@ -1,28 +1,31 @@
+# M2 端到端探针的产物（数据目录 + 结果文件 + boot 痕迹）
+# TypeScript 增量构建缓存（tsc --noEmit + composite 也会写）
+# 上一会话遗留的计划副本（方案已落到 docs/M1-实施方案.md）
+# 上游参考 clone（只读，不入库）
+# 打包产物与日志
+# 本机调试数据目录
+*.local
+*.log
+*.tsbuildinfo
+.DS_Store
+.dev-data-m25/
+.dev-data-m25boot.txt
+.dev-data-m25probe.json
+.dev-data-m25probe/
+.dev-data-m2boot.txt
+.dev-data-m2probe.json
+.dev-data-m2probe/
+.dev-data-m3boot.txt
+.dev-data-m3probe
+.dev-data-m3probe.json
+.dev-data-m3probe/
+.dev-data/
+.dev-scratch/
+.verify-dist/
+.vite/
+.zcode/
+_xeno_probe/
+dist/
 node_modules/
 out/
-dist/
-*.local
-.DS_Store
-.vite/
-# TypeScript 增量构建缓存（tsc --noEmit + composite 也会写）
-*.tsbuildinfo
-# 上游参考 clone（只读，不入库）
-_xeno_probe/
-# 本机调试数据目录
-.dev-data/
-# M2 端到端探针的产物（数据目录 + 结果文件 + boot 痕迹）
-.dev-data-m2probe/
-.dev-data-m2probe.json
-.dev-data-m2boot.txt
-# 上一会话遗留的计划副本（方案已落到 docs/M1-实施方案.md）
-.zcode/
-# 打包产物与日志
 release/
-*.log
-.verify-dist/
-.dev-scratch/
-.dev-data-m25probe/
-.dev-data-m25probe.json
-.dev-data-m25boot.txt
-.dev-data-m25/
-.dev-data-m3probe

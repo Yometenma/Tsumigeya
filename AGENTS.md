@@ -20,13 +20,13 @@
 
 ## 当前项目状态（每次收尾必须更新）
 
-- **阶段**：**M1 / M2 / M2.5 已完成**（v0.2.0 已发布）；**M2.6（UI 重构）与 M3（故障自愈）方案均已冻结待实施**
-  - M2.6 = 海报墙与详情页重构（见 `docs/M2.6-实施方案.md`，D36–D38）——**暂停中，等 M3 完成后再开工**
-    （两者要改同一批共用文件：ipc.ts / client.ts / locales / GameEditPage.vue / AGENTS.md，并行会冲突）
-  - M3 = 故障自愈（见 `docs/M3-实施方案.md`，D32–D35）
+- **阶段**：**M1 / M2 / M2.5 / M3 已完成**（v0.2.0 已发布）；**M2.6（UI 重构）现在可以开工**
+  - M2.6 = 海报墙与详情页重构（见 `docs/M2.6-实施方案.md`，D36–D38）——**M3 已落地，冲突窗口关闭**
+  - M3 = 故障自愈（见 `docs/M3-实施方案.md`，D32–D35）——**已实施完毕**（详见下方「M3 全套」）
   - M2.5 = 用户 2026-11-04 提的三项改进：按名字搜索 DLsite + 候选列表 / 可编辑元数据 / 多语言版本偏好
-  - **技术前提已实测完毕**（搜索 URL 格式、结果解析、噪音过滤、无法靠 lang_options 判断多语言版），
-    写在 M2.5 文档 §1，**新会话不要重复验证**
+  - **技术前提已实测完毕**（M3 的归档魔数 / RTP 结构 / `fontSub` 语义 / `Game.ini` 是 GBK；
+    M2.5 的搜索 URL 格式 / 结果解析 / 噪音过滤 / 无法靠 lang_options 判断多语言版），
+    写在各自文档的「已实测」一节，**新会话不要重复验证**
 - **已完成**：
   - M1 全套（游戏库 / 自动识别 / 一键安装引擎 / 启动），v0.1.4 已在 Mac 上实测可启动 NW.js 游戏
   - **M2 全套**：`src/main/dlsite.ts`（RJ 识别 + `var contents` 解析 + TTL 缓存 + 4 类错误）、
@@ -51,7 +51,31 @@
       `groupByLanguage`）、`src/shared/launch-language.ts`（`decideLaunchTarget`）；
       设置项 `preferredLanguage`(zh) / `fallbackLanguage`(ja) / `languageSwitchPrompt`(true)；
       IPC `languageGroups`（纯本地、绕队列）；卡片语言标签 +「也有 xx 版」；启动非偏好版时弹确认
-- **测试 280 个全绿 / 13 个文件**（M1 的 76 + M2 的 89 + R18 打码 7 + M2.5 的 108）
+  - **M3 全套**（四个提交：S1+S2 / S3 / S4 / S5，最后 S6 收尾）：
+    - **§S1 诊断器**：`src/main/diagnose.ts`（纯逻辑，**不 import electron**）
+      · `parseArchiveMagic` 只读文件头 8 字节（`RGSSAD\0` + 0x01/0x02/0x03 → XP/VX/VX Ace）
+      · `detectEncryptedArchive`（fatal，有归档且**无** `Data/*.rvdata2|rvdata|rxdata` 才报）
+      · `detectMissingRtp`（**warning**，`deps/RTP/RTP/<版本>` 不存在）+ RTP 推断链
+        （`Game.ini` 的 `RTP=` → `Library=` 的 `RGSS<数字>` → `Scripts=` 扩展名 → 归档魔数 → 推不出就不报）
+      · `detectPathGone` / `detectMissingModule` / `detectMissingExecutable`（fatal）
+      · `detectFontsPresent`（**info 且无 fix**，D35）
+      · `readGameIni` **只按 latin1 读 `[Game]` 段的 ASCII 结构行**（§2.5：Game.ini 是 GBK，`Title=` 是乱码）
+      · `sortDiagnoses`：fatal→warning→info，同级内按 `CODE_WEIGHT`
+        （pathGone > encryptedArchive > moduleMissing > missingExecutable）
+    - **§S2 IPC**：`diagnoseGame`（**绕队列**）/ `repairGame`（**进队列**，可能下 244MB）；
+      `launch` 前自动诊断，有 fatal 返回 `{ blocked, diagnoses }` 而**不抛英文错误**；
+      设置项 `diagnoseBeforeLaunch`（默认 true，设置页可关）
+    - **§S3 诊断框**：`src/renderer/src/components/DiagnosisDialog.vue`
+      （不用 ElMessageBox：扛不住多条 + 每条级别 + 每条修复按钮 + 修完刷新）；
+      **fatal 不给「还是启动试试」**，只给「重新诊断 / 关闭」；
+      `launch` 带 `diagnose:false` 参数实现「绕过按钮真的有效」
+    - **§S4 编辑页面板**：`GameEditPage` 的「启动诊断」面板，与自动诊断共用同一份数据源，
+      手动刷新；新游戏（未保存）不给诊断
+    - **§S5 真实修复**：`installRtp` **不走 core 的 `updateDependenciesTaskWithProgress`**
+      （它只更新已装依赖，RTP 从没装过时什么都不下却报成功），改走新增的
+      `installDependencies(folder, wanted, signal)`（按 manifest 只下指定依赖，
+      复用 `extractArchive` + `moduleTransaction` 事务回滚，**FORK-NOTES 零改动**）
+- **测试 356 个全绿 / 15 个文件**（M1 的 76 + M2 的 89 + R18 打码 7 + M2.5 的 108 + M3 的 76）
 - **M2.5 端到端实测（Windows 本机，`node scripts/probe-m25.cjs`）**：
   - 搜索：搜「傭兵」返回 **20 条真作品**（约 2.2s），第二次调用 828ms → 确实绕开了队列
   - 候选点选：关键词默认「傭兵の冒険」（目录名剥 `_CHN` 得来）→ 出 1 条 → 点选填 `RJ306254` →
@@ -71,13 +95,26 @@
   - `snapshot.games[0]` 的键只有 `gameEngine/gamePath/gameTitle/id` → **D18（GameRecord 零改动）实测验证**
 - **验证基线（Windows 本机实测）**：
   - `npm run typecheck` ✅ exit 0
-  - `npm test` ✅ 280 passed / 13 files
+  - `npm test` ✅ 356 passed / 15 files
   - `npm run build` ✅ exit 0
-  - `node scripts/probe-m25.cjs` ✅ 全链路通过（见上）
+  - `node scripts/probe-m3.cjs` ✅ S3/S4 全链路通过（见下）
+  - `node scripts/probe-m25.cjs` ✅ M2.5 全链路通过（见上）
+- **M3 端到端实测（本机 `node scripts/probe-m3.cjs`，真实样本 `傭兵の冒険_CHN`）**：
+  - `diagnoseGame` **3–4ms** 返回 3 条诊断（`encryptedArchive:fatal` / `moduleMissing:fatal` / `fontsPresent:info`）
+    → 确实是毫秒级、确实绕开了队列
+  - `launch` 返回 `{ blocked: true, diagnosisCount: 3 }`，**不抛英文错误**
+  - 诊断框 DOM 实测：`hasChineseTitle=true`（「这个游戏暂时无法启动」）
+    / `hasEnglishMkxpError=false` / `hasRatherTryButton=false`（fatal 不给绕过）
+  - 编辑页面板：`panelCount=1`、点诊断后 `alerts=3`、`htmlLen 9372→9966`（**没白屏**）、`consoleErrors=[]`
+  - 探针**抓到并已修**的一个排序缺陷：`moduleMissing` / `encryptedArchive` 都是 fatal，
+    按检测顺序前者排第一 → 诊断框第一个按钮是「安装引擎」，但用户装完**问题依旧**
+    （这游戏是被加密的）。已加 `CODE_WEIGHT` 按「越根本越靠前」排序
 - **仍未验证（必须在有桌面会话的机器上做）**：
   - **视觉观感**：暗色主题配色、封面卡片裁切比例、进度浮层动效需人眼验收
   - **M2.5 的新 UI 手感**：搜索候选列表的滚动与点击、字段编辑框的弹出位置、
     语言确认对话框的措辞（本机无画面，只能用 DOM 断言验证存在与文案）
+  - **M3 的 RTP 真实下载**：单测用假 tar 验到了「下载→解压→落到 `deps/RTP/RTP/<版本>`」，
+    但**真 244MB 包的耗时、进度条观感、取消是否及时**只能在 Mac 上用户量级验证（§9 R2）
   - **系统文件对话框的返回值**（M1 遗留，已加手输路径兜底）
   - **安装引擎 / 其他引擎类型**（需 mac）
 - **已知网络现实（本机）**：DLsite 与 `raw.githubusercontent.com` **都依赖系统代理**。
@@ -136,6 +173,7 @@ npm run build:mac    # 出 mac 包（Windows 上只能出 zip/dir，签名需 Ma
 │   │   ├── extract.ts      #   解压服务（系统 bsdtar + 安全校验）
 │   │   ├── dlsite.ts       #   M2：RJ 识别 + var contents 解析 + TTL 缓存（不 import electron）
 │   │   ├── library-meta.ts #   M2：DLsite 元数据旁挂存储（library-meta.json）
+│   │   ├── diagnose.ts    #   ★ M3：启动前诊断（五个检测器 + 汇总排序，不 import electron）
 │   │   └── ipc.ts          #   IPC 命令表 + 串行队列 + 取消 + 对话框桥 + OFF_QUEUE_METHODS
 │   ├── shared/            #   零依赖纯函数（主进程 / 渲染层 / vitest 三处共用）
 │   │   ├── bridge-error.ts#   ★ 跨 contextBridge 的 error.key 编解码（preload 与渲染层共享）
@@ -146,18 +184,20 @@ npm run build:mac    # 出 mac 包（Windows 上只能出 zip/dir，签名需 Ma
 │   ├── preload/index.ts    # contextBridge 白名单桥（window.tsumi）
 │   └── renderer/src/       # Vue3 前端
 │       ├── pages/          #   Library / GameEdit / Engines / Settings
-│       ├── components/     #   AddGameWizard / DynamicArgsForm / GameCard / VersionManagerDialog / ...
+│       ├── components/     #   AddGameWizard / DynamicArgsForm / GameCard / VersionManagerDialog / DiagnosisDialog / ...
 │       ├── stores/         #   Pinia: library / engines / settings / task / coreDialogs
 │       ├── api/client.ts   #   IPC 调用封装（全部类型定义，唯一类型来源）
 │       └── locales/        #   zh-CN.json（所有 UI 文案集中在此）
 ├── scripts/
 │   ├── dev.cjs             #   开发启动包装（文件入口 + 清环境变量 + NO_SANDBOX）
 │   ├── probe-m2.cjs        #   M2 端到端验收探针（+ probe-m2-inner.cjs）
-│   └── probe-m25.cjs       #   M2.5 端到端验收探针（+ probe-m25-inner.cjs）
+│   ├── probe-m25.cjs       #   M2.5 端到端验收探针（+ probe-m25-inner.cjs）
+│   └── probe-m3.cjs        #   M3 端到端验收探针（+ probe-m3-inner.cjs）
 └── test/
     ├── fixtures/           # 假游戏目录（MV/VX Ace/2000/Ren'Py）+ dlsite/RJ294126.html
     │                       #   + dlsite/search-mercenary.html（M2.5 真搜索页裁切）
-    └── *.test.ts           # vitest 单测（280 个，13 个文件，不依赖网络与 GUI）
+    │                       #   + encrypted-rgss3a/（M3：0x03 魔数 + GBK Game.ini，.gitattributes 锁住字节）
+    └── *.test.ts           # vitest 单测（356 个，15 个文件，不依赖网络与 GUI）
 ```
 
 ## 架构与数据流（30 秒版）
@@ -211,6 +251,13 @@ Vue 组件 → Pinia store → api/client → preload(window.tsumi.invoke)
 | D29 | 多语言分组允许**父目录推断为 ja**（极保守）：某游戏无任何语言标记、且它正好是另一个「已识别出非 ja 语言」游戏的祖先目录 | 用户真实布局是「日文原版在父目录、中文版在内层带 `_CHN`」，父目录本身无标记；不推断则这条最常见的样本永远成不了组。自己标了 `_EN` 时以显式为准，不被覆盖 |
 | D30 | 语言切换确认的「不再询问」做成**设置页开关**，不做对话框勾选框 | 勾选框一旦勾上就再也找不到入口重开；设置页随时能改回来 |
 | D31 | 语言偏好（§C）**绝不自动删除/隐藏**其他语言版 | 那是用户数据，§C.5 明令不代删；只做标记与提示 |
+| D32 | 诊断**只用本地文件特征**，不调 mkxp-z、不解析它的英文报错 | 报错文本不稳定且是英文（"No script file has been specified…"）；本地特征（归档魔数、目录结构、`Game.ini` 的 ASCII 结构行）是确定的 |
+| D33 | `.rgss3a`/`.rgss2a`/`.rgssad` 的魔数版本号**优先于** launcher 的 DLL 扫描推断（魔数缺失时才退回扩展名） | 魔数是归档自身的声明，比扫 `RGSS3xx.dll` 可靠（用户可能删了 dll、也可能放错位置）。实测 `傭兵の冒険` 的 `Game.rgss3a` 魔数 = 0x03 → VX Ace |
+| D34 | **加密发行不自动解包**，只检测 + 提示 + 引导（`fix` 只给 `openFolder`） | DRM 破解的法律风险；产品只负责告诉用户「去用 RGSS 解包工具」，不提供工具名、更不代劳 |
+| D35 | `fontSub` **不做自动修复**，只做「自带字体存在」的 info 提示 | 实测 `fontSub` 是字体**替换映射**（`"Arial>Open Sans"`），**不是**目录加载器；游戏自带 `Fonts/` 本就被 mkxp-z 自动加载。自动改会猜错反而添乱 |
+| D36 | `launch` 的返回类型扩成联合类型 `{message} \| {blocked, diagnoses}`，**有 fatal 诊断时返回结构化结果而不抛错** | 抛错会走 `translateError` 通用路径，而诊断框需要「多条 + 每条带 level/fix」的结构化数据；也躲开 contextBridge 跨边界丢属性的老坑 |
+| D37 | 「还是启动试试」只对**非 fatal**可见，且点它时 `launch` 带 `diagnose:false` 重走一次 | fatal 绕过只会让用户多撞一次英文报错（§9 R5）；而不传 `diagnose:false` 会被同一个诊断框再拦一次，绕过按钮等于摆设 |
+| D38 | `missingRtp` 是 **warning 不是 fatal**；补装 RTP **不走 core 的 `updateDependenciesTaskWithProgress`** | 缺 RTP 的游戏常常仍能跑（只缺素材），拦死它会把能玩的游戏变成不能玩；而那个 core API **只更新已安装的依赖**——RTP 从没装过时实测它一个字节都不下却报「完成」。改走自实现的 `installDependencies(folder, wanted, signal)`（按 manifest 只下指定依赖，**core 零改动**） |
 
 ## 已知坑
 
@@ -244,6 +291,11 @@ Vue 组件 → Pinia store → api/client → preload(window.tsumi.invoke)
 | **`.vue` 里 `watch(..., { immediate: true })` 会立刻调用 fill()** | 被调用的函数若引用了**后面才声明**的 ref，会撞 TDZ：`ReferenceError: Cannot access 'rjInput' before initialization`，**组件整块白屏**。实测在 `GameEditPage` 踩到。规矩：所有 ref/computed 声明必须在任何 `immediate: true` 的 watch 之前 |
 | **Vite 打包后 `out/main` 的 stdout 在 Windows 会丢** | Electron 是 GUI 子系统，`console.log` 常常什么都不打印（表现为「脚本像没跑」）。验收脚本必须**同时写结果文件**；而且 `%TEMP%` 在受限会话下整体 EPERM（见上一条），结果文件要写到**项目目录内** |
 | 跑 Electron 验收脚本必须带 `--no-sandbox` | 受限桌面会话下裸跑 `electron script.cjs` 直接 **exit 3 且零输出**。`scripts/dev.cjs` 与 `scripts/probe-m2.cjs` 都处理了这条；手动跑时记得加 `--no-sandbox` + `env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS` |
+| **`Game.ini` 是 GBK / Shift-JIS，不是 UTF-8**（M3 §2.5 实测） | 按 UTF-8 读 `Title=` 得到的是乱码（真实样本 `傭兵の冒険` 的 `Title` 是 GBK 字节 `d3b6 b1f8 …`）。`readGameIni()` **只按 `latin1` 读 `[Game]` 段的 ASCII 结构行**（`RTP=` / `Scripts=` / `Library=`），**绝不用 `Title=` 做任何判断或展示** |
+| **core 的 `updateDependenciesTaskWithProgress` 只更新「已安装」的依赖** | RTP 从没装过时它只打一句 `No dependency updates found.` 就返回，**一个字节都不下**，却让调用方以为成功了（用户点「一键补装」→ 进度条跑完 → RTP 仍然缺失，比不修更糟）。要用「按名字装指定依赖」得自己走 manifest，见 D38 与 `ipc.ts` 的 `installDependencies` |
+| **core 的 `installDependency` 参数错位（D6 的老 bug仍在）** | `installDependency(folder, depName, builds)` 内部调 `installOneDependency(depName, builds, depsRoot, opts)`（**4 个参数**）时只传了 3 个 → folder 被当成 depName、depName 被当成 builds、builds 被当成 depsRoot。**永远不要用它**，也不要「修一修 core」——那是 GPL fork，改动要最小化（FORK-NOTES） |
+| **解压依赖时的「拍平」不要盲目剥单层目录** | M3 单测抓到：只判断「解压结果是否为唯一单层目录」就剥掉，会把 `deps/RTP/RPGVXace` 里的版本目录也当成包裹层吞掉，导致诊断查 `deps/RTP/RTP/<版本>` **永远判缺失**。正确做法：**只剥与依赖名同名**的那一层（`RTP.zip` 内部顶层就叫 `RTP/`） |
+| **PATH 上的 `tar` 在 Windows 是 GNU tar，不是 bsdtar** | 单测里造压缩包时 `execFileSync('tar', ...)` 拿到的是 `/usr/bin/tar`（GNU 版），它把 `C:\...` 当成远程主机名报 `tar: Cannot connect to C: resolve failed`（exit 128）。用 **`C:\Windows\System32\tar.exe`**（bsdtar，也是 `src/main/extract.ts` 生产环境用的那个） |
 
 > **验收 `npm run dev` 的正确姿势**（本机无画面可看时）：启动后用 `BrowserWindow.getAllWindows()` +
 > `webContents.executeJavaScript('document.body.innerText')` 抓 DOM 文本，确认标题/路由/`typeof window.tsumi`。
@@ -269,8 +321,8 @@ Vue 组件 → Pinia store → api/client → preload(window.tsumi.invoke)
   - **标签（genre）明确不做** —— 调研实测接口不可用，不承诺（D19）
 - **M2.5（已完成）**：搜索 / 可编辑元数据 / 多语言偏好
   - 方案见 [`docs/M2.5-实施方案.md`](./docs/M2.5-实施方案.md)（D23–D31）
-- **M3（方案已冻结，待实施）**：故障自愈
-  - 方案与实测前提见 [`docs/M3-实施方案.md`](./docs/M3-实施方案.md)（D32–D35）
+- **M3（已完成）**：故障自愈
+  - 方案与实测前提见 [`docs/M3-实施方案.md`](./docs/M3-实施方案.md)（D32–D35；实施中新增 D36–D38）
   - 四项：①加密发行检测（`.rgss3a`/`.rgss2a`/`.rgssad` 魔数 → RGSS 版本）
     ②RTP 缺失检测（读 `Game.ini` 的 `RTP=`，检查 `deps/RTP/RTP/<版本>`）
     ③字体提示（**只提示不修**，理由见 D35）④一键修复
@@ -279,6 +331,8 @@ Vue 组件 → Pinia store → api/client → preload(window.tsumi.invoke)
   - 实测前提（已在 M3 文档 §2 记录，**别重复验证**）：
     `RGSSAD` + 第 8 字节 0x01/0x02/0x03 = XP/VX/VX Ace；RTP 包 244MB；
     `fontSub` 是字体替换映射不是目录加载器；**`Game.ini` 是 GBK 非 UTF-8，只按 latin1 读 ASCII 结构行**
+  - 端到端验收：`node scripts/probe-m3.cjs`（真实样本 傭兵の冒険_CHN）
+- **M2.6（待开工）**：海报墙与详情页重构 —— 见 [`docs/M2.6-实施方案.md`](./docs/M2.6-实施方案.md)
 - **M4**：存档管理（集中查看/备份/导出）+ 增强（Cheat 注入/变速）
 - **M5**：手柄、无边框全屏、像素缩放、dmg 公证分发
 

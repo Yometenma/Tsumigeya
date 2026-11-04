@@ -777,6 +777,9 @@ function diagnosisFixLabel(fix: DiagnosisFix): string {
           >
             {{ diagnosisFixLabel(item.fix) }}
           </el-button>
+          <span v-if="repairingKind === item.fix.kind" class="hint" style="margin-left: 8px">
+            {{ t('diagnose.repairing') }}
+          </span>
         </div>
       </el-alert>
     </section>
