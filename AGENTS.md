@@ -20,7 +20,9 @@
 
 ## 当前项目状态（每次收尾必须更新）
 
-- **阶段**：**M1 / M2 / M2.5 / M3 / M2.6 / M2.7 / M3.5 已完成**（v0.3.2 已发布）
+- **阶段**：**M1 / M2 / M2.5 / M3 / M2.6 / M2.7 / M3.5 已完成**（v0.3.2 已发布）；**M4.0（去掉上游 launcher）方案已冻结待实施**
+  - M4.0 = 自实现启动（4 个引擎），收益：不改用户游戏文件 / 摆脱 xenolauncher 数据目录 / 清掉补丁式代码
+  - 见 `docs/M4.0-实施方案.md`（D53–D56）
   - M3.5 = 「好用」地基：启动后进程追踪 + 关闭游戏 + 游玩记录（见 `docs/M3.5-实施方案.md`，D48–D52）
     ——**已实施完毕**（详见下方「M3.5 全套」）
   - M2.7 = 编辑页重构（见 `docs/M2.7-实施方案.md`）：保存 bug 修复 + 封面与标签合并 + 标题来源提示
@@ -42,100 +44,12 @@
   - **R18 封面打码**（用户 2026-11-04 拍板）：设置项 `showAdultCovers` 默认 false，
     判定依据是 DLsite 的 section（`maniax`/`books` = R18；实测同一 R18 作品在 `homepro` 返回 404），
     **只影响渲染、不影响抓取与存储**。实现在 `src/shared/age-rating.ts`（零依赖纯函数）
-  - **M2.5 全套**（三个提交 `ad35e95` / `401c531` / `b2a7cfe`）：
-    - **§A 按名字搜索**：`buildSearchUrl` / `isSearchResultPage` / `parseSearchResults` / `searchWorks`
-      （解析优先用真实页面的 `data-list_item_product_id` 结构化锚点，无锚点退回 href 宽松匹配；
-      噪音文案过滤 + 按 RJ 去重 + 缩略图过 D22 白名单）；IPC `dlsiteSearch`（绕队列）；
-      编辑页候选列表（**绝不自动选第一条**，实测搜「傭兵」首条不是目标作品）
-    - **§B 可编辑元数据**：`EDITABLE_FIELDS`（title/circle/coverUrl/registDate/price，**不含 rj**）、
-      `normalizeEditedFields`（去重 + 按白名单排序）、`mergeWork`（被编辑字段刷新不覆盖）、
-      `save` 三态（传非空→并集 / 传 `[]`→清空=强制覆盖 / 不传→沿用）；
-      编辑页每字段「编辑 / 已修改 / 重置此字段」+「强制覆盖全部」
-    - **§C 多语言偏好**：`src/shared/game-language.ts`（`stripLanguageSuffix` / `normalizeTitle`）、
-      `src/shared/language-group.ts`（`similarity` / **`isSuffixExtension`** / `applyParentFolderInference` /
-      `groupByLanguage`）、`src/shared/launch-language.ts`（`decideLaunchTarget`）；
-      设置项 `preferredLanguage`(zh) / `fallbackLanguage`(ja) / `languageSwitchPrompt`(true)；
-      IPC `languageGroups`（纯本地、绕队列）；卡片语言标签 +「也有 xx 版」；启动非偏好版时弹确认
-  - **M3 全套**（四个提交：S1+S2 / S3 / S4 / S5，最后 S6 收尾）：
-    - **§S1 诊断器**：`src/main/diagnose.ts`（纯逻辑，**不 import electron**）
-      · `parseArchiveMagic` 只读文件头 8 字节（`RGSSAD\0` + 0x01/0x02/0x03 → XP/VX/VX Ace）
-      · `detectEncryptedArchive`（fatal，有归档且**无** `Data/*.rvdata2|rvdata|rxdata` 才报）
-      · `detectMissingRtp`（**warning**，`deps/RTP/RTP/<版本>` 不存在）+ RTP 推断链
-        （`Game.ini` 的 `RTP=` → `Library=` 的 `RGSS<数字>` → `Scripts=` 扩展名 → 归档魔数 → 推不出就不报）
-      · `detectPathGone` / `detectMissingModule` / `detectMissingExecutable`（fatal）
-      · `detectFontsPresent`（**info 且无 fix**，D35）
-      · `readGameIni` **只按 latin1 读 `[Game]` 段的 ASCII 结构行**（§2.5：Game.ini 是 GBK，`Title=` 是乱码）
-      · `sortDiagnoses`：fatal→warning→info，同级内按 `CODE_WEIGHT`
-        （pathGone > encryptedArchive > moduleMissing > missingExecutable）
-    - **§S2 IPC**：`diagnoseGame`（**绕队列**）/ `repairGame`（**进队列**，可能下 244MB）；
-      `launch` 前自动诊断，有 fatal 返回 `{ blocked, diagnoses }` 而**不抛英文错误**；
-      设置项 `diagnoseBeforeLaunch`（默认 true，设置页可关）
-    - **§S3 诊断框**：`src/renderer/src/components/DiagnosisDialog.vue`
-      （不用 ElMessageBox：扛不住多条 + 每条级别 + 每条修复按钮 + 修完刷新）；
-      **fatal 不给「还是启动试试」**，只给「重新诊断 / 关闭」；
-      `launch` 带 `diagnose:false` 参数实现「绕过按钮真的有效」
-    - **§S4 编辑页面板**：`GameEditPage` 的「启动诊断」面板，与自动诊断共用同一份数据源，
-      手动刷新；新游戏（未保存）不给诊断
-    - **§S5 真实修复**：`installRtp` **不走 core 的 `updateDependenciesTaskWithProgress`**
-      （它只更新已装依赖，RTP 从没装过时什么都不下却报成功），改走新增的
-      `installDependencies(folder, wanted, signal)`（按 manifest 只下指定依赖，
-      复用 `extractArchive` + `moduleTransaction` 事务回滚，**FORK-NOTES 零改动**）
-  - **M2.6 全套**（一个提交，S1–S5 按方案 §8 顺序做完）：
-    - **§S1 数据层**：套上 `docs/M2.6-S1-参考补丁.patch`（上一会话已验证的成果）——
-      `cleanupDescription()` 剥 `og:description` 的站点广告尾巴（实测 RJ294126：260 字 → 122 字）、
-      `DlsiteWork`/`DlsiteSearchHit` 新增 `summary`/`author`/`salesCount`/`rating`、
-      三个解析器 `readHitAuthor`/`readHitSalesCount`/`readHitRating`。
-      **补丁不含测试，本次补齐 18 条**（cleanupDescription 七条边界 + summary 产出 + 三个解析器）
-    - **§S2 卡片重写**（`GameCard.vue`）：封面 4:3 保留（D39）、标题 2 行、简介 2 行、作品类型 + 语言标签、
-      右上角三点菜单（编辑 / 重新获取元数据 / 删除，**@click.stop**）；
-      **移除启动按钮**（D41）；空数据**整行不画**（不在卡片上显示「暂无」）。
-      点击卡片任意位置 → 进详情页。列表行（row 变体）同样只剩三点菜单
-    - **§S3 详情页**（新增 `GameDetailPage.vue` + 路由拆分）：
-      `/game/:id` = 详情页（**唯一启动入口**）、`/game/:id/edit` = 编辑页；
-      大封面 + 启动按钮 + 完整元数据 + 简介可展开（>288 字折叠，§11-②）；
-      标签/制作人员**明说「DLsite 不提供」**（D40）；「作品信息」表 9 个字段顺序固定，
-      拿不到的项显示「暂无」；R18 打码沿用；启动链路（M2.5-C 语言确认 + M3 诊断拦截 +
-      「还是启动试试」）从库页整体搬来
-    - **§S4 路由/返回调整**：库页 `edit` → `/game/:id/edit`；详情页编辑按钮 → 编辑页；
-      编辑页「返回」→ **详情页**（不是库页），新建保存后也回详情页
-    - **§S5 收尾**：i18n 键表（library/common/detail，含 25 个作品类型中文名）、卡片与详情页样式、
-      AGENTS.md 状态与决策、`probe-m26.cjs` 端到端探针
-    - **⚠️ 顺带修掉两个结构性缺陷**（都是本层新增字段暴露出来的）：
-      · `library-meta.ts` 的 `sanitize()` 是落盘的**字段白名单**，S1 新增的四个字段不写进去就被
-        **静默丢弃**（探针实测：`saveGameMeta` 回执的 keys 缺 `summary/author/salesCount/rating`，
-        表现为「解析到了但详情页全是暂无」）。已补上 + 8 条回归测试
-      · `mergeWork` 原来 `{...incoming}` 直接覆盖，而 `author`/`salesCount`/`rating`
-        **只有搜索结果页才有**（详情页重拉拿不到）→ 一次「重新获取」会把用户已存的作者/销量抹掉。
-        已改为「incoming 缺这三项时沿用旧值」（D42）
+  - **M2.5 / M3 / M2.6 / M2.7 / M3.5 的实现细节**：见各自 `docs/M*.md`（本文档只记状态与决策，不重复实现叙述）
 - **测试 507 个全绿 / 20 个文件**（M1 的 76 + M2 的 89 + R18 打码 7 + M2.5 的 108 + M3 的 76 +
   M2.6 的 67：S1 数据层 18 + 卡片降级纯函数 40 + 落盘白名单与 mergeWork 回归 8 + GameCard 信息 1 +
   **M3.5 的 68**：S1 游玩记录 25 + S2 exec 注入 28 + S3/S4 进程表与关闭 15）
-- **M3.5 全套**（一个提交，S1–S6 按方案 §8 顺序做完）：
-  - **§S1 游玩记录**：`src/main/play-stats.ts`（旁挂 `play-stats.json`，原子写 + `.bak`，D51）
-    · `record(gameId)` → `playCount+1` / `lastPlayedAt`；`finish(gameId, seconds)` → 累加 `totalSeconds`
-    · `sessionSeconds()`、`normalizePlayStat()`：时钟回拨 / NaN / 手改脏值全部夹回 0 或丢弃
-    · 文件整体损坏 → **抛错不覆盖**（用户数据）；单条脏值 → 归一化，不废掉整份统计
-  - **§S2 exec 注入**：`src/main/exec-inject.ts` + `core-host.ts` 的 `loadScript(folder, rel, {execInterceptor})`
-    · `createPatchedChildProcess()`：**只换 `exec`**，`spawn`/`execFile`/`spawnSync`/`fork` **同一个引用透传**（D49）
-    · 支持 `exec(cmd,cb)` / `exec(cmd,opts,cb)` / `exec(cmd)` 三种形态；**上游不传回调也照样能感知退出**
-      （另挂 `child.once('exit')` + `child.once('error')` 兜底 —— 这是方案里没写、实施中必须补的）
-    · `loadScriptWithInjection()`：`Module` 实例的 `require` 作用域劫持 + `_compile`，
-      **只影响这一个模块**；`require('child_process')` 与 `node:child_process` 两种写法都拦
-    · `extractExecPath()`：从命令串抠可执行路径（PID 复用复核用）；抠不出返回 null，**不猜**
-    · **无 hook 时仍走原来的 `createRequire` 路径**（R1：不改变既有行为）
-  - **§S3 进程表 + IPC**：`src/main/process-registry.ts`（**只在内存**，D50）
-    · `runningGames`（**绕队列**）/ `stopGame`（**进队列**，要等进程退出）
-    · `stopGame` 两段式 SIGTERM → 5s → SIGKILL（D52），返回 `{ok, action, messageKey}`
-    · `launch` 时带 `makeInterceptor(gameId, engine)` 调 `loadScript`：拿到 PID → 登记 → 记游玩 → 发 `gameStarted`
-    · 退出 → `registry.remove(gameId, pid)`（**带 pid 复核**，迟到的旧回调删不掉新记录）→ 累加时长 → 发 `gameExited`
-    · **同一个游戏已在跑 → 抛 `error.gameAlreadyRunning`**（双份进程会让 PID 记录打架）
-    · **PID 复用防护**：`ps -p` 复核「这个号现在跑的是不是当初那个程序」；明确不像 → 拒绝且**不发任何信号**
-  - **§S4 Snapshot + 事件**：`Snapshot.running`（只带 `gameId/pid/startedAt`，**不带 command/execPath**，最小暴露面）；
-    `CoreEvent` 扩 `gameStarted`/`gameExited`（三处同步：core-host / preload / client.ts）
-  - **§S5 UI**：详情页运行条（绿点 + 呼吸动效 +「正在运行（已 N 分钟）」）+「关闭游戏」按钮；
-    卡片右上角绿点（**不给关闭按钮**，D41 的精神）；1 秒 ticker 只在本页跑、卸载即清
-  - **§S6**：i18n（`library.runningSince/stopGame/stopGraceful/stopKilled` 等 + `error.gameNotRunning/gameAlreadyRunning`）、
-    样式、`scripts/probe-m35.cjs`、本文档、发版
+- **M3.5 实现**（`play-stats.ts` / `exec-inject.ts` / `process-registry.ts`）：细节见 `docs/M3.5-实施方案.md`
+  探针结论：真拿到 PID、真落盘 play-stats、真杀进程（`kill(pid,0)` 复核）—— 详见该文档
 - **M3.5 端到端实测（本机 `node scripts/probe-m35.cjs`）**：探针造一个**假 mkxpz 模块**，
   launcher.js 照上游真实形态写（`exec(cmd, cb)` 且**丢弃返回值**）—— 正是 M3.5 要修的那个形态：
   - `runningCount=1` / **`runningPid=21616`** / `hasRealPid=true` → **真的拿到 PID 了**（D48/D49 生效）
@@ -152,66 +66,8 @@
   - 探针自身踩到的三个坑（已写进方案 §8.2）：①验收 UI **必须走 Pinia store**（直接 invoke 只改主进程的表，
     页面读的是 store 的 `running` 投影，DOM 会一动不动）；②假「游戏」不能用 `process.execPath -e`（那是 Electron 的
     execPath，立刻退出），要用系统自带 `ping -n 120`（win）/ `sleep 120`；③`executeJavaScript` 里不能写顶层 `await`，要包 `(async () => {...})()`
-- **M2.5 端到端实测（Windows 本机，`node scripts/probe-m25.cjs`）**：
-  - 搜索：搜「傭兵」返回 **20 条真作品**（约 2.2s），第二次调用 828ms → 确实绕开了队列
-  - 候选点选：关键词默认「傭兵の冒険」（目录名剥 `_CHN` 得来）→ 出 1 条 → 点选填 `RJ306254` →
-    当场查询得到「傭兵の冒険」（**搜索→点选→查询闭环**）
-  - 搜不到时 `decodedKey` 正确解回 `error.dlsiteSearchEmpty`；**搜索不创建 library-meta.json**
-  - 可编辑元数据：点「编辑」→ 改标题 → 保存 → `edited=true`/`editedFields=["title"]`；
-    **再「重新获取」标题仍是用户改的**，circle 换成 DLsite 值；「强制覆盖全部」→ 标题回到 DLsite 值
-  - 多语言：真实布局（日文原版父目录 + 中文版内层）正确成组 ja+zh；库页出现「中文 / 日文」标签与
-    「也有 日文 版 / 也有 中文 版」；点日文版启动弹「要换成偏好的语言版吗？」（按钮「就启动这个 / 启动中文版」）；
-    选「就启动这个」→ 尊重用户选择
-  - 编辑页 `htmlLen ≈ 8900`、`consoleErrors = []` → 组件没白屏
-- **M2 端到端实测（`node scripts/probe-m2.cjs`）**：
-  - `dlsiteLookup` 走系统代理**真拿到数据**：`純愛おま○こ当番【アップデート版】` / `青春×フェティシズム` /
-    `2020/08/30`，**约 260ms**
-  - 封面 `<img>` 真的加载成功：`naturalWidth = 560, complete = true`
-    → **方案 §11 的 R3（防盗链）与 R4（R18 二次拦截）实测解除，不需要「主进程下载封面」的备选**
-  - `snapshot.games[0]` 的键只有 `gameEngine/gamePath/gameTitle/id` → **D18（GameRecord 零改动）实测验证**
-- **验证基线（Windows 本机实测）**：
-  - `npm run typecheck` ✅ exit 0
-  - `npm test` ✅ **507 passed / 20 files**
-  - `npm run build` ✅ exit 0
-  - `node scripts/probe-m3.cjs` ✅ S3/S4 全链路通过（见下）
-  - `node scripts/probe-m25.cjs` ✅ M2.5 全链路通过（见上）
-  - `node scripts/probe-m26.cjs` ✅ M2.6 S2/S3/S4 全链路通过（见下）
-  - `node scripts/probe-m35.cjs` ✅ M3.5 全链路通过（见上，含真 PID 与真杀进程）
-- **M3 端到端实测（本机 `node scripts/probe-m3.cjs`，真实样本 `傭兵の冒険_CHN`）**：
-  - `diagnoseGame` **3–4ms** 返回 3 条诊断（`encryptedArchive:fatal` / `moduleMissing:fatal` / `fontsPresent:info`）
-    → 确实是毫秒级、确实绕开了队列
-  - `launch` 返回 `{ blocked: true, diagnosisCount: 3 }`，**不抛英文错误**
-  - 诊断框 DOM 实测：`hasChineseTitle=true`（「这个游戏暂时无法启动」）
-    / `hasEnglishMkxpError=false` / `hasRatherTryButton=false`（fatal 不给绕过）
-  - 编辑页面板：`panelCount=1`、点诊断后 `alerts=3`、`htmlLen 9372→9966`（**没白屏**）、`consoleErrors=[]`
-  - 探针**抓到并已修**的一个排序缺陷：`moduleMissing` / `encryptedArchive` 都是 fatal，
-    按检测顺序前者排第一 → 诊断框第一个按钮是「安装引擎」，但用户装完**问题依旧**
-    （这游戏是被加密的）。已加 `CODE_WEIGHT` 按「越根本越靠前」排序
-- **M2.6 端到端实测（本机 `node scripts/probe-m26.cjs`，S2/S3/S4 全链路）**：
-  - **S2 卡片**：`cardCount=2` / `menuTriggers=2` / **`hasLaunchButton=false`（卡片与列表行都没有启动按钮）** /
-    `summaryCount=1`（有简介的那条画了 2 行简介）/ `tagTexts=["漫画"]`（作品类型 MNG → 「漫画」）/
-    `coverRatio=1.33`（**4:3 实测，D39 生效**）/ `htmlLen=5893`（不塌陷）
-  - **S2 空数据**：没元数据的那条卡片 `hasSummaryRow=false`、`hasNoSummary=false`、`hasNoTags=false`
-    → **卡片上不显示任何「暂无」**（§5.1「不在卡片上显示暂无标签」实测生效）
-  - **S2 三点菜单**：真点触发器 → `menuVisible=true`，三项「编辑 / 重新获取元数据 / 删除」全部 `disabled=false`；
-    点「编辑」→ `#/game/1/edit`（S4 判据通过）
-  - **S4 点卡片进详情**：点封面 → `hash=#/game/1`、`isDetailRoute=true`、`hasDetailLayout=true`
-    （**不是编辑页**，路由拆分生效）
-  - **S3 详情页**：`hasLaunchButton=true`（启动只在这里）/ `hasNoTags=true` / `hasNoCredits=true` /
-    `summaryShown=true`（简介真实渲染）/ `hasAuthor=true`（Tonda）/ `hasSales=true`（739）/
-    `hasRating=true`（4.5）/ `missingCount=0`（有值的字段没有误显示「暂无」）/ `coverRatio=1.33`
-  - **S3 无元数据的详情页**：`hasMetaMissing=true`（「尚未获取 DLsite 信息」）/ `hasNoSummary=true`（「暂无简介」）/
-    `missingValueCount=0`（整块换成提示，不铺 9 个「暂无」）/ `refreshDisabled=true`（没有 RJ 时刷新按钮禁用）
-  - **S3 启动真的接上了**：点「启动游戏」→ `hasDiagnosisDialog=true` + `hasChineseError=true`
-    （因为测试里的假路径不存在 → 走 M3 诊断拦截，**不是静默无反应**）
-  - **S4 编辑页返回**：编辑页点「返回」→ `hash=#/game/1`（详情页），`isLibrary=false`
-  - **S2 列表行**：切到列表视图 → `rowCount=2` / `hasLaunchButton=false` / `menuTriggers=2`
-  - `consoleErrors=[]` → 全程没有组件白屏
-  - 探针**抓到并已修**的两个缺陷（详见上面「M2.6 全套」的 ⚠️ 段）：
-    `sanitize()` 字段白名单漏掉四个新字段（`saveGameMeta` 的 keys 里根本没有它们）、
-    `mergeWork` 会冲掉搜索页专有字段
-  - 探针自身的一个坑：`el-dropdown-item` 的 `aria-disabled` 是**字符串** `"false"`，
-    `!!getAttribute()` 会误判成 true（第一版报「三项全 disabled」，其实是误报）。改成 `=== 'true'`
+- **端到端探针**：`probe-m2` / `probe-m25` / `probe-m3` / `probe-m26` / `probe-m27` / `probe-m35`，
+  各自的实测结论见对应 `docs/M*.md` 的「端到端实测」一节（**别重复验证**）
 - **仍未验证（必须在有桌面会话的机器上做）**：
   - **视觉观感**：暗色主题配色、封面卡片裁切比例、进度浮层动效需人眼验收
   - **M2.5 的新 UI 手感**：搜索候选列表的滚动与点击、字段编辑框的弹出位置、
@@ -273,6 +129,7 @@ npm run build:mac    # 出 mac 包（Windows 上只能出 zip/dir，签名需 Ma
 │   ├── M2.7-实施方案.md    ← ★ M2.7 交接稿（编辑页重构 + 保存 bug）
 │   ├── M3.5-实施方案.md    ← ★ M3.5 交接稿（进程管理：追踪/关闭/游玩记录）——**已实施完毕**
 │   ├── 调研-去掉上游launcher的可行性.md ← 上游 launcher 能否自实现（**已调研，待 M3.5 后实施**）
+│   ├── M4.0-实施方案.md    ← ★ M4.0 交接稿（去掉上游 launcher，自实现启动）——**待实施**
 │   └── 技术选型-三方案对比.md
 ├── _xeno_probe/            # 上游 Xenolauncher clone，只读参考，gitignore
 ├── resources/core/
@@ -489,14 +346,13 @@ Vue 组件 → Pinia store → api/client → preload(window.tsumi.invoke)
   - 端到端验收：`node scripts/probe-m35.cjs`（假引擎 + 真进程 + 真 kill）
   - **未验证**：mac 上真引擎（nwjs/mkxpz/easyrpg/renpy）的 exec 命令串形态、NW.js 的子进程树
     （若一个 PID 杀不干净，后续要 `pkill -P <pid>` 整棵树，方案 §9 R4）
+- **M4.0（方案已冻结，待实施）**：去掉上游 launcher —— 见 [`docs/M4.0-实施方案.md`](./docs/M4.0-实施方案.md)（D53–D56）
+  - 新增 `src/main/launchers/`（4 个引擎 + 集中的 binary 路径），用 `spawn(binary, args[])` 替掉 `launcher.launch()`
+  - 收益：**不改用户游戏文件**（上游 nwjs 会改 `js/main.js`）、摆脱 xenolauncher 数据目录、清补丁式代码
+  - **关键待定**：未知引擎（第三方模块）是否回退上游 launcher（决定 `exec-inject.ts` 能否彻底删）
+  - 见 `docs/M4.0-实施方案.md` §10
 - **M4**：存档管理（集中查看/备份/导出）+ 增强（Cheat 注入/变速）
 - **M5**：手柄、无边框全屏、像素缩放、dmg 公证分发
-- **排期待定：去掉上游 launcher（自实现启动）** —— 见 [`docs/调研-去掉上游launcher的可行性.md`](./docs/调研-去掉上游launcher的可行性.md)
-  - 实测：上游每模块 launcher.js 里 99% 是附加功能（作弊注入/改 main.js/DOM 保护），真正启动只有 3–5 行
-  - 引擎二进制来自第三方官方源（`dl.nwjs.io` / `ci.easyrpg.org` / `github.com`），上游只是薄封装
-  - **用户决定：只砍 launcher，保留 module.js**（引擎目录约定是老用户兼容点，砍了要重装引擎）
-  - **实施时机：M3.5 完成后再排**（用户明确）
-  - 顺带修掉的：现在上游会**改写游戏 `js/main.js`**，自实现后默认不改
 
 ## 上游参考
 
