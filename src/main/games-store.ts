@@ -78,6 +78,15 @@ export interface Snapshot {
    * 定时刷新」和探针；两者用同一份内存数据，不会不一致。
    */
   running: RunningGameLite[]
+  /**
+   * M4.0 S6.5（D58）：数据目录切换的一次性说明。
+   *
+   * 有值 = 这次启动该给用户看这句中文说明（**info，不是错误**）；
+   * null = 不用提示（不是 mac / 已经提示过 / 目录里已经有数据）。
+   *
+   * 措辞与判定都在 `data-dir-notice.ts`；这里只负责下发。
+   */
+  dataDirNotice: string | null
 }
 
 /** snapshot 里的运行态条目（比主进程内部的 RunningGame 少几个字段：UI 用不到命令串）。 */
@@ -218,6 +227,8 @@ export interface GameStore {
     meta?: Record<string, unknown>
     /** M3.5：进程表的只读投影（不传 = 没有正在运行的游戏）。 */
     running?: RunningGameLite[]
+    /** M4.0 S6.5（D58）：数据目录切换的一次性说明（不传 = 不提示）。 */
+    dataDirNotice?: string | null
   }): Snapshot
 }
 
@@ -319,6 +330,8 @@ export function createGameStore(dataDir: string): GameStore {
     dataDirWarning?: Snapshot['dataDirWarning']
     meta?: Record<string, unknown>
     running?: RunningGameLite[]
+    /** M4.0 S6.5（D58）：由 ipc 层算好传进来（它知道平台与 dataDir）。 */
+    dataDirNotice?: string | null
   } = {}): Snapshot {
     return {
       games: Object.entries(loadGames()).map(([id, value]) => ({ ...value, id })),
@@ -330,7 +343,8 @@ export function createGameStore(dataDir: string): GameStore {
       engineUpdates: extra.engineUpdates ?? null,
       meta: extra.meta ?? {},
       // M3.5：默认空数组（不传 = 没有正在运行的游戏）。**绝不**在这里落盘任何东西（D50）。
-      running: extra.running ?? []
+      running: extra.running ?? [],
+      dataDirNotice: extra.dataDirNotice ?? null
     }
   }
 

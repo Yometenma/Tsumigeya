@@ -12,16 +12,18 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { execFile } from 'node:child_process'
+import { execFile, type ChildProcess } from 'node:child_process'
 import { promisify } from 'node:util'
 import { component, failure, type GameDraft } from './games-store'
 import { extractArchive } from './extract'
 import { detectRjFromPath } from './dlsite'
 import { mergeWork, normalizeEditedFields } from './library-meta'
 import { diagnoseGame, type Diagnosis, type DiagnosisFix } from './diagnose'
+import { DATA_DIR_NOTICE_KEY, DATA_DIR_NOTICE_TEXT, shouldShowDataDirNotice } from './data-dir-notice'
 import { createPlayStatsStore, sessionSeconds, type PlayStatsStore } from './play-stats'
 import {
   createProcessRegistry,
+  describeLaunch,
   isProcessAlive,
   looksLikeSameExecutable,
   processCommand,
@@ -30,7 +32,9 @@ import {
   type ProcessRegistry,
   type RunningGame
 } from './process-registry'
-import type { ExecExitInfo, ExecSpawnInfo } from './exec-inject'
+import { buildLaunchPlan } from './launchers'
+import { describeSpawnFailure, spawnGame } from './launchers/spawn'
+import type { LaunchPlan } from './launchers/types'
 import { groupByLanguage } from '../shared/language-group'
 import type { CoreHost, CoreEvent, ProgressBridge, RemoteManifest } from './core-host'
 
@@ -107,6 +111,16 @@ export interface ProcessDeps {
   terminateGraceMs?: number
   /** SIGKILL 之后等多久确认退出（不阻塞用户太久）。 */
   killGraceMs?: number
+  /**
+   * 启动过程的注入点（M4.0 S5）。
+   *
+   * 为什么需要：单测要验「进程表 / 游玩记录 / 事件」的接线，而那些是**决策**；
+   * 真起子进程会让单测变慢且依赖平台（本机 Windows、CI Linux、目标是 mac）。
+   * 默认用真的 `spawnGame`，测试传假的替身即可。
+   *
+   * `stopGame` 只碰进程表，与这里无关。
+   */
+  spawn?: typeof spawnGame
 }
 
 export interface EngineUpdate {
@@ -228,72 +242,8 @@ export function createDispatcher(deps: IpcDeps): Dispatcher {
   /** D52：温和优先（游戏可能要存档），卡死也要能救。 */
   const terminateGraceMs = deps.process?.terminateGraceMs ?? 5_000
   const killGraceMs = deps.process?.killGraceMs ?? 2_000
-
-  /**
-   * 一次启动用的 exec 拦截器。
-   *
-   * 为什么每次启动都造一个新的：`gameId` / `engine` 是**这次启动**的上下文，
-   * 而拦截器要带着它们去登记进程表。共用一个的话就得靠「最后一次启动是谁」猜，
-   * 同时启动两个游戏时会登记错。
-   *
-   * 这里的两个回调**绝不抛错、绝不阻塞**（exec 在 launcher 的同步路径上调用它们，
-   * 抛错会让上游以为启动失败）。所有内部的失败都只写 console.warn。
-   */
-  function makeInterceptor(gameId: string, engine: string): {
-    onSpawn(info: ExecSpawnInfo): void
-    onExit(info: ExecExitInfo): void
-  } {
-    let startedAt = ''
-    return {
-      onSpawn(info) {
-        // 没有 PID 就别登记：登记一个 pid=null 的记录，会诱导 stopGame 去 kill(0)（= 杀掉整个进程组）
-        if (!info.pid) {
-          console.warn(`[tsumigeya] 启动 ${gameId} 时没能拿到 PID（上游可能改了启动方式）`)
-          return
-        }
-        startedAt = new Date().toISOString()
-        registry.add({
-          gameId,
-          pid: info.pid,
-          engine,
-          command: info.command,
-          execPath: info.execPath,
-          startedAt
-        })
-        try {
-          playStats.record(gameId, startedAt)
-        } catch (error) {
-          // 记录失败不能让游戏启动失败（那是统计，不是功能）
-          console.warn(`[tsumigeya] 写游玩记录失败（已忽略）：${(error as Error).message}`)
-        }
-        host.emit({
-          event: 'gameStarted',
-          gameId,
-          pid: info.pid,
-          engine,
-          startedAt
-        })
-      },
-      onExit(info) {
-        // pid 复核：老记录退出的迟到回调不能删掉**新一次启动**的记录
-        const removed = registry.remove(gameId, info.pid ?? undefined)
-        if (!removed) return
-        try {
-          playStats.finish(gameId, sessionSeconds(startedAt, Date.now()))
-        } catch (error) {
-          console.warn(`[tsumigeya] 退出时写游玩记录失败（已忽略）：${(error as Error).message}`)
-        }
-        host.emit({
-          event: 'gameExited',
-          gameId,
-          pid: info.pid ?? undefined,
-          engine,
-          exitCode: info.code,
-          signal: info.signal
-        })
-      }
-    }
-  }
+  /** 默认用真的 spawn；单测注入替身（见 ProcessDeps.spawn 的注释）。 */
+  const spawnImpl = deps.process?.spawn ?? spawnGame
 
   /** M3.5：正在运行的游戏（只读内存快照，绕队列）。 */
   function runningGames(): RunningGame[] {
@@ -363,8 +313,42 @@ export function createDispatcher(deps: IpcDeps): Dispatcher {
         gameId: item.gameId,
         pid: item.pid,
         startedAt: item.startedAt
-      }))
+      })),
+      // M4.0 S6.5（D58）：数据目录切换的一次性说明。
+      // 判定在 data-dir-notice.ts（纯函数、有单测）；这里只负责「这次该不该给」。
+      dataDirNotice: takeDataDirNotice()
     })
+  }
+
+  /**
+   * 取「数据目录已切换」这条一次性说明（**取到即落标记**，保证只提示一次）。
+   *
+   * 为什么在 snapshot 里做：snapshot 是渲染层每次进主界面都会读的东西，
+   * 是「首次运行」最自然的触发点，不需要额外加一条 IPC 命令。
+   *
+   * ⚠️ snapshot 是**绕队列**的只读命令（OFF_QUEUE_METHODS）。这里写了一次 settings
+   * 标记——看起来违反「只读」准入标准。判断如下：
+   *   · 写的是自己的 `global-settings.json`，且只在「首启且目录为空」时发生一次
+   *   · 它读的 modules/games.json 也都是自己的
+   *   · 反面代价（把这条提示挪进队列）是：首启时 snapshot 排在 60 秒更新检查后面，
+   *     用户要在空白界面干等——那正是 M1 的老问题
+   *   所以保留在 snapshot 里，但**标记写失败不抛**（提示丢了也不能让 snapshot 崩）。
+   */
+  function takeDataDirNotice(): string | null {
+    let settings: Record<string, unknown> = {}
+    try {
+      settings = host.store.settings() as unknown as Record<string, unknown>
+    } catch {
+      return null
+    }
+    const should = shouldShowDataDirNotice({ dataDir: host.dataDir, settings, platform: process.platform })
+    if (!should) return null
+    try {
+      host.store.saveSettings({ [DATA_DIR_NOTICE_KEY]: true })
+    } catch (error) {
+      console.warn(`[tsumigeya] 写数据目录提示标记失败（已忽略，下次还会提示）：${(error as Error).message}`)
+    }
+    return DATA_DIR_NOTICE_TEXT
   }
 
   function readMetaSafely(): Record<string, unknown> {
@@ -568,7 +552,7 @@ export function createDispatcher(deps: IpcDeps): Dispatcher {
   // ===== launch 自实现（D5，§3.8）=====
 
   /**
-   * 启动（D5 自实现 + M3 §4.2 启动前诊断）。
+   * 启动（M4.0 D53–D55：自实现，不再加载上游 launcher.js）。
    *
    * **返回值契约扩展**（M3 引入，三处同步：ipc.ts / api/client.ts）：
    * - 正常：`{ message }`
@@ -576,6 +560,17 @@ export function createDispatcher(deps: IpcDeps): Dispatcher {
    *
    * 为什么用返回值而不是抛错：抛错会走 translateError 的通用路径，
    * 而诊断需要「多条 + 每条带 fix」的结构化数据，错误对象扛不住（也会被 contextBridge 截断）。
+   *
+   * 这一次启动**必须依次做完**下面这些事（换实现时不能弄丢任何一步）：
+   *   ① 启动前诊断（M3 D36/D37）—— 有 fatal 就返回 blocked
+   *   ② 路径存在性 + reconcileAndPersistGameArgs（manifest 缺省值合并落盘）
+   *   ③ 重复启动检查（M3.5）
+   *   ④ reconcileVersionArgs（版本号 → deps 真实目录名）
+   *   ⑤ macOS 去 quarantine 属性
+   *   ⑥ buildLaunchPlan（未知引擎 → error.engineNotLaunchable，D57）
+   *   ⑦ plan.prepare（mkxpz 写 mkxp.json；失败 = 不启动）
+   *   ⑧ spawn（detached + stdio:ignore + unref，D55）
+   *   ⑨ 进程登记 + play-stats + gameStarted 事件（M3.5）
    */
   async function launch(params: Record<string, unknown>): Promise<LaunchResult> {
     const id = String(params.id ?? '')
@@ -583,7 +578,7 @@ export function createDispatcher(deps: IpcDeps): Dispatcher {
     const game = all[id]
     if (!game) throw failure('error.gameNotFound', 'Game not found', { id })
 
-    // ---- M3 §4.2：启动前自动诊断 ----
+    // ---- ① M3 §4.2：启动前自动诊断 ----
     // 两个开关决定跑不跑：
     //   · settings.diagnoseBeforeLaunch=false → 用户彻底关掉了这个功能
     //   · params.diagnose=false → 渲染层说「诊断框已经看过了」（用户点了「还是启动试试」）
@@ -602,79 +597,136 @@ export function createDispatcher(deps: IpcDeps): Dispatcher {
       }
     }
 
+    // ---- ② 路径 + manifest 缺省值 ----
     if (!fs.existsSync(game.gamePath)) {
       throw failure('error.gamePath', 'The game path no longer exists.', { path: game.gamePath })
     }
     // 按 manifest.gameArgs 合并缺省值并落盘（上游同名 API）
     host.core.reconcileAndPersistGameArgs(id)
 
-    // M3.5：同一个游戏已经在跑就别再启一次（双份进程既浪费又会让 PID 记录打架）
+    // ---- ③ 重复启动检查（M3.5）----
+    // 同一个游戏已经在跑就别再启一次（双份进程既浪费又会让 PID 记录打架）
     if (registry.has(id)) {
       throw failure('error.gameAlreadyRunning', 'Game is already running.', { id })
     }
 
-    const launcher = host.loadScript(game.gameEngine, 'launcher.js', {
-      // D48/D49：只劫持这一条脚本的 `require('child_process')`，只换 exec
-      execInterceptor: makeInterceptor(id, game.gameEngine)
-    })
-    if (typeof launcher.launch !== 'function') {
-      throw failure('error.launchExport', 'Module does not export launch()', { module: game.gameEngine })
-    }
     const folder = fs.statSync(game.gamePath).isFile() ? path.dirname(game.gamePath) : game.gamePath
 
-    // 修正 multi-version 参数（典型是 nwjs 的 version）：
-    // 上游 launcher 在用户没选版本时兜底 "0.106.1"，但真实目录是 "v0.106.1"，
-    // 拼出的路径不存在 → exec 静默失败 → 用户点启动「没反应」。
-    // 见 core-host.ts 的 reconcileVersionArgs 注释。
+    // ---- ④ 修正 multi-version 参数（典型是 nwjs 的 version）----
+    // 用户没选版本时记录里可能是 "0.106.1"，而 deps 下的真实目录叫 "v0.106.1"，
+    // 直接拼会得到不存在的路径 → 点启动「没反应」。见 core-host.ts 的注释。
     const gameArgs = host.reconcileVersionArgs(game.gameEngine, game.gameArgs ?? {})
 
-    // nwjs 特殊处理：上游 launcher 用 `exec` 启动，失败只在控制台 console.error，
-    // **不会把错误抛回来** → 用户看到的是「点启动一点反应都没有」。
-    // 这里在调用前先确认目标可执行文件存在，不存在就给出可读的失败原因。
-    if (game.gameEngine === 'nwjs') {
-      const version = String(gameArgs.version ?? '')
-      const arch = process.arch === 'x64' ? 'x64' : process.arch
-      const nwjsBinary = path.join(
-        host.modulesDir(),
-        'nwjs',
-        'deps',
-        'version',
-        version,
-        `nwjs-sdk-${version}-osx-${arch}`,
-        'nwjs.app',
-        'Contents',
-        'MacOS',
-        'nwjs'
-      )
-      if (!fs.existsSync(nwjsBinary)) {
-        throw failure(
-          'error.launchFailed',
-          `找不到 NW.js 运行时：${nwjsBinary}\n` +
-            `请在「引擎管理」里为 NW.js 安装一个版本（当前记录的版本是 "${version || '未设置'}"）。`,
-          { path: nwjsBinary, version }
-        )
-      }
-    }
-
-    // macOS 才补 quarantine 属性；失败只记日志、不阻塞（§3.8 第 6 步）
+    // ---- ⑤ macOS quarantine（失败只记日志、不阻塞）----
     if (process.platform === 'darwin') {
       void runFile('/usr/bin/xattr', ['-dr', 'com.apple.quarantine', folder]).catch(() => undefined)
     }
 
-    try {
-      await (launcher.launch as (...args: unknown[]) => Promise<void>)(
-        game.gamePath,
-        folder,
-        gameArgs,
-        game.gameTitle ?? '',
-        host.dialogs
+    // ---- ⑥ 造启动方案（未知引擎 = 明确报错，D57：不回退）----
+    const plan = buildLaunchPlan(game.gameEngine, {
+      folder,
+      gamePath: game.gamePath,
+      gameArgs,
+      gameTitle: game.gameTitle ?? '',
+      dataDir: host.dataDir,
+      platform: process.platform,
+      // ⚠️ os.arch()：nwjs 的 deps 目录名按它拼（arm64 / x64）
+      arch: os.arch()
+    })
+    if (!plan) {
+      // 绝不能静默失败：装了 ruffle / wine / macos 的用户点启动必须知道「为什么不行」
+      throw failure(
+        'error.engineNotLaunchable',
+        `引擎 "${game.gameEngine}" 暂不支持启动。\n` +
+          '本版本支持：NW.js（MV/MZ）、mkxp-z（XP/VX/VX Ace）、EasyRPG（2000/2003）、Ren\'Py。',
+        { engine: game.gameEngine }
       )
+    }
+
+    // ---- ⑦ 前置动作（mkxpz 写 mkxp.json 等）；失败 = 不启动 ----
+    try {
+      await plan.prepare?.()
     } catch (error) {
       abortCheck(host.currentContext()?.signal)
-      throw failure('error.launchFailed', (error as Error).message, { reason: (error as Error).message })
+      throw failure(
+        // 单独一个键（不是通用 launchFailed）：前置失败是「配置没写进去」，
+        // 用户能做的事与「引擎根本没起来」不同，文案要能区分。
+        'error.launchPrepareFailed',
+        `启动前置失败（${plan.engine}）：${(error as Error).message}`,
+        { engine: plan.engine, reason: (error as Error).message }
+      )
     }
+
+    // ---- ⑧ spawn ----
+    const outcome = spawnImpl(plan, folder)
+    if (!outcome.ok) {
+      abortCheck(host.currentContext()?.signal)
+      throw failure('error.launchFailed', describeSpawnFailure(outcome.code, plan.binary), {
+        path: plan.binary,
+        engine: plan.engine,
+        reason: outcome.message
+      })
+    }
+
+    // ---- ⑨ 进程登记 + 游玩记录 + gameStarted（M3.5）----
+    // 注意顺序：**先登记再返回**。用户紧接着点「关闭游戏」时表里必须有记录，
+    // 否则会得到一句「游戏没在运行」（M3.5 §3 的同一条要求）。
+    registerRunning(id, game.gameEngine, plan, outcome.child, outcome.pid)
+
     return { message: '已发送启动请求' }
   }
+
+  /**
+   * 登记一次启动（进程表 + 游玩记录 + gameStarted 事件）。
+   *
+   * 与 M3.5 的拦截器版本语义一致，只是**不再等别人回调**：
+   * 我们自己 spawn，PID 是现成的。
+   *
+   * 这里的任何失败都只写 console.warn —— 统计与事件不能影响「游戏已经起来了」这个事实。
+   */
+  function registerRunning(
+    gameId: string,
+    engine: string,
+    plan: LaunchPlan,
+    child: ChildProcess,
+    pid: number
+  ): void {
+    const startedAt = new Date().toISOString()
+    registry.add({
+      gameId,
+      pid,
+      engine,
+      command: describeLaunch(plan.binary, plan.args),
+      execPath: plan.binary,
+      startedAt
+    })
+    try {
+      playStats.record(gameId, startedAt)
+    } catch (error) {
+      // 记录失败不能让游戏启动失败（那是统计，不是功能）
+      console.warn(`[tsumigeya] 写游玩记录失败（已忽略）：${(error as Error).message}`)
+    }
+    host.emit({ event: 'gameStarted', gameId, pid, engine, startedAt })
+
+    /** 退出时注销 + 累计时长 + gameExited。只记一次（exit 与 error 都可能来）。 */
+    let settled = false
+    const finish = (code: number | null, signal: NodeJS.Signals | null): void => {
+      if (settled) return
+      settled = true
+      // pid 复核：老记录退出的迟到回调不能删掉**新一次启动**的记录
+      const removed = registry.remove(gameId, pid)
+      if (!removed) return
+      try {
+        playStats.finish(gameId, sessionSeconds(startedAt, Date.now()))
+      } catch (error) {
+        console.warn(`[tsumigeya] 退出时写游玩记录失败（已忽略）：${(error as Error).message}`)
+      }
+      host.emit({ event: 'gameExited', gameId, pid, engine, exitCode: code, signal })
+    }
+    child.once('exit', (code, signal) => finish(code ?? null, signal ?? null))
+    child.once('error', () => finish(null, null))
+  }
+
 
   /**
    * 只安装模块里**指定的若干依赖**（M3 的「一键补装 RTP」用它）。

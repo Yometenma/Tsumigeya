@@ -1,40 +1,37 @@
-// M3.5 S3/S4 单测：进程追踪 / 关闭 / 游玩记录在 IPC 层的行为。
+// M3.5 S3/S4 + M4.0 S5 单测：进程追踪 / 关闭 / 游玩记录在 IPC 层的行为。
 //
-// 用假 host（tmpdir）+ 假的进程实现（不真起子进程、不真 kill），全程离线、毫秒级。
-// 这里要钉死的是**决策**而不是系统调用：
+// ⚠️ M4.0 之后**不再造假 launcher.js**：启动路径换成了 buildLaunchPlan + spawn，
+// 上游 launcher 那条链已删除。这里改为注入一个**假的 spawn 实现**，
+// 于是单测仍然「不真起子进程、不真 kill、全程离线毫秒级」。
+//
+// 要钉死的仍然是**决策**而不是系统调用：
 //   · 启动成功后进程表里有记录、游玩记录落盘、发 gameStarted 事件
 //   · 退出后记录被清、时长累加、发 gameExited 事件
 //   · 重复启动同一个游戏被拒（否则 PID 记录会打架）
 //   · stopGame 两段式：能温和退出就不 kill；叫不退才 kill（D52）
 //   · PID 复用：明确不像 → 拒绝并清脏记录
 //   · 诊断拦下时**不**登记进程、**不**记游玩次数（被拦下的不算「启动成功」）
+//   · M4.0 新增：未知引擎**不启动**且报 error.engineNotLaunchable（D57）
+//   · M4.0 新增：prepare 失败 → 不 spawn、不登记
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { EventEmitter } from 'node:events'
+import type { ChildProcess } from 'node:child_process'
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import { createCoreHost, resolveCorePath, type CoreEvent } from '../src/main/core-host'
 import { createDispatcher, type ProcessDeps } from '../src/main/ipc'
 import { createPlayStatsStore } from '../src/main/play-stats'
 import { createProcessRegistry, type ProcessRegistry } from '../src/main/process-registry'
+import type { SpawnOutcome } from '../src/main/launchers/spawn'
+import type { LaunchPlan } from '../src/main/launchers/types'
 
 let dataDir: string
 let host: ReturnType<typeof createCoreHost>
 let events: CoreEvent[]
 
-/** 上游 launcher 的形态：调 exec、丢弃返回值。这里用 node 自身 echo 当「游戏」。 */
-const LAUNCHER = `
-const { exec } = require('child_process')
-exports.launch = function () {
-  exec('node -e "setTimeout(()=>{},60000)"', () => {})
-}
-`
-/** 立刻退出的「游戏」：用来测退出回调与时长累加。 */
-const LAUNCHER_INSTANT_EXIT = `
-const { exec } = require('child_process')
-exports.launch = function () { exec('node -e ""', () => {}) }
-`
-
-function installFakeModule(folder: string, template: string): void {
+/** 引擎模块的 manifest（autodetect 让诊断把「缺引擎」判成已装）。 */
+function installFakeModule(folder: string): void {
   const dir = path.join(dataDir, 'modules', folder)
   fs.mkdirSync(dir, { recursive: true })
   fs.writeFileSync(
@@ -42,25 +39,30 @@ function installFakeModule(folder: string, template: string): void {
     JSON.stringify({
       name: folder,
       version: '1.0.0',
-      // autodetect 让诊断把「缺引擎」判成已装（我们这里只关心进程管理）
       autodetect: { extensions: ['exe'] }
     })
   )
-  fs.writeFileSync(path.join(dir, 'launcher.js'), template)
 }
 
-function makeGame(id: string, kind: 'long' | 'instant' = 'long'): void {
+/**
+ * 造一个可玩「假游戏」的最小目录。
+ *
+ * ⚠️ M4.0 起**不需要**给引擎造二进制文件：`spawn` 被替身接管，
+ * 不会有真的 stat / 执行。这也是为什么这些测试能在 Windows 上跑（目标是 mac）。
+ */
+function makeGame(id: string, engine: 'mkxpz' | 'easyrpg' | 'ruffle' = 'mkxpz'): void {
   const dir = path.join(dataDir, `game-${id}`)
   fs.mkdirSync(path.join(dir, 'www'), { recursive: true })
   fs.writeFileSync(path.join(dir, 'Game.exe'), 'MZ')
-  fs.writeFileSync(path.join(dir, 'nw.dll'), '')
   fs.writeFileSync(path.join(dir, 'www', 'package.json'), '{}')
-  installFakeModule(kind === 'long' ? 'mkxpz' : 'easyrpg', kind === 'long' ? LAUNCHER : LAUNCHER_INSTANT_EXIT)
+  // mkxpz 的 prepare 会写 mkxp.json 到数据目录（Game.ini 决定 RTP）
+  if (engine === 'mkxpz') fs.writeFileSync(path.join(dir, 'Game.ini'), '[Game]\r\nRTP=RPGVXace\r\n')
+  installFakeModule(engine)
   host.store.saveGame({
     game: {
       gameTitle: `游戏 ${id}`,
       gamePath: dir,
-      gameEngine: kind === 'long' ? 'mkxpz' : 'easyrpg',
+      gameEngine: engine,
       gameArgs: {}
     }
   })
@@ -71,6 +73,38 @@ interface FakeProcess extends ProcessDeps {
   alive: Map<number, boolean>
   signals: Array<{ pid: number; name: NodeJS.Signals }>
   commands: Map<number, string>
+  /** 最近一次交给 spawn 的 plan（断言「给了什么参数」用）。 */
+  plans: LaunchPlan[]
+}
+
+/**
+ * 造一个假的 `spawnGame`。
+ *
+ * 它返回一个**真的 EventEmitter** 当 ChildProcess（够 `once('exit'/'error')` 用），
+ * 而 PID 由测试的 `nextPid` 递增给出 —— 于是整套进程表逻辑（登记/注销/PID 复核）
+ * 都能被真实地走一遍，但一个真进程都不起。
+ */
+function fakeSpawn(options: { exitImmediately?: boolean } = {}) {
+  const plans: LaunchPlan[] = []
+  const children: Array<EventEmitter & { pid?: number }> = []
+  let nextPid = 1000
+  const api = {
+    plans,
+    children,
+    spawn(plan: LaunchPlan): SpawnOutcome {
+      plans.push(plan)
+      const child = new EventEmitter() as ChildProcess
+      const pid = (nextPid += 1)
+      ;(child as unknown as { pid: number }).pid = pid
+      children.push(child as EventEmitter & { pid?: number })
+      if (options.exitImmediately) {
+        // 立刻退出：模拟「游戏一启动就崩/秒退」
+        setTimeout(() => child.emit('exit', 0, null), 0)
+      }
+      return { ok: true, child, pid }
+    }
+  }
+  return api
 }
 
 function fakeProcess(options: { exitOnTerm?: boolean; commandNames?: Record<number, string> } = {}): FakeProcess {
@@ -82,6 +116,7 @@ function fakeProcess(options: { exitOnTerm?: boolean; commandNames?: Record<numb
     alive,
     signals,
     commands,
+    plans: [],
     registry: createProcessRegistry(),
     isAlive: (pid) => alive.get(pid) ?? false,
     waitExit: async (pid) => !(alive.get(pid) ?? false),
@@ -116,8 +151,8 @@ afterEach(() => {
   fs.rmSync(dataDir, { recursive: true, force: true })
 })
 
-/** 等一段时间，让 exec 的回调 / 事件跑到。 */
-function wait(ms = 400): Promise<void> {
+/** 等一段时间，让退出事件等异步回调跑到。 */
+function wait(ms = 200): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
@@ -133,9 +168,9 @@ describe('S4：Snapshot.running（运行态的只读投影）', () => {
   test('启动后 snapshot 里出现该游戏（gameId / pid / startedAt）', async () => {
     makeGame('1')
     const fake = fakeProcess()
-    const dispatcher = createDispatcher({ host, process: fake })
+    const spawned = fakeSpawn()
+    const dispatcher = createDispatcher({ host, process: { ...fake, spawn: spawned.spawn } })
     await dispatcher.dispatch('launch', { id: '1', diagnose: false }, new AbortController().signal)
-    await wait()
 
     const snap = dispatcher.snapshot() as { running: Array<Record<string, unknown>> }
     expect(snap.running).toHaveLength(1)
@@ -150,9 +185,9 @@ describe('S4：Snapshot.running（运行态的只读投影）', () => {
   test('snapshot 的 running 与 runningGames 命令是同一份数据', async () => {
     makeGame('1')
     const fake = fakeProcess()
-    const dispatcher = createDispatcher({ host, process: fake })
+    const spawned = fakeSpawn()
+    const dispatcher = createDispatcher({ host, process: { ...fake, spawn: spawned.spawn } })
     await dispatcher.dispatch('launch', { id: '1', diagnose: false }, new AbortController().signal)
-    await wait()
     const fromCommand = (await dispatcher.dispatch(
       'runningGames',
       {},
@@ -167,10 +202,10 @@ describe('S3：launch 接上进程表 + 游玩记录', () => {
   test('启动成功 → 进程表有登记 + gameStarted 事件 + play-stats.json 落盘', async () => {
     makeGame('1')
     const fake = fakeProcess()
-    const dispatcher = createDispatcher({ host, process: fake })
+    const spawned = fakeSpawn()
+    const dispatcher = createDispatcher({ host, process: { ...fake, spawn: spawned.spawn } })
     const result = await dispatcher.dispatch('launch', { id: '1', diagnose: false }, new AbortController().signal)
     expect('message' in (result as object)).toBe(true)
-    await wait()
 
     expect(dispatcher.runningGames()).toHaveLength(1)
     const started = events.filter((event) => event.event === 'gameStarted')
@@ -188,12 +223,26 @@ describe('S3：launch 接上进程表 + 游玩记录', () => {
     expect(stats['1'].lastPlayedAt).toBeTruthy()
   })
 
-  test('进程退出 → 记录被清 + gameExited 事件 + 时长累加', async () => {
-    makeGame('1', 'instant')
+  test('★ 进程表里的 execPath 是我们 spawn 的那个 binary（PID 复用复核要用它）', async () => {
+    makeGame('1')
     const fake = fakeProcess()
-    const dispatcher = createDispatcher({ host, process: fake })
+    const spawned = fakeSpawn()
+    const dispatcher = createDispatcher({ host, process: { ...fake, spawn: spawned.spawn } })
     await dispatcher.dispatch('launch', { id: '1', diagnose: false }, new AbortController().signal)
-    await wait(800)
+
+    const entry = dispatcher.runningGames()[0] as unknown as { execPath: string; command: string }
+    // mkxpz 的 binary 是我们自己拼出来的路径（不是从命令串里解析的）
+    expect(entry.execPath).toContain('Z-Universal')
+    expect(entry.command).toContain(entry.execPath)
+  })
+
+  test('进程退出 → 记录被清 + gameExited 事件 + 时长累加', async () => {
+    makeGame('1')
+    const fake = fakeProcess()
+    const spawned = fakeSpawn({ exitImmediately: true })
+    const dispatcher = createDispatcher({ host, process: { ...fake, spawn: spawned.spawn } })
+    await dispatcher.dispatch('launch', { id: '1', diagnose: false }, new AbortController().signal)
+    await wait()
 
     expect(dispatcher.runningGames()).toHaveLength(0)
     const exited = events.filter((event) => event.event === 'gameExited')
@@ -210,9 +259,9 @@ describe('S3：launch 接上进程表 + 游玩记录', () => {
   test('同一个游戏重复启动被拒（否则 PID 记录会打架）', async () => {
     makeGame('1')
     const fake = fakeProcess()
-    const dispatcher = createDispatcher({ host, process: fake })
+    const spawned = fakeSpawn()
+    const dispatcher = createDispatcher({ host, process: { ...fake, spawn: spawned.spawn } })
     await dispatcher.dispatch('launch', { id: '1', diagnose: false }, new AbortController().signal)
-    await wait()
 
     await expect(
       dispatcher.dispatch('launch', { id: '1', diagnose: false }, new AbortController().signal)
@@ -221,6 +270,8 @@ describe('S3：launch 接上进程表 + 游玩记录', () => {
     expect(dispatcher.runningGames()).toHaveLength(1)
     // 游玩次数没有被第二次（失败的）启动污染
     expect(createPlayStatsStore(dataDir).load()['1'].playCount).toBe(1)
+    // 也只 spawn 了一次（没起来第二个进程）
+    expect(spawned.plans).toHaveLength(1)
   })
 
   test('被 fatal 诊断拦下时**不**登记进程、**不**记游玩次数（被拦下的不算启动）', async () => {
@@ -228,8 +279,8 @@ describe('S3：launch 接上进程表 + 游玩记录', () => {
     fs.mkdirSync(dir, { recursive: true })
     fs.writeFileSync(path.join(dir, 'Game.exe'), 'MZ')
     fs.writeFileSync(path.join(dir, 'Game.rgss3a'), Buffer.from([0x52, 0x47, 0x53, 0x53, 0x41, 0x44, 0x00, 0x03]))
-    fs.writeFileSync(path.join(dir, 'Game.ini'), '[Game]\nRTP=RPGVXAce\r\n')
-    installFakeModule('mkxpz', LAUNCHER)
+    fs.writeFileSync(path.join(dir, 'Game.ini'), '[Game]\r\nRTP=RPGVXAce\r\n')
+    installFakeModule('mkxpz')
     host.store.saveGame({
       game: { gameTitle: '加密游戏', gamePath: dir, gameEngine: 'mkxpz', gameArgs: {} }
     })
@@ -237,7 +288,8 @@ describe('S3：launch 接上进程表 + 游玩记录', () => {
     host.store.saveSettings({ diagnoseBeforeLaunch: true })
 
     const fake = fakeProcess()
-    const dispatcher = createDispatcher({ host, process: fake })
+    const spawned = fakeSpawn()
+    const dispatcher = createDispatcher({ host, process: { ...fake, spawn: spawned.spawn } })
     const result = (await dispatcher.dispatch('launch', { id: '1' }, new AbortController().signal)) as {
       blocked?: boolean
     }
@@ -245,6 +297,47 @@ describe('S3：launch 接上进程表 + 游玩记录', () => {
     expect(dispatcher.runningGames()).toHaveLength(0)
     expect(fs.existsSync(path.join(dataDir, 'play-stats.json'))).toBe(false)
     expect(events.filter((event) => event.event === 'gameStarted')).toHaveLength(0)
+    // 关键：被拦下时**根本没 spawn**
+    expect(spawned.plans).toHaveLength(0)
+  })
+})
+
+describe('M4.0 S5：未知引擎不回退（D57）', () => {
+  test('已装了 ruffle 的用户点启动 → 报 error.engineNotLaunchable，且不 spawn', async () => {
+    makeGame('1', 'ruffle')
+    const fake = fakeProcess()
+    const spawned = fakeSpawn()
+    const dispatcher = createDispatcher({ host, process: { ...fake, spawn: spawned.spawn } })
+
+    await expect(
+      dispatcher.dispatch('launch', { id: '1', diagnose: false }, new AbortController().signal)
+    ).rejects.toMatchObject({ translationKey: 'error.engineNotLaunchable' })
+
+    // 绝不回退到别的引擎，也绝不登记
+    expect(spawned.plans).toHaveLength(0)
+    expect(dispatcher.runningGames()).toHaveLength(0)
+    // 也不记游玩次数（没启动成功）
+    expect(fs.existsSync(path.join(dataDir, 'play-stats.json'))).toBe(false)
+  })
+})
+
+describe('M4.0 S5：prepare 失败 → 不启动', () => {
+  test('mkxp.json 写不进（Game 目录被占成文件）→ 报 launchPrepareFailed，且不 spawn', async () => {
+    makeGame('1')
+    // 把 mkxpz 的配置目录位置用一个**文件**占住 → mkdirSync 必失败
+    const configDir = path.join(dataDir, 'modules', 'mkxpz', 'deps', 'mkxpz', 'Z-Universal.app')
+    fs.mkdirSync(configDir, { recursive: true })
+    fs.writeFileSync(path.join(configDir, 'Contents'), 'blocker')
+
+    const fake = fakeProcess()
+    const spawned = fakeSpawn()
+    const dispatcher = createDispatcher({ host, process: { ...fake, spawn: spawned.spawn } })
+
+    await expect(
+      dispatcher.dispatch('launch', { id: '1', diagnose: false }, new AbortController().signal)
+    ).rejects.toMatchObject({ translationKey: 'error.launchPrepareFailed' })
+    expect(spawned.plans).toHaveLength(0)
+    expect(dispatcher.runningGames()).toHaveLength(0)
   })
 })
 
@@ -260,9 +353,9 @@ describe('S3：stopGame（SIGTERM → 5s → SIGKILL，D52）', () => {
   test('温和退出：只发 SIGTERM，返回 terminated', async () => {
     makeGame('1')
     const fake = fakeProcess({ exitOnTerm: true })
-    const dispatcher = createDispatcher({ host, process: fake })
+    const spawned = fakeSpawn()
+    const dispatcher = createDispatcher({ host, process: { ...fake, spawn: spawned.spawn } })
     await dispatcher.dispatch('launch', { id: '1', diagnose: false }, new AbortController().signal)
-    await wait()
     const entry = dispatcher.runningGames()[0]
     fake.alive.set(entry.pid, true)
 
@@ -280,9 +373,9 @@ describe('S3：stopGame（SIGTERM → 5s → SIGKILL，D52）', () => {
   test('叫不退：SIGTERM 之后补 SIGKILL，返回 killed', async () => {
     makeGame('1')
     const fake = fakeProcess({ exitOnTerm: false })
-    const dispatcher = createDispatcher({ host, process: fake })
+    const spawned = fakeSpawn()
+    const dispatcher = createDispatcher({ host, process: { ...fake, spawn: spawned.spawn } })
     await dispatcher.dispatch('launch', { id: '1', diagnose: false }, new AbortController().signal)
-    await wait()
     const entry = dispatcher.runningGames()[0]
     fake.alive.set(entry.pid, true)
 
@@ -298,9 +391,9 @@ describe('S3：stopGame（SIGTERM → 5s → SIGKILL，D52）', () => {
   test('进程其实早没了（退出回调没到）→ 清脏记录并报未运行', async () => {
     makeGame('1')
     const fake = fakeProcess()
-    const dispatcher = createDispatcher({ host, process: fake })
+    const spawned = fakeSpawn()
+    const dispatcher = createDispatcher({ host, process: { ...fake, spawn: spawned.spawn } })
     await dispatcher.dispatch('launch', { id: '1', diagnose: false }, new AbortController().signal)
-    await wait()
     const entry = dispatcher.runningGames()[0]
     fake.alive.set(entry.pid, false) // 假装它死了但回调没到
 
@@ -314,12 +407,12 @@ describe('S3：stopGame（SIGTERM → 5s → SIGKILL，D52）', () => {
   test('PID 复用防护：读到的可执行文件明显不是同一个 → 拒绝并清记录', async () => {
     makeGame('1')
     const fake = fakeProcess()
-    const dispatcher = createDispatcher({ host, process: fake })
+    const spawned = fakeSpawn()
+    const dispatcher = createDispatcher({ host, process: { ...fake, spawn: spawned.spawn } })
     await dispatcher.dispatch('launch', { id: '1', diagnose: false }, new AbortController().signal)
-    await wait()
     const entry = dispatcher.runningGames()[0]
     fake.alive.set(entry.pid, true)
-    // 那个号现在跑的是别的东西（execPath 记录的是 nwjs）
+    // 那个号现在跑的是别的东西（记录里是 Z-Universal）
     fake.commands.set(entry.pid, 'finder')
 
     await expect(dispatcher.dispatch('stopGame', { gameId: '1' }, new AbortController().signal)).rejects.toMatchObject({

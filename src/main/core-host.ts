@@ -8,13 +8,12 @@ import os from 'node:os'
 import path from 'node:path'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { randomUUID } from 'node:crypto'
-import { Module, createRequire } from 'node:module'
+import { createRequire } from 'node:module'
 import { pathToFileURL } from 'node:url'
 import { createGameStore, component, failure, type GameStore } from './games-store'
 import { extractArchive } from './extract'
 import { createDlsiteService, type DlsiteService } from './dlsite'
 import { createLibraryMetaStore, type LibraryMetaStore } from './library-meta'
-import { createPatchedChildProcess, isChildProcessRequest, type ExecInterceptor } from './exec-inject'
 
 // ===== 类型 =====
 
@@ -157,7 +156,7 @@ export interface CoreHost {
   modulesDir(): string
   modulePath(folder: string): string
   scriptPath(root: string, relative: string): string
-  loadScript(folder: string, relative: string, hooks?: LoadScriptHooks): Record<string, unknown>
+  loadScript(folder: string, relative: string): Record<string, unknown>
   /** 修正 multi-version 参数，使其与 deps 下真实安装目录一致（见函数注释）。 */
   reconcileVersionArgs(folder: string, gameArgs: Record<string, unknown>): Record<string, unknown>
   progress(): ProgressBridge
@@ -193,8 +192,19 @@ export interface DataDirOptions {
 }
 
 /**
- * 数据目录解析（§3.1）：
- * `TSUMIGEYA_DATA_DIR`（最高）> macOS 与上游共享目录（D3）> Windows `userData`（D4）。
+ * 数据目录解析（§3.1 / D58）：
+ * `TSUMIGEYA_DATA_DIR`（最高）> macOS 自有目录 > Windows `userData`（D4）。
+ *
+ * macOS 上用 `~/Library/Application Support/Tsumigeya`。
+ *
+ * ⚠️ D58 的历史：早期（D3）这里是 `Xenolauncher`——那是为了与上游启动器共享
+ * 引擎模块目录，因为上游的 `launcher.js` 硬编码了那个路径。
+ * M4.0 之后我们不再加载 `launcher.js`（启动走 `src/main/launchers/`），
+ * 那条约束消失，于是换成自己的名字。
+ *
+ * **不做迁移**（用户 2026-11-04 拍板）：不探测旧目录、不 rename、不复制。
+ * 从旧版本升级上来的用户会发现引擎与游戏库是空的，需要重新安装 / 重新添加。
+ * 这是有意的取舍——详 `docs/M4.0-实施方案.md` §5。首启会给一次中文说明（见 ipc 的 `dataDirNotice`）。
  */
 export function resolveDataDir(options: DataDirOptions = {}): string {
   const env = options.env ?? process.env
@@ -203,7 +213,7 @@ export function resolveDataDir(options: DataDirOptions = {}): string {
   const platform = options.platform ?? process.platform
   const home = options.homedir ?? os.homedir()
   if (platform === 'darwin') {
-    return path.join(home, 'Library', 'Application Support', 'Xenolauncher')
+    return path.join(home, 'Library', 'Application Support', 'Tsumigeya')
   }
   if (options.userData) return path.resolve(options.userData)
   return path.join(home, 'AppData', 'Roaming', 'tsumigeya')
@@ -334,47 +344,6 @@ export function loadCoreFactory(corePath: string): (services: Record<string, unk
   ) => void
   run(mod, mod.exports, nodeRequire, corePath, path.dirname(corePath))
   return mod.exports as (services: Record<string, unknown>) => CoreApi
-}
-
-// ===== loadScript 的 exec 注入（M3.5 S2，D48/D49）=====
-
-export interface LoadScriptHooks {
-  /** 只对这一条脚本劫持 `require('child_process')` 的 exec（见 exec-inject.ts）。 */
-  execInterceptor?: ExecInterceptor
-}
-
-/**
- * 手工编译一个模块，并在它的 `require` 作用域里只替换 `child_process`。
- *
- * 为什么不用全局 `Module._load` 劫持：那会影响**整个进程**（core、ipc、别的库），
- * 一旦有 bug 是全局性的。实测方案 §3.2 的「作用域劫持」只影响这一个模块，
- * 别的代码 `require('child_process')` 拿到的仍是原版。
- *
- * 为什么手工编译而不是 `createRequire`：
- *   `createRequire` 返回的 require 是共享的、不可改写的；只有 `Module` 实例才允许
- *   我们覆盖 `m.require`。代价是绕过 require 缓存，但 `loadScript` 本来就在清缓存
- *   （它每次启动都要拿到最新模块代码）。**无 hook 时仍走原来的 createRequire 路径**（R1）。
- */
-export function loadScriptWithInjection(file: string, interceptor: ExecInterceptor): Record<string, unknown> {
-  /** Node 的 `Module` 类型声明不含这些内部成员（运行时都有）。集中在这里断言一次。 */
-  type InternalModule = Module & {
-    filename: string | null
-    paths: string[]
-    require: NodeRequire
-    _compile(source: string, filename: string): void
-  }
-  type InternalModuleCtor = typeof Module & { _nodeModulePaths(from: string): string[] }
-
-  const instance = new Module(file) as InternalModule
-  instance.filename = file
-  instance.paths = (Module as InternalModuleCtor)._nodeModulePaths(path.dirname(file))
-  const originalRequire = instance.require.bind(instance)
-  const patched = createPatchedChildProcess(interceptor)
-
-  instance.require = ((id: string) => (isChildProcessRequest(id) ? patched : originalRequire(id))) as NodeRequire
-
-  instance._compile(fs.readFileSync(file, 'utf8'), file)
-  return instance.exports as Record<string, unknown>
 }
 
 // ===== detectFolder 的候选扫描（纯函数，可单测）=====
@@ -702,8 +671,17 @@ export function createCoreHost(options: CoreHostOptions): CoreHost {
     return next
   }
 
-  /** 清 require 缓存后加载模块脚本（launcher.js / version-script）。 */
-  function loadScript(folder: string, relative: string, hooks?: LoadScriptHooks): Record<string, unknown> {
+  /**
+   * 清 require 缓存后加载模块脚本。
+   *
+   * M4.0 之后**只用于 version-script**（nwjs 的可用版本清单）。
+   * `launcher.js` 不再被加载——启动改走 launchers/ 的 buildLaunchPlan + spawn（D53）。
+   *
+   * 因此这里也**没有** `execInterceptor` 这类 hook 了：那套作用域劫持是给
+   * 「上游 launcher 用 exec 起游戏、我们想拿到 PID」准备的，而我们现在自己 spawn，
+   * PID 是现成的（D55）。
+   */
+  function loadScript(folder: string, relative: string): Record<string, unknown> {
     const root = modulePath(folder)
     if (!fs.existsSync(root)) {
       throw failure('error.moduleMissing', `Module "${folder}" is not installed. Install it in Game Engines first.`, {
@@ -715,8 +693,6 @@ export function createCoreHost(options: CoreHostOptions): CoreHost {
     for (const key of Object.keys(cache)) {
       if (key.startsWith(root + path.sep)) delete cache[key]
     }
-    // 有 exec 拦截器时走手工编译（为了只对这个模块劫持 child_process，D48/D49）。
-    if (hooks?.execInterceptor) return loadScriptWithInjection(file, hooks.execInterceptor)
     return createRequire(pathToFileURL(file))(file) as Record<string, unknown>
   }
 

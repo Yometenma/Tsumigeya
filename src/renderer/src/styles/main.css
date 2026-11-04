@@ -492,6 +492,18 @@ a {
   margin-top: auto;
 }
 
+/* M4.0 D57：不支持启动的引擎——压暗但**不隐藏**。
+   为什么是「压暗 + 文字说明」而不是「干脆不显示」：
+   上游模块仓库里还挂着这些模块，用户可能已经装了；藏起来会让用户以为「软件坏了，
+   我明明装了引擎却看不见」。压暗 + 一行明确说明，才知道「装是能装，但用不了」。 */
+.engine-card-unavailable {
+  opacity: 0.6;
+}
+
+.engine-card-warn {
+  color: var(--tsmg-warn, #e6a23c);
+}
+
 .hint {
   font-size: 12px;
   color: var(--tsmg-text-dim);

@@ -20,9 +20,11 @@
 
 ## 当前项目状态（每次收尾必须更新）
 
-- **阶段**：**M1 / M2 / M2.5 / M3 / M2.6 / M2.7 / M3.5 已完成**（v0.3.2 已发布）；**M4.0（去掉上游 launcher）方案已冻结待实施**
-  - M4.0 = 自实现启动（4 个引擎），收益：不改用户游戏文件 / 摆脱 xenolauncher 数据目录 / 清掉补丁式代码
-  - 见 `docs/M4.0-实施方案.md`（D53–D56）
+- **阶段**：**M1 / M2 / M2.5 / M3 / M2.6 / M2.7 / M3.5 / M4.0 已完成**（v0.3.2 已发布，M4.0 待发版）
+  - **M4.0 = 去掉上游 launcher，自实现启动**（见 `docs/M4.0-实施方案.md`，D53–D58）——**已实施完毕**
+    - 收益：**不再修改用户游戏文件**（上游 nwjs 会改写 `js/main.js`）/ 数据目录切到 `Tsumigeya` / 清掉补丁式代码
+    - 启动改走 `src/main/launchers/`（buildLaunchPlan + spawn），`launcher.js` 与 `exec-inject.ts` 全部删除
+    - **S1–S7 全部完成**，详见下方「M4.0 全套」
   - M3.5 = 「好用」地基：启动后进程追踪 + 关闭游戏 + 游玩记录（见 `docs/M3.5-实施方案.md`，D48–D52）
     ——**已实施完毕**（详见下方「M3.5 全套」）
   - M2.7 = 编辑页重构（见 `docs/M2.7-实施方案.md`）：保存 bug 修复 + 封面与标签合并 + 标题来源提示
@@ -45,9 +47,12 @@
     判定依据是 DLsite 的 section（`maniax`/`books` = R18；实测同一 R18 作品在 `homepro` 返回 404），
     **只影响渲染、不影响抓取与存储**。实现在 `src/shared/age-rating.ts`（零依赖纯函数）
   - **M2.5 / M3 / M2.6 / M2.7 / M3.5 的实现细节**：见各自 `docs/M*.md`（本文档只记状态与决策，不重复实现叙述）
-- **测试 507 个全绿 / 20 个文件**（M1 的 76 + M2 的 89 + R18 打码 7 + M2.5 的 108 + M3 的 76 +
-  M2.6 的 67：S1 数据层 18 + 卡片降级纯函数 40 + 落盘白名单与 mergeWork 回归 8 + GameCard 信息 1 +
-  **M3.5 的 68**：S1 游玩记录 25 + S2 exec 注入 28 + S3/S4 进程表与关闭 15）
+- **测试 634 个全绿 / 27 个文件**（M1 的 76 + M2 的 89 + R18 打码 7 + M2.5 的 108 + M3 的 76 +
+  M2.6 的 67 + **M3.5 的 68** + **M4.0 的 127**：
+  S1 路径 21 + S2 三引擎 31 + S2 脱钩 13 + S3 mkxpz 45 + S4 分发 14 + S5 真 spawn 5 +
+  S6.5 数据目录 18 + S7 名单一致性 3。
+  ⚠️ M3.5 的 28 条 exec 注入测试随 `exec-inject.ts` 一起删除（-28），故 507 + 127 − 28 = 606
+  + 其余新增 = 634）
 - **M3.5 实现**（`play-stats.ts` / `exec-inject.ts` / `process-registry.ts`）：细节见 `docs/M3.5-实施方案.md`
   探针结论：真拿到 PID、真落盘 play-stats、真杀进程（`kill(pid,0)` 复核）—— 详见该文档
 - **M3.5 端到端实测（本机 `node scripts/probe-m35.cjs`）**：探针造一个**假 mkxpz 模块**，
@@ -66,6 +71,40 @@
   - 探针自身踩到的三个坑（已写进方案 §8.2）：①验收 UI **必须走 Pinia store**（直接 invoke 只改主进程的表，
     页面读的是 store 的 `running` 投影，DOM 会一动不动）；②假「游戏」不能用 `process.execPath -e`（那是 Electron 的
     execPath，立刻退出），要用系统自带 `ping -n 120`（win）/ `sleep 120`；③`executeJavaScript` 里不能写顶层 `await`，要包 `(async () => {...})()`
+- **M4.0 全套**（去掉上游 launcher，自实现启动）：细节见 `docs/M4.0-实施方案.md`
+  - **S1 `binary-paths.ts`**：四个引擎的可执行文件路径（照抄上游实测拼法，**D56 唯一来源**）。
+    nwjs 的 `<arch>` 用 `os.arch()`（不是 `process.arch`）；renpy 扫目录用 `localeCompare(numeric:true)`
+    ——纯字符串排序会把 `renpy-10.0.0-sdk` 排在 `renpy-8.3.4-sdk` 后面（拿到旧版）。
+    **21 条测试**（含 4 引擎 × 2 架构、中文/空格路径、renpy 两种布局）
+  - **S2 `nwjs.ts` / `easyrpg.ts` / `renpy.ts`**：**31 条测试**。
+    nwjs 上游 542 行 → 我们 ~20 行（作弊注入 / 改写 `js/main.js` / chromium-args 篡改**一律不做**，
+    有测试断言「跑完 plan 后游戏目录逐字节不变」）
+  - **S2 脱钩测试**（`launchers-decoupling.test.ts`，13 条）：**剥掉注释后**扫代码——
+    `launchers/` 里不许有别人的目录名 / 不许 import `child_process`（除 `spawn.ts`）/
+    不许 `exec`；并断言 `spawn.ts` 的三件套齐全（D55）
+  - **S3 `mkxpz.ts`**：**45 条测试**。写 `Contents/Game/mkxp.json`（**方案 §3.3 的 `dirname×3` 是错的**，
+    实测是 `dirname×2` + `Game`）；RTP 推断**复用 M3** 的 `decideWantedRtp`；
+    表单字符串 → 真类型（`"true"`→布尔、整数串→数字、`~/`→绝对路径）
+  - **S4 `index.ts`**：`buildLaunchPlan` 分发（**14 条**）。未知引擎返回 `null`，**绝不回退**
+  - **S5 `spawn.ts` + ipc 接线**：`launch()` 九步全部保留（①诊断 ②manifest合并 ③重复启动 ④reconcileVersionArgs
+    ⑤quarantine ⑥buildLaunchPlan ⑦prepare ⑧spawn ⑨登记+记录+事件）。**5 条真进程测试**（系统 ping/sleep）
+  - **S6 删 `exec-inject.ts`** + `core-host` 清 hook；`loadScript()` 现在**只服务 `version-script`**
+  - **S6.5 数据目录 → `Tsumigeya`**（D58，**不迁移**）+ `data-dir-notice.ts` 一次性中文说明（**18 条**）
+  - **S7** i18n（`error.engineNotLaunchable` / `error.launchPrepareFailed`）+ 引擎页标灰（`notLaunchableBadge`）
+    + 名单一致性测试（**3 条**，直接读 `.vue` 源码比对主进程的 `LAUNCHABLE_ENGINES`）
+  - **端到端实测（本机 `node scripts/probe-m40.cjs`）**：
+    - `launchProbe.ok=false` + **`找不到引擎的可执行文件：…Z-Universal` + 「请到引擎管理检查」**
+      → 本机没有 mac 二进制，但**错误路径与中文文案是对的**（不是英文 `spawn ENOENT`）
+    - `mkxpJsonExists=true` / `mkxpGameFolderCorrect=true` / `mkxpRgssVersion=3` /
+      **`mkxpRtpInOurDataDir=true`** / `mkxpJsonHasNoLegacyPath=true` → prepare 真的写了配置，且路径全在我们的数据目录
+    - **`ruffleRejected=true`** + `ruffleErrorMentionsEngine=true` + `ruffleErrorListsSupported=true`
+      + `ruffleDidNotRegister=true` → D57 的失败行为如约（明确报错 + 列出 4 个支持的引擎 + 不登记进程）
+    - **`dataPathIsOurs=true`**（= `TSUMIGEYA_DATA_DIR`）
+    - **`enginePage.hasNotLaunchableBadge=true`** / `warnHintCount=1` /
+      `warnHintText="该引擎本版本不支持启动（装了也用不了）…"` → 引擎页真的标了
+    - `libraryPage.cardCount=2` / `bodyHasTitle=true` / `consoleErrors=[]` → 没白屏
+    - `verificationLevel="error-path only (windows)"` → **如实记录**本机验到的层次
+      （真进程链路在 `test/launchers-spawn-real.test.ts` 里用系统 ping/sleep 验过）
 - **端到端探针**：`probe-m2` / `probe-m25` / `probe-m3` / `probe-m26` / `probe-m27` / `probe-m35`，
   各自的实测结论见对应 `docs/M*.md` 的「端到端实测」一节（**别重复验证**）
 - **仍未验证（必须在有桌面会话的机器上做）**：
@@ -128,8 +167,8 @@ npm run build:mac    # 出 mac 包（Windows 上只能出 zip/dir，签名需 Ma
 │   ├── 需求-游戏内文本汉化.md ← 汉化需求记录（**暂不实现**，只沉淀格式与坑）
 │   ├── M2.7-实施方案.md    ← ★ M2.7 交接稿（编辑页重构 + 保存 bug）
 │   ├── M3.5-实施方案.md    ← ★ M3.5 交接稿（进程管理：追踪/关闭/游玩记录）——**已实施完毕**
-│   ├── 调研-去掉上游launcher的可行性.md ← 上游 launcher 能否自实现（**已调研，待 M3.5 后实施**）
-│   ├── M4.0-实施方案.md    ← ★ M4.0 交接稿（去掉上游 launcher，自实现启动）——**待实施**
+│   ├── 调研-去掉上游launcher的可行性.md ← 上游 launcher 能否自实现（**已调研并已实施**）
+│   ├── M4.0-实施方案.md    ← ★ M4.0 交接稿（去掉上游 launcher，自实现启动）——**已实施完毕**
 │   └── 技术选型-三方案对比.md
 ├── _xeno_probe/            # 上游 Xenolauncher clone，只读参考，gitignore
 ├── resources/core/
@@ -144,7 +183,13 @@ npm run build:mac    # 出 mac 包（Windows 上只能出 zip/dir，签名需 Ma
 │   │   ├── dlsite.ts       #   M2：RJ 识别 + var contents 解析 + TTL 缓存（不 import electron）
 │   │   ├── library-meta.ts #   M2：DLsite 元数据旁挂存储（library-meta.json）
 │   │   ├── diagnose.ts    #   ★ M3：启动前诊断（五个检测器 + 汇总排序，不 import electron）
-│   │   ├── exec-inject.ts #   ★ M3.5：launcher 加载时的 child_process 注入（只换 exec，D48/D49）
+│   │   ├── data-dir-notice.ts # ★ M4.0：数据目录切换的一次性说明（纯函数，D58）
+│   │   ├── launchers/     #   ★ M4.0：自实现启动（**唯一**起进程的地方）
+│   │   │   ├── index.ts        #     buildLaunchPlan 分发 + LAUNCHABLE_ENGINES 唯一名单
+│   │   │   ├── binary-paths.ts #     四个引擎的可执行文件路径（D56 的唯一来源）
+│   │   │   ├── types.ts        #     LaunchContext / LaunchPlan
+│   │   │   ├── spawn.ts        #     ★ 唯一调用 spawn 的地方（detached + stdio:ignore + unref，D55）
+│   │   │   └── nwjs.ts / mkxpz.ts / easyrpg.ts / renpy.ts
 │   │   ├── process-registry.ts # ★ M3.5：进程表（只在内存，D50）+ 存活/复用/等待工具
 │   │   ├── play-stats.ts  #   ★ M3.5：游玩记录旁挂存储（play-stats.json，D51）
 │   │   └── ipc.ts          #   IPC 命令表 + 串行队列 + 取消 + 对话框桥 + OFF_QUEUE_METHODS
@@ -171,12 +216,13 @@ npm run build:mac    # 出 mac 包（Windows 上只能出 zip/dir，签名需 Ma
 │   ├── probe-m26.cjs       #   M2.6 端到端验收探针（+ probe-m26-inner.cjs）
 │   ├── probe-m27.cjs       #   M2.7 编辑页重构验收探针
 │   ├── probe-m35.cjs       #   M3.5 进程管理验收探针（+ probe-m35-inner.cjs）
+│   ├── probe-m40.cjs       #   M4.0 自实现启动验收探针（+ probe-m40-inner.cjs）
 │   └── probe-save-fix.cjs  #   M2.7 保存 bug 修复验收探针（两阶段）
 └── test/
     ├── fixtures/           # 假游戏目录（MV/VX Ace/2000/Ren'Py）+ dlsite/RJ294126.html
     │                       #   + dlsite/search-mercenary.html（M2.5 真搜索页裁切）
     │                       #   + encrypted-rgss3a/（M3：0x03 魔数 + GBK Game.ini，.gitattributes 锁住字节）
-    └── *.test.ts           # vitest 单测（507 个，20 个文件，不依赖网络与 GUI）
+    └── *.test.ts           # vitest 单测（634 个，27 个文件，不依赖网络与 GUI）
 ```
 
 ## 架构与数据流（30 秒版）
@@ -251,8 +297,13 @@ Vue 组件 → Pinia store → api/client → preload(window.tsumi.invoke)
 | D50 | 进程状态**只在内存**，不落盘 | 进程是运行时事实；落盘会产生「显示在运行但进程早没了」的假象 |
 | D51 | 游玩记录（`lastPlayedAt`/`playCount`/`totalSeconds`）落**独立的 `play-stats.json`** | 不放 `GameRecord`（守 D10）；不放 `library-meta.json`（语义不同，那是 DLsite 元数据）。独立文件可单独删 |
 | D52 | `stopGame` 走 **SIGTERM → 等 5 秒 → SIGKILL** 两段式 | 温和优先（游戏可能要保存），但卡死时也要能救 |
+| D53 | **自实现启动，不用上游 `launcher.js`**；`module.js` 保留 | 上游 launcher 99% 是附加功能（含**改写用户游戏文件**）；自实现后默认不碰游戏目录 |
+| D54 | 用 **`spawn(binary, args[])`** 而不是拼命令行字符串 + `exec` | args 数组天然处理空格/中文/引号，不用自己写 `quote()`；且 spawn 直接给 `ChildProcess`（M3.5 的注入方案随之作废） |
+| D55 | spawn 必须同时有 **`detached: true` + `stdio: 'ignore'` + `child.unref()`** | 缺任何一个，**关掉 Tsumigeya 会把游戏一起杀掉**。已用测试锁死（`launchers-decoupling.test.ts` 断言三件套齐全） |
+| D56 | 所有引擎可执行文件路径**集中在 `launchers/binary-paths.ts`** | 上游改了路径时只改一处；也便于单测覆盖 4 个引擎 × 2 个架构 |
+| D59 | **XP 的 RTP 目录名是 `Standard`，不是 `RPGXP`**（`RPGXP` 保留作别名） | M3 初稿写 `RPGXP` 并标注「推测」，**推测是错的**。实测真实 `RTP.zip`（255,812,166 字节）的中央目录里只有 `Standard` / `RPGVX` / `RPGVXAce`。不纠正的后果：读不到 `Game.ini` 的 `RTP=` 时按版本映射会查一个**永不存在的 `RPGXP`** → XP 游戏永久判「RTP 缺失」，一键补装也修不掉 |
 | D57 | **未知引擎不回退上游 launcher**，明确报 `error.engineNotLaunchable` + 引擎页标灰 | 上游 6 个模块里不做的是 ruffle（Flash，用户已不用）/ wine（Windows，用户有 CrossOver）/ macos（本项目本就是给 macOS 用的）。回退等于为不会发生的场景维护代码，且**回退那条路径会改游戏文件** |
-| D58 | 数据目录从 `Xenolauncher` 切到 **`Tsumigeya`**，并**首次启动自动迁移** | 共享目录的初衷是「上游 launcher 硬编码该路径」，M4.0 后不再用 launcher → 约束消失。迁移用**同卷 `rename`**（几百 MB 也是毫秒级），`games.json` 等用户数据必须一起迁，旧目录保留，失败要中文提示 |
+| D58 | 数据目录从 `Xenolauncher` 切到 **`Tsumigeya`**，**不迁移、不探测旧目录**；老用户重装引擎 + 重新添加游戏；首次运行给一次性中文说明 | 共享目录的初衷是「上游 launcher 硬编码该路径」，M4.0 后不再用 launcher → 约束消失。**不做迁移**是用户 2026-11-04 改口后的最终决定（先选「切+迁移」，随后说「重新装引擎吧」）：迁移代码必须写旧目录字符串做判断（与 D57 的「尽量不和上游有关系」直接冲突），且只能搬 `modules` 与索引、搬不动存档本体，会造出「引擎在、存档没了」的更糟状态。详见 `docs/M4.0-实施方案.md` §5 |
 
 ## 已知坑
 
@@ -297,6 +348,10 @@ Vue 组件 → Pinia store → api/client → preload(window.tsumi.invoke)
 | **PATH 上的 `tar` 在 Windows 是 GNU tar，不是 bsdtar** | 单测里造压缩包时 `execFileSync('tar', ...)` 拿到的是 `/usr/bin/tar`（GNU 版），它把 `C:\...` 当成远程主机名报 `tar: Cannot connect to C: resolve failed`（exit 128）。用 **`C:\Windows\System32\tar.exe`**（bsdtar，也是 `src/main/extract.ts` 生产环境用的那个） |
 | **给 `GameMeta` 加字段时必须同步改 `library-meta.ts` 的 `sanitize()`**（M2.6 S1 端到端探针实测踩到） | `sanitize()` 是**落盘的字段白名单**：它只挑自己认识的字段重建对象，所以 `DlsiteWork` 里新加了 `summary`/`author`/`salesCount`/`rating` 之后，`saveGameMeta` **回执的 keys 里根本没有它们**——不报错、不警告，界面表现是「解析到了但详情页全是暂无」。判定方法：改完解析层后先看 `saveGameMeta` 的返回键集。回归测试 `test/library-meta.test.ts` 的「M2.6 新增字段必须能落盘」8 条锁住这条 |
 | **`el-dropdown-item` 的 `aria-disabled` 是字符串 `"false"`**（M2.6 探针自己踩到） | `!!el.getAttribute(...)` 恒为 true（非空字符串都是真值），会把「三项菜单全 disabled」当成真实现象去查。判据写成 `el.getAttribute("aria-disabled") === "true"` 或 `el.classList.contains("is-disabled")` |
+| **`spawn` 对「可执行文件不存在」是异步报错的**（M4.0 S5 实测踩到） | `spawn('不存在的路径')` **不会同步抛** —— 它同步返回一个 child（`pid` 是 `undefined`），随后 `error` 事件才到。所以：①同步 `try/catch` 抓不到 ENOENT ②**必须挂 `error` 监听器**（没有监听器的 `'error'` 会让 Node 直接抛、崩掉主进程）③判断失败要用 `pid === undefined`。已在 `spawn.ts` 三重兜底：先手检绝对路径的 binary、再 catch 同步异常、再挂 error 监听 |
+| **`fs.accessSync('ping')` 对裸命令名必然失败** | 引擎 binary 都是绝对路径（来自 `binary-paths.ts`），但**测试里的假「游戏」是 `ping`/`sleep` 这种 PATH 查找**。预检必须判 `path.isAbsolute()` 才做——否则正常的命令会被误判成「缺失」（本鱼第一版就是这么把自己的测试搞挂的） |
+| **heredoc 写测试会把反斜杠吃掉一层** | 用 `bash << 'EOF'` 写文件时，`'\\\\'` 落盘会变成 `'\\'` → 直接语法错误（`Unterminated string`）。写含反斜杠的代码请用 `write` 工具或 `String.fromCharCode(92)` 拼，**别用 heredoc**（本鱼连踩三次） |
+| **注释里不能写出注释定界符的字面形式** | 在块注释里写 `/* */` 会把外层注释提前闭合，整份文件语法错误（报错是 `Invalid Character`）。要描述它就用「行注释与块注释」这种措辞 |
 | **模板里别写复杂表达式**（M2.6 顺手确认的边界） | 卡片「也有 xx 版」用 `[...new Set(langs)].sort(...)` 在 **computed 里**完成，模板只读一个字符串——模板里写复杂表达式既容易白屏也难断言（AGENTS.md 的「模板禁 TS 断言」是同一条精神） |
 
 > **验收 `npm run dev` 的正确姿势**（本机无画面可看时）：启动后用 `BrowserWindow.getAllWindows()` +
@@ -348,11 +403,13 @@ Vue 组件 → Pinia store → api/client → preload(window.tsumi.invoke)
   - 端到端验收：`node scripts/probe-m35.cjs`（假引擎 + 真进程 + 真 kill）
   - **未验证**：mac 上真引擎（nwjs/mkxpz/easyrpg/renpy）的 exec 命令串形态、NW.js 的子进程树
     （若一个 PID 杀不干净，后续要 `pkill -P <pid>` 整棵树，方案 §9 R4）
-- **M4.0（方案已冻结，待实施）**：去掉上游 launcher —— 见 [`docs/M4.0-实施方案.md`](./docs/M4.0-实施方案.md)（D53–D56）
+- **M4.0（已完成）**：去掉上游 launcher —— 见 [`docs/M4.0-实施方案.md`](./docs/M4.0-实施方案.md)（D53–D59）
   - 新增 `src/main/launchers/`（4 个引擎 + 集中的 binary 路径），用 `spawn(binary, args[])` 替掉 `launcher.launch()`
-  - 收益：**不改用户游戏文件**（上游 nwjs 会改 `js/main.js`）、摆脱 xenolauncher 数据目录、清补丁式代码
-  - **已拍板**：未知引擎**不回退**（D57）→ `exec-inject.ts` 彻底删；数据目录**切到 `Tsumigeya`**（D58，含迁移）
-  - 见 `docs/M4.0-实施方案.md` §10
+  - 收益：**不改用户游戏文件**（上游 nwjs 会改 `js/main.js`）、数据目录切到 `Tsumigeya`、清掉补丁式代码
+  - **已拍板**：未知引擎**不回退**（D57）→ `exec-inject.ts` 彻底删除；数据目录**切到 `Tsumigeya`**（D58，**不做迁移**，老用户重装引擎）
+  - **端到端验收**：`node scripts/probe-m40.cjs`（结论见下方「M4.0 全套」）
+  - **未验证**：mac 上四个引擎的真实二进制能否被 spawn 起来（Windows 上只能验错误路径与文案）；
+    上游 nwjs 的 `chromium-args` 篡改我们不做，**是否有行为差异待 mac 真机对比**（方案 §7 R2）
 - **M4**：存档管理（集中查看/备份/导出）+ 增强（Cheat 注入/变速）
 - **M5**：手柄、无边框全屏、像素缩放、dmg 公证分发
 

@@ -16,6 +16,23 @@ const tab = ref<'installed' | 'remote'>('installed')
 /** 正在跑任务的引擎 folder（用按钮 loading）。 */
 const pending = ref<string | null>(null)
 
+/**
+ * 能自实现启动的引擎（M4.0 D57）。
+ *
+ * ⚠️ 名单的唯一来源是主进程的 `src/main/launchers/index.ts` 的 LAUNCHABLE_ENGINES。
+ * 渲染层不能 import 主进程代码（contextBridge 隔离），所以这里放一份镜像。
+ * **两份必须一致** —— 由 `test/launchable-engines-consistency.test.ts` 直接读源码比对。
+ *
+ * 为什么引擎页需要它：D57 决定「不支持的引擎不回退上游 launcher」，
+ * 那么配套就要求**别让用户装完才发现不能用**（装了几百 MB 的 ruffle/wine 却点不了启动）。
+ */
+const LAUNCHABLE_ENGINE_IDS = ['nwjs', 'mkxpz', 'easyrpg', 'renpy']
+
+function isLaunchable(module: ModuleInfo | RemoteModule): boolean {
+  const id = 'folder' in module ? module.folder : module.id
+  return LAUNCHABLE_ENGINE_IDS.includes(id)
+}
+
 const updateCount = computed(() => engines.updateCount)
 const warnings = computed(() => engines.engineUpdates?.warnings ?? [])
 const checkedAt = computed(() => engines.engineUpdates?.checkedAt ?? '')
@@ -220,6 +237,14 @@ function formattedCheckedAt(): string {
           <el-tag v-if="updateFor(module.id)?.checkFailed" size="small" type="info">
             {{ t('engines.checkFailed') }}
           </el-tag>
+          <el-tag v-if="!isLaunchable(module)" size="small" type="warning">
+            {{ t('engines.notLaunchableBadge') }}
+          </el-tag>
+        </div>
+
+        <!-- D57 的配套：装完才知道不能用是最糟的，所以在卡片上直接说清楚 -->
+        <div v-if="!isLaunchable(module)" class="hint engine-card-warn">
+          {{ t('engines.notLaunchableHint') }}
         </div>
 
         <div v-if="moduleDescription(module)" class="engine-card-desc">{{ moduleDescription(module) }}</div>
@@ -269,7 +294,12 @@ function formattedCheckedAt(): string {
     </div>
 
     <div v-else class="engine-grid">
-      <article v-for="module in engines.available" :key="module.folder" class="engine-card">
+      <article
+        v-for="module in engines.available"
+        :key="module.folder"
+        class="engine-card"
+        :class="{ 'engine-card-unavailable': !isLaunchable(module) }"
+      >
         <div class="engine-card-head">
           <span class="engine-card-name" :title="displayName(module)">{{ displayName(module) }}</span>
           <el-tag size="small">{{ moduleVersion(module) }}</el-tag>

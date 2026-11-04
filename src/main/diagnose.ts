@@ -13,6 +13,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { scanCandidates } from './core-host'
+// RTP 路径的唯一来源（M4.0 D56）：诊断与启动写 mkxp.json 必须查同一处
+import { mkxpzRtpRootFromEngineDir } from './launchers/binary-paths'
 
 // ===== 类型（§3.1）=====
 
@@ -256,11 +258,43 @@ export function detectEncryptedArchive(dir: string): Diagnosis | null {
  */
 export const RTP_ENGINES: ReadonlySet<string> = new Set(['mkxpz'])
 
-/** §2.3 实测的真实目录名（`deps/RTP/RTP/<这个>`）。 */
+/**
+ * RTP 的三个真实目录名（`deps/RTP/RTP/<这个>`）。
+ *
+ * ⚠️ XP 的目录名是 **`Standard`**，不是 `RPGXP`（M4.0 S3 实测纠正）。
+ *
+ * 判据不是猜的：直接下了真实 RTP.zip（255,812,166 字节）读它的中央目录，
+ * 顶层是 `RTP/`，其下只有三个目录：
+ *
+ *     RTP/Standard/     ← RPG Maker XP
+ *     RTP/RPGVX/        ← RPG Maker VX
+ *     RTP/RPGVXAce/     ← RPG Maker VX Ace
+ *
+ * M3 的初稿把它写成 `RPGXP` 并标注「推测」——那个推测是错的。后果很具体：
+ * XP 游戏的 `Game.ini` 写 `RTP=Standard`，`normalizeRtpName` 认不出 `Standard`
+ * 会原样返回，查 `deps/RTP/RTP/Standard` 恰好能命中；但若走的是
+ * `RTP_BY_RGSS_VERSION[1]` 这条路径（读不到 RTP= 时按版本映射），就会去查
+ * 一个**永远不存在**的 `RPGXP` → XP 游戏永久判「RTP 缺失」，一键补装也修不掉。
+ */
 export const RTP_BY_RGSS_VERSION: Record<1 | 2 | 3, string> = {
-  1: 'RPGXP',
+  1: 'Standard',
   2: 'RPGVX',
   3: 'RPGVXace'
+}
+
+/**
+ * 兼容旧写法：`Game.ini` 里写 `RTP=RPGXP` 的（RPG Maker XP 的官方叫法）
+ * 与写 `RTP=Standard` 的（这个 RTP 包里的真实目录名）都算 XP。
+ *
+ * 两张表分开维护：`RTP_BY_RGSS_VERSION` 是**发版契约**（决定查哪个目录），
+ * 下面这张是**别名表**（决定输入怎么归一化）。混在一起会让「加一个别名」
+ * 变成「改一个对外行为」。
+ */
+const RTP_ALIASES: Record<string, 1 | 2 | 3> = {
+  standard: 1,
+  rpgxp: 1, // XP 的另一种常见写法（本机的 RTP.zip 里没有这个目录，但要认得）
+  rpgvx: 2,
+  rpgvxace: 3
 }
 
 /**
@@ -272,16 +306,16 @@ export const RTP_BY_RGSS_VERSION: Record<1 | 2 | 3, string> = {
  * - **Linux 大小写敏感** → `RPGVXAce` 目录找不到 → 诊断永远判「RTP 缺失」
  *   （CI 断言 `expected ['encryptedArchive','missingRtp'] not to include 'missingRtp'`）
  *
- * 规则：按**忽略大小写**匹配已知的三个目录名，命中就返回规范写法；
- * 匹配不上（未知 RTP 名）原样返回——那种情况由调用方判「无法确定」。
+ * 规则：按**忽略大小写**匹配已知目录名（含 `RPGXP` → `Standard` 这类别名），
+ * 命中就返回规范写法；匹配不上（未知 RTP 名）原样返回——那种情况由调用方判「无法确定」。
  */
 export function normalizeRtpName(value: string | null | undefined): string | null {
   if (typeof value !== 'string') return null
   const trimmed = value.trim()
   if (!trimmed) return null
-  const known = Object.values(RTP_BY_RGSS_VERSION)
-  const hit = known.find((name) => name.toLowerCase() === trimmed.toLowerCase())
-  return hit ?? trimmed
+  const version = RTP_ALIASES[trimmed.toLowerCase()]
+  if (version) return RTP_BY_RGSS_VERSION[version]
+  return trimmed
 }
 
 export interface GameIni {
@@ -437,12 +471,16 @@ export function decideWantedRtp(dir: string, ini: GameIni = readGameIni(dir)): W
  */
 export function detectMissingRtp(engineDir: string, engine: string, wanted: string | null): Diagnosis | null {
   if (!wanted) return null
-  const target = path.join(engineDir, 'deps', 'RTP', 'RTP', wanted)
+  // 路径拼法来自 launchers/binary-paths.ts（D56 的唯一来源）：
+  // 「诊断说缺 RTP」与「启动时写进 mkxp.json 的 RTP 路径」必须是同一处，
+  // 否则诊断会放过一个其实跑不起来的游戏（或反之白报一个不缺的）。
+  const root = mkxpzRtpRootFromEngineDir(engineDir)
+  const target = path.join(root, wanted)
   if (existsAsDirectory(target)) return null
   // 精确路径不存在时再按**忽略大小写**扫一遍实际目录：
   // Linux 上 `RPGVXAce` 与 `RPGVXace` 是两个不同名字，光归一化还不够稳，
   // 目录里真实的写法才作数（也兜住用户手改过的目录名）。
-  const spelled = findCaseInsensitive(path.join(engineDir, 'deps', 'RTP', 'RTP'), wanted)
+  const spelled = findCaseInsensitive(root, wanted)
   if (spelled && existsAsDirectory(spelled)) return null
   return {
     code: 'missingRtp',

@@ -46,6 +46,10 @@ onMounted(async () => {
     library.applySnapshot(snapshot)
     settings.applySnapshot(snapshot)
     engines.applySnapshot(snapshot)
+    // M4.0 S6.5（D58）：数据目录切换的一次性说明。
+    // 判定与「只提示一次」的标记都在主进程（data-dir-notice.ts），这里只负责展示。
+    // 用 ElMessage.info（**不是 error**）：这不是故障，是「新目录是空的」这个事实。
+    showDataDirNoticeOnce()
     // M2.5-C：多语言分组（纯本地计算、毫秒级）。失败不影响库页使用，故不阻塞也不报错。
     void library.loadLanguageGroups()
     if (snapshot.settings.checkModuleUpdatesOnStartup) {
@@ -64,6 +68,24 @@ onMounted(async () => {
 
 function applyAppearanceOnChange(): void {
   settings.applyAppearance()
+}
+
+/**
+ * 弹一次「数据目录已切换」的说明（M4.0 S6.5 / D58）。
+ *
+ * 为什么文案来自主进程而不是 i18n：
+ * 那句话是「事实陈述 + 用户该做什么」，判定条件（目录为空 / 未提示过 / 是 mac）
+ * 也在主进程里（`data-dir-notice.ts`，有单测）。文案与判定放一处，
+ * 否则加一个判定条件就得同时改两边、而且两边很容易对不上。
+ *
+ * 为什么 consume 之后要清空：同一个会话里 snapshot 可能被多次拉取
+ * （保存设置也会返回 snapshot），不清空就会重复弹。
+ */
+function showDataDirNoticeOnce(): void {
+  const notice = settings.dataDirNotice
+  if (!notice) return
+  ElMessage.info({ message: notice, duration: 12_000, showClose: true })
+  settings.consumeDataDirNotice()
 }
 
 onBeforeUnmount(() => {

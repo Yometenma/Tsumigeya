@@ -123,6 +123,11 @@ export interface Snapshot {
   meta: Record<string, GameMeta>
   /** M3.5：正在运行的游戏（运行时状态，不落盘）。 */
   running: RunningGameLite[]
+  /**
+   * M4.0 S6.5（D58）：数据目录切换的一次性中文说明。
+   * 有值 = 这次该给用户看（info，不是错误）；null = 不提示。
+   */
+  dataDirNotice: string | null
 }
 
 /** M3.5：运行态条目（snapshot 里的投影）。 */

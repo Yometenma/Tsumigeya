@@ -7,15 +7,20 @@
 // ⚠️ 不 import electron（单测直接跑）。
 import { spawn } from 'node:child_process'
 
-/** 一个「我们认为在运行」的游戏（M3.5 §4.1）。 */
+/** 一个「我们认为在运行」的游戏（M3.5 §4.1；M4.0 起由 spawn 直接登记）。 */
 export interface RunningGame {
   gameId: string
   pid: number
   /** 引擎模块名（nwjs / mkxpz / easyrpg / renpy），诊断与展示都用得上。 */
   engine: string
-  /** 上游传给 exec 的原始命令串（展示 + PID 复用复核）。 */
+  /**
+   * 展示用的命令描述（`<binary> <args...>` 的拼接形式，**仅供日志/排障**）。
+   *
+   * M4.0 起我们不再有「用户传进来的命令串」——是我们自己 spawn 的，
+   * 所以这里由 `describeLaunch(binary, args)` 生成，不是解析别人的东西。
+   */
   command: string
-  /** 从命令串里抠出的可执行文件路径（无法解析时为 null）。 */
+  /** 可执行文件绝对路径（PID 复用复核的依据）。 */
   execPath: string | null
   /** 启动时刻（ISO 8601）。 */
   startedAt: string
@@ -55,6 +60,17 @@ export function createProcessRegistry(): ProcessRegistry {
     size: () => running.size,
     clear: () => running.clear()
   }
+}
+
+/**
+ * 把 `spawn(binary, args)` 拼成一行**给人看的**命令描述（只用于日志与排障）。
+ *
+ * ⚠️ 这个字符串**不是**拿去执行的——执行永远走 `spawn(binary, args)` 的数组形式（D54）。
+ * 所以这里不做 quote 转义（不需要），只是把可读性拼出来：含空格的参数加引号便于肉眼分辨。
+ */
+export function describeLaunch(binary: string, args: readonly string[]): string {
+  const quoteIfNeeded = (value: string): string => (value.includes(' ') ? `"${value}"` : value)
+  return [quoteIfNeeded(binary), ...args.map((arg) => quoteIfNeeded(arg))].join(' ')
 }
 
 /**

@@ -29,6 +29,11 @@ import {
   sortDiagnoses,
   type Diagnosis
 } from '../src/main/diagnose'
+import {
+  mkxpzRtpDir,
+  mkxpzRtpDirFromEngineDir,
+  moduleDir
+} from '../src/main/launchers/binary-paths'
 
 let dir: string
 
@@ -566,8 +571,24 @@ describe('真实样本回归：test/fixtures/encrypted-rgss3a', () => {
 
     test('已经正确的大小写原样保留', () => {
       expect(normalizeRtpName('RPGVXace')).toBe('RPGVXace')
-      expect(normalizeRtpName('RPGXP')).toBe('RPGXP')
+      expect(normalizeRtpName('Standard')).toBe('Standard')
       expect(normalizeRtpName('RPGVX')).toBe('RPGVX')
+    })
+
+    // ⚠️ M4.0 S3 实测纠正：XP 的目录名是 `Standard`，不是 `RPGXP`。
+    // 真实 RTP.zip（255MB）的中央目录里只有 Standard / RPGVX / RPGVXAce 三个。
+    // 但 `RPGXP` 是 XP 的官方叫法，游戏自己可能这么写 → 归一化到 Standard 才查得到。
+    test('★ RTP=RPGXP（XP 的官方叫法）归一化到真实目录名 Standard', () => {
+      expect(normalizeRtpName('RPGXP')).toBe('Standard')
+      expect(normalizeRtpName('rpgxp')).toBe('Standard')
+      expect(normalizeRtpName(' standard ')).toBe('Standard')
+    })
+
+    test('大小写变体一律归一化到真实目录名', () => {
+      expect(normalizeRtpName('RPGVXAce')).toBe('RPGVXace')
+      expect(normalizeRtpName('rpgvxace')).toBe('RPGVXace')
+      expect(normalizeRtpName('rpgvx')).toBe('RPGVX')
+      expect(normalizeRtpName('STANDARD')).toBe('Standard')
     })
 
     test('未知名字原样返回（由调用方判「无法确定」，不瞎猜）', () => {
@@ -594,5 +615,36 @@ describe('真实样本回归：test/fixtures/encrypted-rgss3a', () => {
         fs.rmSync(root, { recursive: true, force: true })
       }
     })
+  })
+})
+
+// ===== M4.0 S1：RTP 路径的唯一来源（D56）=====
+//
+// 「诊断说缺 RTP」与「启动时写进 mkxp.json 的 RTP 路径」必须是同一处拼法。
+// 两处各自 path.join 时，任一处手改（比如改了 deps 层级）就会静默错位：
+// 诊断放过一个其实跑不起来的游戏，或者白报一个不缺的 —— 都不报错，只是行为不对。
+// 这里直接断言两个入口算出**同一个字符串**，把这条约束钉死。
+describe('M4.0 S1：诊断与启动用的 RTP 路径同源', () => {
+  test('detectMissingRtp 查的位置 == launchers/binary-paths 给的 RTP 目录', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tsmg-rtp-src-'))
+    try {
+      // 用「引擎目录」这一层入参（diagnose 拿到的就是这个形状）
+      const engineDir = root
+      const fromLaunchers = mkxpzRtpDirFromEngineDir(engineDir, 'RPGVXace')
+      // 把文件真造在 launchers 算出的位置上，然后断言诊断认为「不缺」
+      fs.mkdirSync(fromLaunchers, { recursive: true })
+      expect(detectMissingRtp(engineDir, 'mkxpz', 'RPGVXace')).toBeNull()
+      // 换个版本（没造目录）仍然报缺 —— 证明上面那条不是「永远不报」
+      expect(detectMissingRtp(engineDir, 'mkxpz', 'RPGVX')?.code).toBe('missingRtp')
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  test('两个入口（数据目录 / 引擎目录）拼出同一个 RTP 目录', () => {
+    const dataDir = path.join(os.tmpdir(), 'tsmg-data-x')
+    expect(mkxpzRtpDir(dataDir, 'RPGVXace')).toBe(
+      mkxpzRtpDirFromEngineDir(moduleDir(dataDir, 'mkxpz'), 'RPGVXace')
+    )
   })
 })
