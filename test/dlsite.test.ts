@@ -6,6 +6,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import {
   buildSearchUrl,
+  cleanupDescription,
   createDlsiteService,
   detectRjFromPath,
   extractContentsJson,
@@ -242,6 +243,154 @@ describe('parseDlsiteWork（真页面 fixture）', () => {
     expect(() => parseDlsiteWork('var contents = {"detail":[{"id":"RJ294126"}]};', 'RJ294126')).toThrow(
       expect.objectContaining({ translationKey: 'error.dlsiteParse' })
     )
+  })
+})
+
+// ===== M2.6 §S1：简介清洗 + 作者/销量/评分 =====
+
+describe('cleanupDescription（M2.6 §3.3 站点尾巴剥离）', () => {
+  test('真实尾巴样式：在「「DLsite 同人 - R18」…」前截断', () => {
+    // 实测 RJ294126 的尾巴形态（§3.3）
+    const raw =
+      '本作は、隣の部屋に住むおま○こ当番との毎日を描いた物語。' +
+      '「DLsite 同人 - R18」は同人誌・同人ゲーム・同人ボイス・ASMRのダウンロードショップ。' +
+      '国内最大級の二次元総合ダウンロードショップ「DLsite」！'
+    expect(cleanupDescription(raw)).toBe('本作は、隣の部屋に住むおま○こ当番との毎日を描いた物語。')
+  })
+
+  test('按最靠前的标记截断（三种标记同时出现时取 index 最小的）', () => {
+    const raw = '简介正文。国内最大級の二次元……後面還有「DLsite 同人……'
+    // 「国内最大級の二次元」在 index 5，「「DLsite」更靠后 → 取前者
+    expect(cleanupDescription(raw)).toBe('简介正文。')
+  })
+
+  test('第二个标记 DLsite 同人（不带引号）也认', () => {
+    expect(cleanupDescription('正文。DLsite 同人 - R18 は同人ショップ。')).toBe('正文。')
+  })
+
+  test('没有尾巴 → 原样返回（trim 后）', () => {
+    expect(cleanupDescription('  纯简介，无广告  ')).toBe('纯简介，无广告')
+  })
+
+  test('空 / 全空白 / undefined / null → undefined（视为无简介）', () => {
+    expect(cleanupDescription('')).toBeUndefined()
+    expect(cleanupDescription('   \n\t  ')).toBeUndefined()
+    expect(cleanupDescription(undefined)).toBeUndefined()
+    expect(cleanupDescription(null)).toBeUndefined()
+  })
+
+  test('尾巴在开头 → 清洗后为空 → undefined（不返回空串）', () => {
+    expect(cleanupDescription('「DLsite 同人 - R18」は同人ショップです。')).toBeUndefined()
+  })
+
+  test('不会误伤正文里出现的普通 Dlsite 单词（大小写敏感）', () => {
+    // 标记区分大小写：小写 dlsite 不是站点自述标记
+    expect(cleanupDescription('この作品は dlsite で買えます。')).toBe('この作品は dlsite で買えます。')
+  })
+})
+
+describe('parseDlsiteWork 产出 summary（M2.6 §4.1）', () => {
+  test('summary 是清洗后的简介，description 保留原值', () => {
+    const html = fixture.replace(
+      /og:description" content="[^"]*"/,
+      'og:description" content="正文简介。国内最大級の二次元総合ダウンロードショップ「DLsite」！"'
+    )
+    const work = parseDlsiteWork(html, 'RJ294126')
+    expect(work.summary).toBe('正文简介。')
+    // description 仍是原始 og 值（不清洗），供排查用
+    expect(work.description).toContain('国内最大級の二次元')
+  })
+
+  test('og:description 为空 → summary 为 undefined', () => {
+    const html = fixture.replace(/og:description" content="[^"]*"/, 'og:description" content=""')
+    const work = parseDlsiteWork(html, 'RJ294126')
+    expect(work.summary).toBeUndefined()
+  })
+
+  test('summary 被截断到 DESCRIPTION_LIMIT（400）', () => {
+    const long = 'あ'.repeat(600)
+    const html = fixture.replace(/og:description" content="[^"]*"/, `og:description" content="${long}"`)
+    const work = parseDlsiteWork(html, 'RJ294126')
+    expect(work.summary).toBeDefined()
+    expect((work.summary as string).length).toBe(400)
+    expect(work.description?.length).toBe(400)
+  })
+})
+
+describe('parseSearchResults 的 author / salesCount / rating（M2.6 §3.1）', () => {
+  test('真实搜索页 fixture：第一条是 Tonda / 739 / 4.5（§3.2.1 实测值）', () => {
+    const hits = parseSearchResults(searchFixture, 99)
+    expect(hits[0].rj).toBe('RJ01699769')
+    expect(hits[0].author).toBe('Tonda')
+    expect(hits[0].salesCount).toBe(739)
+    expect(hits[0].rating).toBe(4.5)
+  })
+
+  test('author 只取 .author 里的内容，不把社团名当作者（同块里两个名字）', () => {
+    // 真页第一条：maker_name 里先 ShiftAltOn（社团）后 Tonda（作者）
+    expect(searchFixture).toContain('ShiftAltOn')
+    const hits = parseSearchResults(searchFixture, 99)
+    expect(hits[0].author).not.toBe('ShiftAltOn')
+    expect(hits[0].author).toBe('Tonda')
+  })
+
+  test('没有 author 块的记录 → author undefined（fixture 是裁切片段，只第一条保留了完整块）', () => {
+    // 真页每条都有 `<span class="author">`，但这份 fixture 只裁了第一条的完整 maker_name 块
+    expect((searchFixture.match(/class="author"/g) ?? []).length).toBe(1)
+    const hits = parseSearchResults(searchFixture, 99)
+    expect(hits[0].author).toBe('Tonda')
+    for (const hit of hits.slice(1)) {
+      expect(hit.author).toBeUndefined()
+    }
+  })
+
+  test('star_50 → 5 分（满分），star_45 → 4.5（不把缺省当 0 分）', () => {
+    const hits = parseSearchResults(searchFixture, 99)
+    const ratings = hits.map((hit) => hit.rating)
+    expect(ratings[0]).toBe(4.5)
+    expect(ratings[1]).toBe(5)
+  })
+
+  test('没有 star_rating → rating undefined（不是 0）', () => {
+    const html =
+      '<li data-list_item_product_id="RJ123456"><div class="work_name">' +
+      '<a href="https://www.dlsite.com/maniax/work/=/product_id/RJ123456.html" title="某作品">某作品</a>' +
+      '</div></li>'
+    const hit = parseSearchResults(html)[0]
+    expect(hit.rating).toBeUndefined()
+    expect(hit.author).toBeUndefined()
+    expect(hit.salesCount).toBeUndefined()
+  })
+
+  test('author 去掉内层标签与 HTML 实体', () => {
+    const html =
+      '<li data-list_item_product_id="RJ123456"><div class="work_name">' +
+      '<a href="https://www.dlsite.com/maniax/work/=/product_id/RJ123456.html" title="某作品">某作品</a>' +
+      '</div><div class="maker_name"><a>社团</a><span class="separator">/</span>' +
+      '<span class="author"><a href="#">A &amp; B</a></span></div></li>'
+    const hit = parseSearchResults(html)[0]
+    expect(hit.author).toBe('A & B')
+  })
+
+  test('销量只认数字（_dl_count_RJxxx），非数字不给值', () => {
+    const html =
+      '<li data-list_item_product_id="RJ123456"><div class="work_name">' +
+      '<a href="https://www.dlsite.com/maniax/work/=/product_id/RJ123456.html" title="某作品">某作品</a>' +
+      '</div><span class="_dl_count_RJ123456">n/a</span></li>'
+    expect(parseSearchResults(html)[0].salesCount).toBeUndefined()
+  })
+
+  test('宽松模式（无结构化锚点）能读到作者与销量；评分在记录末尾之外读不到', () => {
+    // 真实页面有 `data-list_item_product_id` 锚点（D23），宽松模式只是无锚点时的兜底：
+    // 它按每个 product_id 链接取后 1500 字上下文，而 star_rating 在记录末尾（实测 delta≈4009），
+    // 所以该模式下 rating 拿不到是**已知边界**，不是解析 bug。
+    const html = searchFixture.replace(/data-list_item_product_id="RJ[0-9]+"/g, '')
+    const hits = parseSearchResults(html, 99)
+    expect(hits[0].author).toBe('Tonda')
+    expect(hits[0].salesCount).toBe(739)
+    expect(hits[0].rating).toBeUndefined()
+    // 结构化锚点模式下评分是拿得到的（上一条测试已钉住），这里只是确认兜底路径的取舍
+    expect(parseSearchResults(searchFixture, 99)[0].rating).toBe(4.5)
   })
 })
 
