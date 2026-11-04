@@ -11,7 +11,18 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # ⚠️ 只在**非 tag** 时取消旧运行。
+  #
+  # 踩过的坑（v0.5.3）：原本写死 `cancel-in-progress: true`，于是
+  #   `git push origin main` + `git push origin v0.5.3` 两条命令连着跑时，
+  #      main 触发 run A（group=build-refs/heads/main）
+  #      tag  触发 run B（group=build-refs/tags/v0.5.3）
+  #   group 不同 → 不会互相取消，这条其实没问题；
+  # **真正的问题是**同一个 tag 若被重推（本会话修 CI 时会这么做），
+  #   新 run 会把正在跑的旧 run 掐掉，正在排队的 macOS-x64 job 被标成 cancelled，
+  #   而 `发布 Release` 的 `needs` 里有它 → 整个 release 变成 skipped。
+  # 发版是「一次性、必须完整」的事，**不该被任何新运行取消**。
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/v') }}
 
 jobs:
   # ---------------------------------------------------------------- 质量门
