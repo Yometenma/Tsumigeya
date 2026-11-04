@@ -201,7 +201,7 @@ Vue 组件 → Pinia store → api/client → preload(window.tsumi.invoke)
 |---|------|------|
 | D1 | Electron + Vue3，不用 nw.js/SwiftUI | Windows 本机可开发调试；module.js 95% 复用 |
 | D2 | 接受 GPL-3.0，直接复用上游代码 | 工作量减半；将来发布衍生版必须开源 |
-| D3 | macOS 数据目录 = `~/Library/Application Support/Xenolauncher`（与上游共享） | 上游模块 launcher.js/manifest 硬编码该路径，不共享则引擎无法启动；老用户游戏库零迁移 |
+| D3 | macOS 数据目录 = `~/Library/Application Support/Xenolauncher`（与上游共享）——**⚠️ 已被 D58 取代（M4.0 切到 `Tsumigeya`）** | 上游模块 launcher.js/manifest 硬编码该路径，不共享则引擎无法启动；老用户游戏库零迁移 |
 | D4 | Windows 开发时数据目录 = `%APPDATA%/tsumigeya`；`TSUMIGEYA_DATA_DIR` 环境变量优先 | 干净隔离 |
 | D5 | 不用 module.js 的 `launchWithEngine`（吞 Promise，成败不可知），IPC 层自实现 launch | 参考 worker.cjs:316-325 |
 | D6 | 不暴露 `installDependency`（上游 bug：参数错位，module.js:1688 vs :1646） | — |
@@ -251,6 +251,8 @@ Vue 组件 → Pinia store → api/client → preload(window.tsumi.invoke)
 | D50 | 进程状态**只在内存**，不落盘 | 进程是运行时事实；落盘会产生「显示在运行但进程早没了」的假象 |
 | D51 | 游玩记录（`lastPlayedAt`/`playCount`/`totalSeconds`）落**独立的 `play-stats.json`** | 不放 `GameRecord`（守 D10）；不放 `library-meta.json`（语义不同，那是 DLsite 元数据）。独立文件可单独删 |
 | D52 | `stopGame` 走 **SIGTERM → 等 5 秒 → SIGKILL** 两段式 | 温和优先（游戏可能要保存），但卡死时也要能救 |
+| D57 | **未知引擎不回退上游 launcher**，明确报 `error.engineNotLaunchable` + 引擎页标灰 | 上游 6 个模块里不做的是 ruffle（Flash，用户已不用）/ wine（Windows，用户有 CrossOver）/ macos（本项目本就是给 macOS 用的）。回退等于为不会发生的场景维护代码，且**回退那条路径会改游戏文件** |
+| D58 | 数据目录从 `Xenolauncher` 切到 **`Tsumigeya`**，并**首次启动自动迁移** | 共享目录的初衷是「上游 launcher 硬编码该路径」，M4.0 后不再用 launcher → 约束消失。迁移用**同卷 `rename`**（几百 MB 也是毫秒级），`games.json` 等用户数据必须一起迁，旧目录保留，失败要中文提示 |
 
 ## 已知坑
 
@@ -349,7 +351,7 @@ Vue 组件 → Pinia store → api/client → preload(window.tsumi.invoke)
 - **M4.0（方案已冻结，待实施）**：去掉上游 launcher —— 见 [`docs/M4.0-实施方案.md`](./docs/M4.0-实施方案.md)（D53–D56）
   - 新增 `src/main/launchers/`（4 个引擎 + 集中的 binary 路径），用 `spawn(binary, args[])` 替掉 `launcher.launch()`
   - 收益：**不改用户游戏文件**（上游 nwjs 会改 `js/main.js`）、摆脱 xenolauncher 数据目录、清补丁式代码
-  - **关键待定**：未知引擎（第三方模块）是否回退上游 launcher（决定 `exec-inject.ts` 能否彻底删）
+  - **已拍板**：未知引擎**不回退**（D57）→ `exec-inject.ts` 彻底删；数据目录**切到 `Tsumigeya`**（D58，含迁移）
   - 见 `docs/M4.0-实施方案.md` §10
 - **M4**：存档管理（集中查看/备份/导出）+ 增强（Cheat 注入/变速）
 - **M5**：手柄、无边框全屏、像素缩放、dmg 公证分发
