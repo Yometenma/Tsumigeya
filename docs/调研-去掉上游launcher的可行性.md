@@ -161,6 +161,58 @@ IPC 层自己拼启动命令（每引擎 3–5 行）
 
 ---
 
+## 6.4 砍 launcher 的**牵连面**（2026-11-04 实测查全）
+
+用户问：「砍 launcher.js 之后，很多地方是不是要跟着一起改动？」
+
+**好消息：直接冲突的只有 1 处。**
+
+### 直接受影响（必须改）
+
+| 位置 | 现状 | 改成 |
+|---|---|---|
+| `src/main/ipc.ts` 的 `launch()`（**第 425–477 行**） | `host.loadScript(engine, 'launcher.js')` → `launcher.launch(...)` | 自己拼命令 + `spawn` |
+
+**全项目只有这一处**调用 launcher（grep 实测）。
+
+### 会失效 / 需要调整的
+
+| # | 位置 | 影响 | 处置 |
+|---|---|---|---|
+| 1 | `src/main/exec-inject.ts`（M3.5 新增，193 行） | **整个文件作废**——它的唯一目的就是「劫持 launcher 的 exec 拿 PID」，而自己 spawn 天然有 PID | 砍 launcher 后删除 |
+| 2 | `core-host.ts` 的 `loadScript`（若为注入加了 hook） | hook 参数变成死代码 | 保留无 hook 路径（仍用于 `version-script`） |
+| 3 | `core-host.ts` 的 `reconcileVersionArgs` | **仍需保留**——版本号拼 deps 路径的逻辑不变 | 不动 |
+| 4 | `core-host.ts` 的 `reconcileAndPersistGameArgs` | 仍需（manifest 缺省值合并落盘） | 不动 |
+| 5 | `diagnose.ts` 的 RTP 推断 | 上游 `getRtpValue()` 不再调用；我们的 `decideWantedRtp`/`normalizeRtpName` **已存在**，直接复用 | 不动（本来就没依赖上游） |
+| 6 | 进程追踪（M3.5） | **反而更简单**：`spawn` 直接拿 `child.pid`，不用劫持 | 简化 |
+
+### 隐性牵连：引擎参数（`DynamicArgsForm` 的 gameArgs）
+
+`gameArgs` 的 schema 来自 `manifest.json`，但**消费它的是 `launcher.js`**。自己实现后要保证：
+
+| 引擎 | 关键参数 | 自己实现时的用法 |
+|---|---|---|
+| **nwjs** | `version` | 拼 deps 路径 → 可执行文件（已有 `reconcileVersionArgs`） |
+| **mkxpz** | `RTP` / `rgssVersion` / 其余透传 | 全部写进 `mkxp.json` |
+| **easyrpg** | 基本无 | 命令行 `--window --project-path` |
+| **renpy** | `command` | 拼进命令行尾部 |
+
+**其余参数**（`fullscreen` 之类）上游是**原样透传**（塞 mkxp.json 或命令行），我们照做。
+
+### ⚠️ 与 M3.5 的顺序冲突（**已决策：M3.5 照常做完**）
+
+M3.5 在做的「劫持 `exec` 拿 PID」与本调研的「自己 `spawn` 拿 PID」**目的相同**：
+
+```
+M3.5 方案：  劫持 launcher 的 exec  → 拿 PID
+砍 launcher：不用 launcher 了      → 直接 spawn → 拿 PID
+```
+
+**用户 2026-11-04 决定：让 M3.5 照常做完，之后再砍 launcher**（接受 `exec-inject.ts` 将作废）。
+
+> 砍 launcher 时记得：**删掉 `src/main/exec-inject.ts`**，并把 `core-host.ts` 里为它加
+> 的 `loadScript` hook 参数一并清掉（否则是死代码，且下一个会话会以为它还在用）。
+
 ## 7. 待确认
 
 | # | 问题 | 本文件假设 |
