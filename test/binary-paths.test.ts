@@ -17,7 +17,6 @@ import {
   easyrpgSoundfontPath,
   mkxpzBinaryPath,
   mkxpzConfigDir,
-  mkxpzConfigPath,
   mkxpzRtpDir,
   moduleDir,
   nwjsBinaryPath,
@@ -102,19 +101,16 @@ describe('S1：mkxpz 路径（二进制 + 配置目录）', () => {
     )
   })
 
-  test('mkxp.json 在 .app/Contents/Game/ 下（不是 .app/Game/，以上游实测为准）', () => {
+  test('app 包内的 Contents/Game 目录（老版本写配置的地方，仅排障用）', () => {
     expect(mkxpzConfigDir(DATA)).toBe(
       path.join(DATA, 'modules', 'mkxpz', 'deps', 'mkxpz', 'Z-Universal.app', 'Contents', 'Game')
     )
-    expect(mkxpzConfigPath(DATA)).toBe(
-      path.join(DATA, 'modules', 'mkxpz', 'deps', 'mkxpz', 'Z-Universal.app', 'Contents', 'Game', 'mkxp.json')
-    )
   })
 
-  test('配置目录与可执行文件同属一个 .app（都带 Contents，只是子目录不同）', () => {
+  test('⚠️ mkxp.json 不写在 app 包里（M5.1：mkxp-z 按 cwd 找配置，写这里它读不到）', () => {
+    // 这里只断言「binary 仍在 .app 内」——配置的位置由 mkxpzPlan 决定（游戏目录）
     const appRoot = path.join(DATA, 'modules', 'mkxpz', 'deps', 'mkxpz', 'Z-Universal.app')
     expect(mkxpzBinaryPath(DATA).startsWith(appRoot + path.sep)).toBe(true)
-    expect(mkxpzConfigPath(DATA).startsWith(appRoot + path.sep)).toBe(true)
   })
 
   test('RTP 目录与诊断（diagnose.detectMissingRtp）查的是同一个位置', () => {

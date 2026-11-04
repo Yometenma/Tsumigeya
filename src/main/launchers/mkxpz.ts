@@ -40,7 +40,7 @@ import {
   resolveGameDir
 } from '../diagnose'
 import { expandDataDirPlaceholders } from '../engines/registry'
-import { mkxpzBinaryPath, mkxpzConfigDir, mkxpzConfigPath, mkxpzRtpDir } from './binary-paths'
+import { mkxpzBinaryPath, mkxpzRtpDir } from './binary-paths'
 import type { LaunchContext, LaunchPlan } from './types'
 
 /** mkxp-z 认的「自动判断」值（`rgssVersion: 0`）。 */
@@ -300,7 +300,20 @@ function sanitize(value: unknown, ctx: LaunchContext, homedir: string): unknown 
 
 export function mkxpzPlan(ctx: LaunchContext, homedir: string = os.homedir()): LaunchPlan {
   const binary = mkxpzBinaryPath(ctx.dataDir)
-  const configFile = mkxpzConfigPath(ctx.dataDir)
+  // ⚠️ 写在**游戏目录**里，不是 app 包内（M5.1 修的）：
+  //
+  // mkxp-z 按 **cwd** 找 `mkxp.json`，而我们的 spawn 传了 `cwd: ctx.folder`（游戏目录）。
+  // 原来写进 `Z-Universal.app/Contents/Game/mkxp.json` → **它根本读不到** →
+  // 没有 gameFolder / rgssVersion → 弹 mkxp-z 自己的英文错误
+  // 「No script file has been specified. Check the game's INI and try again.」
+  // （用户 mac 实测，`傭兵の冒険_CHN` 完美解包却打不开）。
+  //
+  // 写到游戏目录 = 与 cwd 一致，mkxp-z 必然找得到。代价是游戏目录里多一个 `mkxp.json`，
+  // 这是可接受的（启动器给游戏写配置是通行做法，且它只影响启动参数，不改游戏数据）。
+  //
+  // 顺带：同名文件若已存在（用户手改过 / 上次启动留下的），直接覆盖 —— 配置是
+  // 「每次启动按当前设置重新生成」的，不该沿用旧值（否则用户在编辑页改的参数不生效）。
+  const configFile = path.join(ctx.folder, 'mkxp.json')
 
   // M4.1 S1/S3（D62）：manifest 里的默认值带 `<dataDir>` 占位符（例如
   // preloadScript 的 `<dataDir>/modules/mkxpz/deps/kawariki/kawariki/preload.rb`）。
@@ -325,7 +338,7 @@ export function mkxpzPlan(ctx: LaunchContext, homedir: string = os.homedir()): L
   }
 }
 
-/** 配置目录（排障用：用户想知道「mkxp.json 到底在哪」）。 */
-export function mkxpzConfigLocation(dataDir: string): string {
-  return mkxpzConfigDir(dataDir)
+/** 配置目录（排障用）：mkxp.json 现在写在游戏目录里，这里返回「它会写到哪」。 */
+export function mkxpzConfigLocation(gameFolder: string): string {
+  return path.join(gameFolder, 'mkxp.json')
 }

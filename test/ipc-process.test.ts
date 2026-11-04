@@ -55,7 +55,7 @@ function makeGame(id: string, engine: 'mkxpz' | 'easyrpg' | 'ruffle' = 'mkxpz'):
   fs.mkdirSync(path.join(dir, 'www'), { recursive: true })
   fs.writeFileSync(path.join(dir, 'Game.exe'), 'MZ')
   fs.writeFileSync(path.join(dir, 'www', 'package.json'), '{}')
-  // mkxpz 的 prepare 会写 mkxp.json 到数据目录（Game.ini 决定 RTP）
+  // mkxpz 的 prepare 会写 mkxp.json 到**游戏目录**（M5.1）；Game.ini 决定 RTP 与 rgssVersion
   if (engine === 'mkxpz') fs.writeFileSync(path.join(dir, 'Game.ini'), '[Game]\r\nRTP=RPGVXace\r\n')
   installFakeModule(engine)
   host.store.saveGame({
@@ -321,12 +321,14 @@ describe('M4.0 S5：未知引擎不回退（D57）', () => {
 })
 
 describe('M4.0 S5：prepare 失败 → 不启动', () => {
-  test('mkxp.json 写不进（Game 目录被占成文件）→ 报 launchPrepareFailed，且不 spawn', async () => {
+  test('mkxp.json 写不进（游戏目录只读/被占）→ 报 launchPrepareFailed，且不 spawn', async () => {
     makeGame('1')
-    // 把 mkxpz 的配置目录位置用一个**文件**占住 → mkdirSync 必失败
-    const configDir = path.join(dataDir, 'modules', 'mkxpz', 'deps', 'mkxpz', 'Z-Universal.app')
-    fs.mkdirSync(configDir, { recursive: true })
-    fs.writeFileSync(path.join(configDir, 'Contents'), 'blocker')
+    // M5.1 之后 mkxp.json 写在**游戏目录**里（mkxp-z 按 cwd 找配置）。
+    // 造一条写不进去的场景：把游戏目录里同名位置占成**目录**，
+    // 让 writeFileSync('mkxp.json') 必失败（EISDIR）。
+    const gameDir = path.join(dataDir, 'game-1')
+    // 用**目录**占住 mkxp.json 这个位置 → writeFileSync 报 EISDIR
+    fs.mkdirSync(path.join(gameDir, 'mkxp.json'), { recursive: true })
 
     const fake = fakeProcess()
     const spawned = fakeSpawn()

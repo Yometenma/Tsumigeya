@@ -99,6 +99,7 @@ Vue → Pinia → api/client → preload(window.tsumi.invoke)
 | 主进程没注入 `fetchImpl` → 静默降级全局 fetch | `index.ts` 必须显式传 `net.fetch` |
 | **whenReady 里抛错 = 窗口永不出现，用户看不到原因** | 启动链上的可预期失败必须降级 + 告知 |
 | **`failure()` 返回的 Error 没有 `code`** | 要分支就显式补 `code`，别靠 `err.code` 猜 |
+| **mkxp.json 写 app 包里 → mkxp-z 读不到** | 它按 **cwd** 找配置。写 `<游戏目录>/mkxp.json`（D70）。症状是 mkxp-z 自己的英文弹窗「No script file has been specified」，**不是**我们的诊断 → 容易被误判成「加密发行」问题 |
 | **解压后拍平单层目录会打掉 nwjs 的版本目录** | 默认**保留**单层（与上游一致）；只有 `keepSingleDir:false` 才拍。**别用「目录名 ≠ 依赖名」当判据** —— D69 |
 | **`spawn` 对「文件不存在」是异步报错** | 同步返回 child（`pid=undefined`），`error` 事件才到。**必须挂 `error` 监听**，否则崩主进程 |
 | `fs.accessSync('ping')` 对裸命令名必失败 | 预检只在 `path.isAbsolute()` 时做 |
@@ -216,6 +217,7 @@ Vue → Pinia → api/client → preload(window.tsumi.invoke)
 | D67 | `dependencyUpdate` 字段**保留但恒 false**；渲染层的「依赖可更新」徽标与「更新依赖」按钮**删除** | 一个恒 false 的字段配一套永远不出现的 UI，正是 D63 说的「偷偷藏着」。字段留着是为了不破坏跨边界契约（主进程仍在返回它） |
 | D68 | 删掉的东西**必须有测试守着**（`test/no-upstream-module.test.ts`） | 只删不守 = 迟早复发：下个会话遇到「这里缺个能力」会顺手从 `_xeno_probe/` 抄回来，而测试全绿 |
 | D69 | 解压后**默认保留单层目录**，只有显式 `keepSingleDir: false` 才拍平；**绝不靠「目录名 ≠ 依赖名」猜** | M4.2 曾用「顶层目录名 ≠ 依赖名就拍平」的启发式：RTP 碰巧对了（目录名==依赖名），nwjs 错了（`version/v0.106.1` vs `nwjs-sdk-…`）→ 二进制路径少一层 → **mac 上 NW.js 游戏启动失败**。Windows 上无法复现，所以必须有单测覆盖两种形态 |
+| D70 | **mkxp.json 写在游戏目录里**（`<游戏目录>/mkxp.json`），不写 app 包内 | mkxp-z 按 **cwd** 找配置，而我们 spawn 传 `cwd: 游戏目录`。写到 `Z-Universal.app/Contents/Game/` 它**读不到** → 弹自己的英文错「No script file has been specified」→ 完美解包的游戏也打不开（mac 实测 `傭兵の冒険_CHN`）。**顺带作废**「不碰用户游戏文件」这条自定原则（用户没要求过，而且它挡着修复） |
 
 ## 里程碑路线图
 
