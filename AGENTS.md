@@ -20,7 +20,10 @@
 
 ## 当前项目状态（每次收尾必须更新）
 
-- **阶段**：**M2（DLsite 元数据）S1–S5 已完成**；M1 全绿保留
+- **阶段**：**M1 / M2 已完成**（v0.1.4 已发布）；**M2.5 方案已冻结待实施**（见 `docs/M2.5-实施方案.md`）
+  - M2.5 = 用户 2026-11-04 提的三项改进：按名字搜索 DLsite + 候选列表 / 可编辑元数据 / 多语言版本偏好
+  - **技术前提已实测完毕**（搜索 URL 格式、结果解析、噪音过滤、无法靠 lang_options 判断多语言版），
+    写在 M2.5 文档 §1，**新会话不要重复验证**
 - **已完成**：
   - M1 全套（游戏库 / 自动识别 / 一键安装引擎 / 启动），v0.1.4 已在 Mac 上实测可启动 NW.js 游戏
   - **M2 全套**：`src/main/dlsite.ts`（RJ 识别 + `var contents` 解析 + TTL 缓存 + 4 类错误）、
@@ -28,7 +31,10 @@
     `saveGameMeta` / `refreshGameMeta` / `clearGameMeta`）、`OFF_QUEUE_METHODS` 常量、
     CSP `img-src` 白名单、session `adultchecked` cookie、编辑页 DLsite 面板、GameCard 封面三级降级
   - `src/shared/bridge-error.ts`：修掉「contextBridge 跨边界丢 `error.key`」导致中文文案退化成英文的老 bug
-  - **测试 165 个全绿 / 9 个文件**（M1 的 76 个 + M2 新增 89 个）
+  - **R18 封面打码**（用户 2026-11-04 拍板）：设置项 `showAdultCovers` 默认 false，
+    判定依据是 DLsite 的 section（`maniax`/`books` = R18；实测同一 R18 作品在 `homepro` 返回 404），
+    **只影响渲染、不影响抓取与存储**。实现在 `src/shared/age-rating.ts`（零依赖纯函数）
+  - **测试 172 个全绿 / 10 个文件**（M1 的 76 + M2 的 89 + R18 打码 7）
 - **M2 端到端实测（Windows 本机，`node scripts/probe-m2.cjs`）**：
   - `dlsiteLookup` 走系统代理**真拿到数据**：`純愛おま○こ当番【アップデート版】` / `青春×フェティシズム` /
     `2020/08/30`，**约 260ms**
@@ -38,7 +44,7 @@
   - 编辑页 `htmlLen = 6411`、`consoleErrors = []` → 组件没白屏
 - **验证基线（Windows 本机实测）**：
   - `npm run typecheck` ✅ exit 0
-  - `npm test` ✅ 165 passed / 9 files
+  - `npm test` ✅ 172 passed / 10 files
   - `npm run build` ✅ exit 0
   - `node scripts/probe-m2.cjs` ✅ 全链路通过（见上）
 - **仍未验证（必须在有桌面会话的机器上做）**：
@@ -85,6 +91,8 @@ npm run build:mac    # 出 mac 包（Windows 上只能出 zip/dir，签名需 Ma
 ├── AGENTS.md               ← 本文档（现状/决策/规矩）
 ├── docs/
 │   ├── M1-实施方案.md      ← ★ 契约冻结稿（IPC 表/数据结构/文件清单/实施顺序/测试计划）
+│   ├── M2-实施方案.md      ← M2 契约（D18–D22）
+│   ├── M2.5-实施方案.md    ← ★ M2.5 交接稿（搜索/可编辑元数据/多语言偏好）
 │   └── 技术选型-三方案对比.md
 ├── _xeno_probe/            # 上游 Xenolauncher clone，只读参考，gitignore
 ├── resources/core/
@@ -113,7 +121,7 @@ npm run build:mac    # 出 mac 包（Windows 上只能出 zip/dir，签名需 Ma
 │   └── probe-m2.cjs        #   M2 端到端验收探针（+ probe-m2-inner.cjs）
 └── test/
     ├── fixtures/           # 假游戏目录（MV/VX Ace/2000/Ren'Py）+ dlsite/RJ294126.html
-    └── *.test.ts           # vitest 单测（165 个，9 个文件，不依赖网络与 GUI）
+    └── *.test.ts           # vitest 单测（172 个，10 个文件，不依赖网络与 GUI）
 ```
 
 ## 架构与数据流（30 秒版）
