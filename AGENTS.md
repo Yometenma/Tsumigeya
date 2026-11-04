@@ -20,7 +20,8 @@
 
 ## 当前项目状态（每次收尾必须更新）
 
-- **阶段**：**M1 / M2 / M2.5 / M3 / M2.6 / M2.7 / M3.5 / M4.0 已完成**（v0.3.2 已发布，M4.0 待发版）
+- **阶段**：**M1 / M2 / M2.5 / M3 / M2.6 / M2.7 / M3.5 / M4.0 已完成**（v0.4.0 已发布）；**M4.1（自己维护引擎清单）方案已冻结待实施**
+  - M4.1 = 不再从上游拉 manifest，4 个引擎硬编码在 `src/main/engines/registry.ts`；ruffle/wine/macos **在代码里不存在**（见 `docs/M4.1-实施方案.md`，D60–D62）
   - **M4.0 = 去掉上游 launcher，自实现启动**（见 `docs/M4.0-实施方案.md`，D53–D58）——**已实施完毕**
     - 收益：**不再修改用户游戏文件**（上游 nwjs 会改写 `js/main.js`）/ 数据目录切到 `Tsumigeya` / 清掉补丁式代码
     - 启动改走 `src/main/launchers/`（buildLaunchPlan + spawn），`launcher.js` 与 `exec-inject.ts` 全部删除
@@ -169,6 +170,7 @@ npm run build:mac    # 出 mac 包（Windows 上只能出 zip/dir，签名需 Ma
 │   ├── M3.5-实施方案.md    ← ★ M3.5 交接稿（进程管理：追踪/关闭/游玩记录）——**已实施完毕**
 │   ├── 调研-去掉上游launcher的可行性.md ← 上游 launcher 能否自实现（**已调研并已实施**）
 │   ├── M4.0-实施方案.md    ← ★ M4.0 交接稿（去掉上游 launcher，自实现启动）——**已实施完毕**
+│   ├── M4.1-实施方案.md    ← ★ M4.1 交接稿（自己维护引擎清单，彻底不拉上游）——**待实施**
 │   └── 技术选型-三方案对比.md
 ├── _xeno_probe/            # 上游 Xenolauncher clone，只读参考，gitignore
 ├── resources/core/
@@ -304,6 +306,9 @@ Vue 组件 → Pinia store → api/client → preload(window.tsumi.invoke)
 | D59 | **XP 的 RTP 目录名是 `Standard`，不是 `RPGXP`**（`RPGXP` 保留作别名） | M3 初稿写 `RPGXP` 并标注「推测」，**推测是错的**。实测真实 `RTP.zip`（255,812,166 字节）的中央目录里只有 `Standard` / `RPGVX` / `RPGVXAce`。不纠正的后果：读不到 `Game.ini` 的 `RTP=` 时按版本映射会查一个**永不存在的 `RPGXP`** → XP 游戏永久判「RTP 缺失」，一键补装也修不掉 |
 | D57 | **未知引擎不回退上游 launcher**，明确报 `error.engineNotLaunchable` + 引擎页标灰 | 上游 6 个模块里不做的是 ruffle（Flash，用户已不用）/ wine（Windows，用户有 CrossOver）/ macos（本项目本就是给 macOS 用的）。回退等于为不会发生的场景维护代码，且**回退那条路径会改游戏文件** |
 | D58 | 数据目录从 `Xenolauncher` 切到 **`Tsumigeya`**，**不迁移、不探测旧目录**；老用户重装引擎 + 重新添加游戏；首次运行给一次性中文说明 | 共享目录的初衷是「上游 launcher 硬编码该路径」，M4.0 后不再用 launcher → 约束消失。**不做迁移**是用户 2026-11-04 改口后的最终决定（先选「切+迁移」，随后说「重新装引擎吧」）：迁移代码必须写旧目录字符串做判断（与 D57 的「尽量不和上游有关系」直接冲突），且只能搬 `modules` 与索引、搬不动存档本体，会造出「引擎在、存档没了」的更糟状态。详见 `docs/M4.0-实施方案.md` §5 |
+| D60 | **引擎清单自己维护**（`src/main/engines/registry.ts` 硬编码 4 个），**不再从上游模块仓库拉 manifest**；ruffle / wine / macos 在代码里**不存在**（不是藏在某个 `.filter()` 里） | 用户明确不要那三个。过滤/隐藏是障眼法（每次启动仍拉 7 个、代码里仍留着名字）；从源头删掉才是真的删。代价：引擎版本要自己维护（显式接受） |
+| D61 | 参数表单**大幅精简**（nwjs 4→2、mkxpz 59→约10、easyrpg 51→约6） | 砍掉的是渲染画质微调（`xbrzScalingFactor` / `bicubicSharpness` 等 40 多个）与调试参数（`recordInput` / `battleTest`），普通用户不碰；不写进 `mkxp.json` 就用 MKXP-Z 自己的默认值，**功能不丢**。需要时加回是一行 |
+| D62 | 安装引擎时**从 registry 生成** `<dataDir>/modules/<引擎>/manifest.json`（字段名与上游兼容） | `module.js` 的 `readLocalManifests` / `installModuleWithProgress` 都读写这个文件；没有远程 manifest 后必须自己生成。保持兼容 → 原版 Xenolauncher 也能读 |
 
 ## 已知坑
 
@@ -410,6 +415,10 @@ Vue 组件 → Pinia store → api/client → preload(window.tsumi.invoke)
   - **端到端验收**：`node scripts/probe-m40.cjs`（结论见下方「M4.0 全套」）
   - **未验证**：mac 上四个引擎的真实二进制能否被 spawn 起来（Windows 上只能验错误路径与文案）；
     上游 nwjs 的 `chromium-args` 篡改我们不做，**是否有行为差异待 mac 真机对比**（方案 §7 R2）
+- **M4.1（方案已冻结，待实施）**：自己维护引擎清单 —— 见 [`docs/M4.1-实施方案.md`](./docs/M4.1-实施方案.md)（D60–D62）
+  - 不再调 `fetchRemoteManifestsList`；4 个引擎硬编码；安装时自己生成 manifest
+  - **参数大幅精简**（mkxpz 59→约10 / easyrpg 51→约6 / nwjs 4→2）
+  - 顺带修掉：mkxpz manifest 里硬编码的 `xenolauncher` 路径（D58 后已失效）
 - **M4**：存档管理（集中查看/备份/导出）+ 增强（Cheat 注入/变速）
 - **M5**：手柄、无边框全屏、像素缩放、dmg 公证分发
 
