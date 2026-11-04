@@ -252,6 +252,22 @@ export async function installDependencies(
       })
     }
     const optional = (builds as { optional?: boolean }).optional === true
+    // 「解压后是否拍平单层目录」由 registry 显式声明（见 types.ts 的 keepSingleDir）。
+    // **默认保留**（= 不拍平），与上游行为一致：上游就是 `extractArchive(archivePath, depDir)`
+    // 直接解压，没有拍平这一步。
+    //
+    // 为什么默认保留是对的（四个引擎的实测形态）：
+    //   RTP      zip 顶层 `RTP/`                    → deps/RTP/RTP/RPGVXace（诊断查这个）
+    //   nwjs     zip 顶层 `nwjs-sdk-…-osx-arm64/`   → deps/version/v0.106.1/nwjs-sdk-…/nwjs.app/…
+    //   mkxpz    zip 顶层 `Z-Universal.app/`        → deps/mkxpz/Z-Universal.app/…
+    //   easyrpg  zip 顶层 `EasyRPG Player.app/`     → deps/player/EasyRPG Player.app/…
+    //   kawariki zip 顶层 `kawariki/`                → deps/kawariki/kawariki/preload.rb
+    // 全部都要保留那一层。
+    //
+    // M4.2 之前用「顶层目录名 ≠ 依赖名就拍平」的启发式 → nwjs 被误拍平
+    // （依赖名 `version/v0.106.1` 与目录名 `nwjs-sdk-…` 天然不同）→ 二进制路径少一层
+    // → **mac 上 NW.js 游戏启动失败**（Windows 上无法复现）。
+    const keepSingleDirFlag = (builds as { keepSingleDir?: boolean }).keepSingleDir !== false
     const spec = pickBuild(builds as Record<string, unknown>, arch, `dependency "${name}"`)
 
     // ⚠️ 依赖名**可以带斜杠**（`version/v0.106.1`，斜杠 = 子目录，
@@ -317,20 +333,22 @@ export async function installDependencies(
     if (spec.unzip) {
       const extracted = path.join(depDir, '.extract')
       await extractArchive(archivePath, extracted, { signal: options.signal })
-      // ⚠️ 这里的「拍平」只针对**无关的包裹层**，绝不针对与依赖名同名的那一层。
+      // ⚠️ 「拍平单层目录」只在**无关包裹层**上做，是否保留由 registry 显式声明
+      //    （`EngineDependency.keepSingleDir`），**不靠猜目录名**。
       //
-      // §2.3 实测：RTP.zip 内部顶层就是 `RTP/<版本>/…`，而 depDir 本身已经叫
-      // `deps/RTP`，所以**必须保留那层 `RTP/`**，最终才是 `deps/RTP/RTP/RPGVXace`
-      // （`detectMissingRtp` 查的就是这个路径）。
+      // 两个真实形态（都要求保留，但目录名与依赖名的关系完全不同）：
+      //   RTP   : depDir = deps/RTP           zip 顶层 = `RTP/`            → 保留
+      //           （最终 deps/RTP/RTP/RPGVXace，`detectMissingRtp` 查的就是这个）
+      //   nwjs  : depDir = deps/version/v0.106.1  zip 顶层 = `nwjs-sdk-v0.106.1-osx-arm64/` → 保留
+      //           （最终 .../v0.106.1/nwjs-sdk-…/nwjs.app/…，`binary-paths` 拼的就是这个）
       //
-      // 原来写 `entries[0].name === name` 反而把 `RTP/` 拍平掉了 → 落地成
-      // `deps/RTP/RPGVXace` → 诊断永远判「缺失」，用户点修复后问题依旧
-      // （Windows 上恰好没暴露，Linux CI 才炸出来）。
-      //
-      // 规则：解压结果**有且只有一个目录**且它 **≠** 依赖名时，才当包裹层剥掉。
+      // M4.2 之前用「顶层目录名 ≠ 依赖名就拍平」的启发式：RTP 对了，nwjs 错了
+      // （依赖名 `version/v0.106.1` 与目录名 `nwjs-sdk-…` 天然不同，被误判成包裹层）
+      // → 二进制路径少一层 → **mac 上 NW.js 游戏启动失败**。Windows 上测不出来。
       const entries = fs.readdirSync(extracted, { withFileTypes: true })
-      const wrap = entries.length === 1 && entries[0].isDirectory() && entries[0].name !== name
-      const source = wrap ? path.join(extracted, entries[0].name) : extracted
+      const onlyOneDir = entries.length === 1 && entries[0].isDirectory()
+      // keepSingleDirFlag=true（默认）→ 保留那层；显式 false → 拍平唯一的单层目录。
+      const source = onlyOneDir && !keepSingleDirFlag ? path.join(extracted, entries[0].name) : extracted
       for (const entry of fs.readdirSync(source)) {
         const from = path.join(source, entry)
         const to = path.join(depDir, entry)

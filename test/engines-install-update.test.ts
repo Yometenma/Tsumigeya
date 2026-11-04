@@ -38,6 +38,29 @@ import type { EngineDefinition } from '../src/main/engines/types'
 // ===== 测试辅助 =====
 
 /**
+ * 造一个「解压后顶层是**单个目录**」的真 zip，目录里放 `payload.txt`。
+ *
+ * 用来钉「解压后要不要拍平那一层」这条规则 —— M4.2 之前的启发式
+ * 「顶层目录名 ≠ 依赖名就拍平」把 nwjs 的 `nwjs-sdk-…-osx-arm64/` 也拍掉了，
+ * 导致 `binary-paths` 拼出来的路径多期望一层、而磁盘上少一层 →
+ * **mac 上 NW.js 游戏启动失败**（Windows 上无法复现，所以单测必须覆盖）。
+ */
+function singleDirZip(dirName: string, marker: string): Buffer {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tsmg-m42-sdzip-'))
+  try {
+    const inner = path.join(dir, dirName)
+    fs.mkdirSync(inner, { recursive: true })
+    fs.writeFileSync(path.join(inner, 'payload.txt'), marker)
+    const tar = process.platform === 'win32' ? 'C:\\Windows\\System32\\tar.exe' : '/usr/bin/tar'
+    execFileSync(tar, ['-a', '-c', '-f', path.join(dir, 'out.zip'), '-C', dir, dirName])
+    return fs.readFileSync(path.join(dir, 'out.zip'))
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+}
+
+
+/**
  * 造一个**真能被 bsdtar 解开**的极小 zip（内容里带一个标记字符串）。
  *
  * `extractArchive` 走的是系统 tar，纯文本会报
@@ -392,6 +415,91 @@ describe('S3 installDependencies：只装指定的、可选依赖可失败', () 
 })
 
 // ===== 4. 🔴 三条不变量（方案 §3，D66 的核心验收）=====
+
+describe('S3 解压后要不要拍平单层目录（回归：nwjs 启动失败）', () => {
+  /**
+   * 这条回归来自用户真机：mac 上点启动报
+   *   找不到引擎的可执行文件：…/deps/version/v0.106.1/nwjs-sdk-v0.106.1-osx-arm64/nwjs.app/…
+   *
+   * 根因：M4.2 之前用启发式「解压结果只有单个顶层目录，且目录名 ≠ 依赖名 → 拍平」。
+   *   · RTP     依赖名 `RTP`          zip 顶层 `RTP/`       → 同名，不拍平 ✓（M3 修对了）
+   *   · nwjs    依赖名 `version/v0.106.1` zip 顶层 `nwjs-sdk-…-osx-arm64/`
+   *             → 名字天然不同，被判成「无关包裹层」→ **拍平了** ✗
+   * 结果磁盘上 `deps/version/v0.106.1/nwjs.app/…`，
+   * 而 `binary-paths` 期望 `.../nwjs-sdk-…/nwjs.app/…` → 差一层 → 找不到二进制。
+   *
+   * 修法：默认**保留**单层目录（= 与上游一致：上游就是直接 extractArchive 到 depDir），
+   * 只有显式 `keepSingleDir: false` 才拍平。
+   */
+
+  test('默认保留单层目录（nwjs 形态：目录名与依赖名不同，也必须保留）', async () => {
+    const root = path.join(tempDir(), 'modules', 'nwjs')
+    fs.mkdirSync(root, { recursive: true })
+    fs.writeFileSync(
+      path.join(root, 'manifest.json'),
+      JSON.stringify({
+        dependencies: {
+          'version/v0.106.1': { universal: { link: 'https://x.test/nwjs.zip', unzip: true } }
+        }
+      })
+    )
+
+    // 真 zip：解压后顶层是 nwjs-sdk-v0.106.1-osx-arm64/payload.txt
+    const zip = singleDirZip('nwjs-sdk-v0.106.1-osx-arm64', 'nwjs-runtime')
+    await installDependencies(root, ['version/v0.106.1'], {
+      fetch: async () =>
+        new Response(zip, { status: 200, headers: { 'content-length': String(zip.length) } })
+    })
+
+    // ⭐ 核心判据：那一层必须还在
+    const kept = path.join(root, 'deps', 'version', 'v0.106.1', 'nwjs-sdk-v0.106.1-osx-arm64', 'payload.txt')
+    expect(fs.existsSync(kept)).toBe(true)
+    // 反向判据：不能被拍平成 deps/version/v0.106.1/payload.txt
+    expect(fs.existsSync(path.join(root, 'deps', 'version', 'v0.106.1', 'payload.txt'))).toBe(false)
+  })
+
+  test('RTP 形态（目录名与依赖名同名）同样保留 —— 诊断查的就是这层', async () => {
+    const root = path.join(tempDir(), 'modules', 'mkxpz')
+    fs.mkdirSync(root, { recursive: true })
+    fs.writeFileSync(
+      path.join(root, 'manifest.json'),
+      JSON.stringify({ dependencies: { RTP: { universal: { link: 'https://x.test/rtp.zip', unzip: true } } } })
+    )
+
+    const zip = singleDirZip('RTP', 'rtp-payload')
+    await installDependencies(root, ['RTP'], {
+      fetch: async () =>
+        new Response(zip, { status: 200, headers: { 'content-length': String(zip.length) } })
+    })
+
+    // detectMissingRtp 查的就是 deps/RTP/RTP/<版本>
+    expect(fs.existsSync(path.join(root, 'deps', 'RTP', 'RTP', 'payload.txt'))).toBe(true)
+    expect(fs.existsSync(path.join(root, 'deps', 'RTP', 'payload.txt'))).toBe(false)
+  })
+
+  test('显式 keepSingleDir: false 才拍平（给将来真需要拍的依赖留出口）', async () => {
+    const root = path.join(tempDir(), 'modules', 'mkxpz')
+    fs.mkdirSync(root, { recursive: true })
+    fs.writeFileSync(
+      path.join(root, 'manifest.json'),
+      JSON.stringify({
+        dependencies: {
+          wrapped: { universal: { link: 'https://x.test/w.zip', unzip: true }, keepSingleDir: false }
+        }
+      })
+    )
+
+    const zip = singleDirZip('wrapper', 'inner')
+    await installDependencies(root, ['wrapped'], {
+      fetch: async () =>
+        new Response(zip, { status: 200, headers: { 'content-length': String(zip.length) } })
+    })
+
+    // 拍平 → payload.txt 直接落在 deps/wrapped/
+    expect(fs.existsSync(path.join(root, 'deps', 'wrapped', 'payload.txt'))).toBe(true)
+    expect(fs.existsSync(path.join(root, 'deps', 'wrapped', 'wrapper'))).toBe(false)
+  })
+})
 
 describe('S3 updateEngine：多版本保留的三条不变量（D66）', () => {
   /**

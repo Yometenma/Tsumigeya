@@ -86,6 +86,25 @@ export interface EngineDependency {
    * 音源不是运行必需品（缺了只是部分音乐退化），所以可容忍。
    */
   optional?: boolean
+  /**
+   * 解压后**保留**那一层唯一的顶层目录（不拍平）。
+   *
+   * 为什么需要显式声明，而不是靠「猜目录名」：
+   *
+   * 两种依赖的形态**看起来一样、要求相反**：
+   *   · `RTP.zip` 解压出 `RTP/RPGVXace/…`，而 depDir 已经叫 `deps/RTP`
+   *     → 必须**保留**那层 `RTP/`，最终 `deps/RTP/RTP/RPGVXace`（诊断查的就是这个）
+   *   · `nwjs-sdk-…zip` 解压出 `nwjs-sdk-v0.106.1-osx-arm64/nwjs.app/…`，depDir 是
+   *     `deps/version/v0.106.1`
+   *     → 也必须**保留**那层（`binary-paths` 拼的是 `.../v0.106.1/nwjs-sdk-…/nwjs.app/…`）
+   *
+   * M4.2 之前用「顶层目录名 ≠ 依赖名就拍平」的启发式，结果把 nwjs 那层也拍掉了 →
+   * 二进制路径对不上 → **NW.js 游戏启动失败**（mac 上实测到，Windows 测不出）。
+   * 「依赖名 ≠ 目录名」根本不能推出「这是个无关包裹层」。
+   *
+   * 所以改成显式标记：**true = 保留单层，false/缺省 = 拍平单层**。
+   */
+  keepSingleDir?: boolean
 }
 
 /**

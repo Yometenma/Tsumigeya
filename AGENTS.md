@@ -21,7 +21,7 @@
   M3（故障自愈）、M2.6（海报墙与详情页）、M2.7（编辑页重构）、M3.5（进程管理）、M4.0（自实现启动）、
   M4.1（引擎清单自己维护）、**M4.2（彻底零上游）**
 - **已发布**：**v0.5.0**（含 M4.2；GitHub `Yometenma/Tsumigeya`）
-- **测试**：**852 个 / 35 文件**全绿（清掉 7 条重复用例）；`typecheck` / `test` / `build` 三绿
+- **测试**：**855 个 / 35 文件**全绿；`typecheck` / `test` / `build` 三绿
 - **下一步**：M4（存档管理 + 增强）或 M5（手柄/全屏/缩放/公证分发）
 
 ### 各模块在哪（一句话）
@@ -98,6 +98,7 @@ Vue → Pinia → api/client → preload(window.tsumi.invoke)
 | 主进程没注入 `fetchImpl` → 静默降级全局 fetch | `index.ts` 必须显式传 `net.fetch` |
 | **whenReady 里抛错 = 窗口永不出现，用户看不到原因** | 启动链上的可预期失败必须降级 + 告知 |
 | **`failure()` 返回的 Error 没有 `code`** | 要分支就显式补 `code`，别靠 `err.code` 猜 |
+| **解压后拍平单层目录会打掉 nwjs 的版本目录** | 默认**保留**单层（与上游一致）；只有 `keepSingleDir:false` 才拍。**别用「目录名 ≠ 依赖名」当判据** —— D69 |
 | **`spawn` 对「文件不存在」是异步报错** | 同步返回 child（`pid=undefined`），`error` 事件才到。**必须挂 `error` 监听**，否则崩主进程 |
 | `fs.accessSync('ping')` 对裸命令名必失败 | 预检只在 `path.isAbsolute()` 时做 |
 | Windows `%APPDATA%`/`%TEMP%` 可能整体 EPERM | `resolveDataDirWithFallback` 三级降级 + dialog 告知 |
@@ -213,6 +214,7 @@ Vue → Pinia → api/client → preload(window.tsumi.invoke)
 | D66 | `updateEngine` 的多版本保留用「识别 `version/` 前缀 + 原样搬回」，不重写上游那套临时目录流转 | 引擎只有 4 个，多版本只有 nwjs 一种形态；简化实现 + 3 条不变量测试足够 |
 | D67 | `dependencyUpdate` 字段**保留但恒 false**；渲染层的「依赖可更新」徽标与「更新依赖」按钮**删除** | 一个恒 false 的字段配一套永远不出现的 UI，正是 D63 说的「偷偷藏着」。字段留着是为了不破坏跨边界契约（主进程仍在返回它） |
 | D68 | 删掉的东西**必须有测试守着**（`test/no-upstream-module.test.ts`） | 只删不守 = 迟早复发：下个会话遇到「这里缺个能力」会顺手从 `_xeno_probe/` 抄回来，而测试全绿 |
+| D69 | 解压后**默认保留单层目录**，只有显式 `keepSingleDir: false` 才拍平；**绝不靠「目录名 ≠ 依赖名」猜** | M4.2 曾用「顶层目录名 ≠ 依赖名就拍平」的启发式：RTP 碰巧对了（目录名==依赖名），nwjs 错了（`version/v0.106.1` vs `nwjs-sdk-…`）→ 二进制路径少一层 → **mac 上 NW.js 游戏启动失败**。Windows 上无法复现，所以必须有单测覆盖两种形态 |
 
 ## 里程碑路线图
 
