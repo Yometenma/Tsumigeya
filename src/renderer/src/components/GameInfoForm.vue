@@ -55,8 +55,19 @@ import { useLibraryStore } from '@/stores/library'
 const props = defineProps<{
   /**
    * 游戏 id。**空值 = staged 模式**（向导里游戏还没保存）。
+   *
+   * ⚠️ M5.0 S11：编辑页现在**也走 staged 模式**（`gameId` 传 undefined），
+   * 为的是「全页只有一个保存」（方案 §9.3 ①：用户抱怨"DLsite 卡片里保存一次、
+   * 整页再保存一次"这个两步操作）。
+   * 它靠 `initialMeta` 把已存的元数据带进来，改完的差异由父组件一起提交。
    */
   gameId?: string
+  /**
+   * staged 模式的初始元数据（编辑页把库里已存的那份传进来）。
+   *
+   * 不传 = 从空白开始（向导里就是这样）。
+   */
+  initialMeta?: DlsiteWork | null
   /** 标题（v-model:title）。标题来源提示与封面占位都要它。 */
   title: string
   /** 游戏路径（识别 RJ、生成搜索关键词要用）。 */
@@ -162,16 +173,59 @@ const canUseDlsiteTitle = computed(() => {
   return !!target && props.title.trim() !== target
 })
 
-/** 有已保存的元数据且当前没有预览（决定「刷新 / 强制覆盖 / 清除」按钮显不显示）。 */
-const canRefreshSaved = computed(() => !!savedMeta.value && !preview.value)
+/**
+ * 「刷新 / 强制覆盖 / 清除」按钮该不该出现。
+ *
+ * ⚠️ M5.0 S11：staged 模式下 `savedMeta` 恒为 undefined（没有 gameId 可查库），
+ * 但编辑页**仍然要让用户能用这三个动作**（他本来就是在改已存的那条）。
+ * 所以判据改成「有没有已存的那份」—— staged 下看 `initialMeta`。
+ *
+ * 而"当前没有预览"那半句仍然必要：查到了一份新预览时，按钮该是「保存」而不是「刷新」。
+ */
+const hasSavedWork = computed(() => !!savedMeta.value || !!props.initialMeta)
+const canRefreshSaved = computed(() => hasSavedWork.value && !preview.value)
+const canClearWork = computed(() => hasSavedWork.value || !!preview.value)
 const hasEdits = computed(() => (shownMeta.value?.editedFields ?? []).length > 0)
 
-/** 一进编辑页就把已存的 RJ 回填（bound 模式）。 */
+/**
+ * 一进编辑页就把已存的 RJ 回填。
+ *
+ * ⚠️ M5.0 S11 的关键细节：`rjInput` 是**用户可编辑输入框**，回填只在
+ * 「用户还没动过」时做。否则会出现「用户手输了 RJ，父组件一次刷新
+ * → 输入框被冲回旧值」——那种"我打的字自己跑了"是最恼人的体验。
+ *
+ * 判据用 `rjInput.value === ''`（空才填）：比记一个 `touched` 标志简单，
+ * 且语义相同 —— 用户一旦输过东西，这个框就不该被自动改。
+ */
 watch(
-  () => [props.gameId, library.meta] as const,
+  () => [props.gameId, library.meta, props.initialMeta] as const,
   () => {
+    if (rjInput.value.trim()) return
     const id = props.gameId?.trim()
-    rjInput.value = id ? (library.meta[id]?.rj ?? '') : ''
+    // bound：从 library.meta 读；staged：从 initialMeta 读（编辑页那时传的是同一份）
+    rjInput.value = id ? (library.meta[id]?.rj ?? '') : (props.initialMeta?.rj ?? '')
+  },
+  { immediate: true }
+)
+
+/**
+ * M5.0 S11：staged 模式下的**初始值**（编辑页把库里已存的元数据传进来）。
+ *
+ * 为什么需要这一步：编辑页改成 staged 之后，`savedMeta`（从 library.meta 读）
+ * 在 staged 下永远是 undefined —— 那样一进来面板就显示「暂无 DLsite 信息」，
+ * 已存的封面/社团/日期全都看不见了。这是"保存合一"的代价，必须用 initialMeta 补上。
+ *
+ * 与 `preview` 的关系：staged 下 `preview` 就是"用户当前的这份"，
+ * 初值取已存的那条，之后用户的每次查询/字段编辑都改它。
+ * 父组件提交时用的也是它（`stagedMeta()`）。
+ */
+watch(
+  () => props.initialMeta,
+  (next) => {
+    if (mode.value !== 'staged') return
+    // 一旦用户已经动过（preview 非空且与 initial 不是同一条），不再覆盖他
+    if (preview.value) return
+    if (next) preview.value = toPlain(next) as DlsiteWork
   },
   { immediate: true }
 )
@@ -331,9 +385,35 @@ async function saveMeta(): Promise<void> {
   }
 }
 
-/** 用已存的 RJ 重新拉取并直接落盘（bound 专用）。 */
+/**
+ * 用已存的 RJ 重新拉取。
+ *
+ * · bound  → 直接落盘（`refreshGameMeta`，与原来行为一致）
+ * · staged → 拉成**预览**（不落盘），等父组件那个唯一的保存一起提交
+ *
+ * M5.0 S11：staged 下这条必须真的工作，否则编辑页里「刷新」按钮点了没反应。
+ */
 async function refreshMeta(): Promise<void> {
-  if (!shouldPersist(mode.value, 'refreshMeta')) return
+  const current = savedMeta.value ?? props.initialMeta
+  const rj = current?.rj?.trim() || rjInput.value.trim()
+  if (!rj) return
+
+  if (!shouldPersist(mode.value, 'refreshMeta')) {
+    // staged：拉一份新的到预览
+    looking.value = true
+    try {
+      preview.value = await library.lookupRj(rj, true)
+      rjInput.value = preview.value.rj
+      emit('stage-change', preview.value)
+      ElMessage.success(t('dlsite.refreshed'))
+    } catch (error) {
+      ElMessage.error(translateError(error, t))
+    } finally {
+      looking.value = false
+    }
+    return
+  }
+
   const id = props.gameId?.trim()
   if (!id) return
   looking.value = true
@@ -350,7 +430,26 @@ async function refreshMeta(): Promise<void> {
 
 /** 强制覆盖全部（丢掉编辑标记）。 */
 async function forceRefresh(): Promise<void> {
-  if (!shouldPersist(mode.value, 'forceRefresh')) return
+  const current = savedMeta.value ?? props.initialMeta
+  const rj = current?.rj?.trim() || rjInput.value.trim()
+  if (!rj) return
+
+  if (!shouldPersist(mode.value, 'forceRefresh')) {
+    // staged：拉一份干净的新数据进预览，**并清掉编辑标记**
+    looking.value = true
+    try {
+      const fresh = await library.lookupRj(rj, true)
+      preview.value = { ...toPlain(fresh), editedFields: [] } as DlsiteWork
+      emit('stage-change', preview.value)
+      ElMessage.success(t('dlsite.forceRefreshed'))
+    } catch (error) {
+      ElMessage.error(translateError(error, t))
+    } finally {
+      looking.value = false
+    }
+    return
+  }
+
   const id = props.gameId?.trim()
   if (!id) return
   looking.value = true

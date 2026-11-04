@@ -155,7 +155,13 @@
   },
   "game": {
     "title": "编辑游戏",
+    "identitySection": "游戏身份",
+    "identitySectionHint": "封面、标题与 DLsite 信息 —— 这一块越全，卡片与详情页就越好看。",
+    "localSection": "本地信息",
+    "tagsSection": "分类与标签",
+    "tagsSectionHint": "卡片上的小标记。DLsite 不提供分类，这些是你自己填的。",
     "newTitle": "新建游戏",
+    "metaSaveFailed": "游戏已保存，但 DLsite 信息没存成功（可以再点一次保存）",
     "basicInfo": "基本信息",
     "engineArgs": "引擎参数",
     "noArgs": "该引擎没有可配置参数",
