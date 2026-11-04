@@ -111,7 +111,9 @@ const DEFAULT_SETTINGS: Omit<Settings, 'appearance' | 'language'> = {
   listView: false,
   deletionConfirmation: true,
   nonInstalledAutodetect: true,
-  checkModuleUpdatesOnStartup: true
+  checkModuleUpdatesOnStartup: true,
+  // R18 封面保护默认**开启**（即打码）。只影响渲染，元数据照常抓取与保存。
+  showAdultCovers: false
 }
 
 /** 把磁盘上的原始 settings 归一化（含上游 darkTheme 兼容，照 worker.cjs:173-177）。 */

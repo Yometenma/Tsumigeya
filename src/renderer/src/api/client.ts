@@ -26,6 +26,13 @@ export interface Settings {
   checkModuleUpdatesOnStartup: boolean
   appearance: Appearance
   language: string
+  /**
+   * 是否在界面上显示 R18 作品的封面（默认 false = 打码）。
+   *
+   * 说明：**只影响渲染，不影响抓取与存储**。元数据照常拉取并落盘，
+   * 开启后立刻可见，无需重新请求。覆盖面判定见 `isAdultWork()`。
+   */
+  showAdultCovers: boolean
 }
 
 export interface GameArgDef {
@@ -278,6 +285,9 @@ export function iconUrl(filePath?: string): string | undefined {
   if (!filePath) return undefined
   return `tsmg://img/${encodeURIComponent(filePath)}`
 }
+
+// 年龄分级判定已抽到 src/shared/age-rating.ts（主进程 / 渲染层 / 测试共用一份）。
+export { isAdultWork } from '../../../shared/age-rating'
 
 // ===== 错误本地化（§3.9）=====
 

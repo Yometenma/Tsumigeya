@@ -9,7 +9,9 @@ const DEFAULT_SETTINGS: Settings = {
   nonInstalledAutodetect: true,
   checkModuleUpdatesOnStartup: true,
   appearance: 'system',
-  language: 'system'
+  language: 'system',
+  // 与主进程 games-store.ts 的 DEFAULT_SETTINGS 保持一致：默认打码。
+  showAdultCovers: false
 }
 
 export const useSettingsStore = defineStore('settings', () => {

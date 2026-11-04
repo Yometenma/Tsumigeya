@@ -166,7 +166,9 @@ describe('settings', () => {
       nonInstalledAutodetect: true,
       checkModuleUpdatesOnStartup: true,
       appearance: 'system',
-      language: 'system'
+      language: 'system',
+      // R18 封面保护默认开启（打码）；只影响渲染，元数据照常抓取与保存。
+      showAdultCovers: false
     })
   })
 

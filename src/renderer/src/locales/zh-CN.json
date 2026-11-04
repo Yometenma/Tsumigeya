@@ -191,7 +191,9 @@
     "electron": "Electron {version}",
     "node": "Node {version}",
     "platform": "平台 {platform}",
-    "saved": "设置已保存"
+    "saved": "设置已保存",
+    "showAdultCovers": "显示 R18 作品封面",
+    "showAdultCoversHint": "关闭时（默认）会把 R18 作品的封面替换为占位图；作品信息照常获取，打开开关后立即显示。"
   },
   "task": {
     "running": "处理中…",
@@ -246,7 +248,8 @@
     "priceYen": "{price} 日元",
     "noMeta": "尚未获取 DLsite 信息",
     "coverMissing": "封面加载失败",
-    "onlyWithMeta": "只看有封面的游戏"
+    "onlyWithMeta": "只看有封面的游戏",
+    "adultCoverHidden": "R18 封面已隐藏"
   },
   "error": {
     "invalidObject": "数据文件格式不正确：{file}",

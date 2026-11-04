@@ -124,6 +124,18 @@ async function copyDataPath(): Promise<void> {
         @update:model-value="patch({ checkModuleUpdatesOnStartup: $event === true })"
       />
     </div>
+
+    <!-- R18 封面保护：默认关闭（打码）。只影响显示，元数据照常抓取与保存。 -->
+    <div class="settings-row">
+      <div class="settings-row-main">
+        <div class="settings-row-title">{{ t('settings.showAdultCovers') }}</div>
+        <div class="settings-row-hint">{{ t('settings.showAdultCoversHint') }}</div>
+      </div>
+      <el-switch
+        :model-value="settings.settings.showAdultCovers"
+        @update:model-value="patch({ showAdultCovers: $event === true })"
+      />
+    </div>
   </section>
 
   <section class="panel" style="margin-top: 16px">

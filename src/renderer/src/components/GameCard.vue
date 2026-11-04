@@ -5,6 +5,8 @@
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { iconUrl, type GameMeta, type GameRecord } from '@/api/client'
+import { isAdultWork } from '../../../shared/age-rating'
+import { useSettingsStore } from '@/stores/settings'
 
 const props = defineProps<{
   game: GameRecord
@@ -20,16 +22,23 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+const settings = useSettingsStore()
 
 /** 远程封面加载失败（防盗链 / 引用过期 / 网络问题）——很常见，必须优雅降级。 */
 const coverBroken = ref(false)
 /** 本地图标加载失败（路径存在但文件坏掉）。 */
 const iconBroken = ref(false)
 
+/**
+ * R18 封面打码。**只影响渲染，数据照常抓取并保存**（设置里关掉开关后立即可见）。
+ * 判定依据是 DLsite 的 section（maniax / books），见 api/client.ts 的 isAdultWork。
+ */
+const adultMasked = computed(() => isAdultWork(props.meta) && !settings.settings.showAdultCovers)
+
 const coverSrc = computed(() => (props.meta?.coverUrl && !coverBroken.value ? props.meta.coverUrl : undefined))
 const iconSrc = computed(() => (!iconBroken.value ? iconUrl(props.game.iconPath) : undefined))
-/** 最终显示哪一张：封面 → 本地图标 → 无。 */
-const src = computed(() => coverSrc.value ?? iconSrc.value)
+/** 最终显示哪一张：封面 → 本地图标 → 无。打码时不显示封面，直接退到本地图标。 */
+const src = computed(() => (adultMasked.value ? iconSrc.value : coverSrc.value ?? iconSrc.value))
 
 const tags = computed(() => (props.game.tags ?? []).filter((tag) => tag.trim()))
 const placeholder = computed(() => props.game.gameTitle.trim().slice(0, 1).toUpperCase() || '?')
@@ -57,7 +66,8 @@ function onImageError(): void {
     <div class="game-card-icon" :class="{ 'has-cover': !!coverSrc }">
       <img v-if="src" :src="src" :alt="game.gameTitle" @error="onImageError" />
       <span v-else>{{ placeholder }}</span>
-      <div v-if="!coverSrc && meta" class="game-card-cover-hint">{{ t('dlsite.coverMissing') }}</div>
+      <div v-if="adultMasked" class="game-card-cover-hint">{{ t('dlsite.adultCoverHidden') }}</div>
+      <div v-else-if="!coverSrc && meta" class="game-card-cover-hint">{{ t('dlsite.coverMissing') }}</div>
     </div>
     <div class="game-card-body">
       <div class="game-card-title" :title="game.gameTitle">{{ game.gameTitle }}</div>
