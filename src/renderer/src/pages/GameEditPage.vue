@@ -212,6 +212,65 @@ const savedMeta = computed(() => (gameId.value ? library.meta[gameId.value] : un
 const shownMeta = computed(() => preview.value ?? savedMeta.value)
 const metaPreviewSrc = computed(() => shownMeta.value?.coverUrl)
 
+// ===== M2.7：标题来源提示（§「DLsite 标题优先，允许手动覆盖」）=====
+//
+// `gameTitle`（games.json，上游 schema）与 `DlsiteWork.title`（旁挂元数据）是两份数据。
+// 卡片/详情页显示时按「元数据优先」回落（见 shared/gamecard-info.ts）。
+// 这里只负责**告诉用户当前标题从哪来**，并给一个「改用 DLsite 标题」的快捷按钮。
+
+/** 用户是否手动改过标题（M2.5 的 editedFields 机制）。 */
+const titleManuallyEdited = computed(() => (shownMeta.value?.editedFields ?? []).includes('title'))
+
+/** DLsite 那边的标题（没有元数据时为 undefined）。 */
+const dlsiteTitle = computed(() => shownMeta.value?.title?.trim() || undefined)
+
+/**
+ * 当前标题的来源：
+ * - `manual`  用户手改过（以 `gameTitle` 为准）
+ * - `dlsite`  没改过且有元数据（显示层会用 DLsite 标题）
+ * - `dirname` 没有元数据，只有目录名/用户填的
+ */
+const titleSource = computed<'manual' | 'dlsite' | 'dirname'>(() => {
+  if (titleManuallyEdited.value) return 'manual'
+  if (dlsiteTitle.value) return 'dlsite'
+  return 'dirname'
+})
+
+/** 「改用 DLsite 标题」是否可点（有 DLsite 标题且当前不是它）。 */
+const canUseDlsiteTitle = computed(() => {
+  const target = dlsiteTitle.value
+  return !!target && title.value.trim() !== target
+})
+
+/** 把标题输入框改成 DLsite 的标题。 */
+function useDlsiteTitle(): void {
+  const target = dlsiteTitle.value
+  if (target) title.value = target
+}
+
+// ===== M2.7：封面预览（合并「DLsite 封面 + 本地图标」两个概念）=====
+//
+// 用户提的冗余点：图标与封面在这一页里是两个独立区块，但卡片其实**只显示一个**。
+// 现在合并成一个「封面预览」，让用户看到最终生效的是哪张，并说明来源。
+//
+// 优先级与 shared/gamecard-info.ts 保持一致：DLsite 封面 → 本地图标 → 首字母占位。
+
+/** 当前生效的封面来源。 */
+const coverSource = computed<'dlsite' | 'icon' | 'placeholder'>(() => {
+  if (metaPreviewSrc.value) return 'dlsite'
+  if (iconPreview.value) return 'icon'
+  return 'placeholder'
+})
+
+/** 最终显示的图片地址（没有就 undefined，模板显示首字母占位）。 */
+const effectiveCoverSrc = computed(() => metaPreviewSrc.value ?? iconPreview.value)
+
+/** 首字母占位（与卡片一致）。 */
+const coverPlaceholder = computed(() => title.value.trim().slice(0, 1).toUpperCase() || '?')
+
+/** 图标设置是否展开（默认收起——卡片优先用封面，图标只是兜底）。 */
+const iconSectionOpen = ref(false)
+
 /**
  * 认一个 RJ 号并自动查询一次。
  * 注意：这里**只查询**，落盘要用户再点「保存」——见 saveMeta。
@@ -699,8 +758,19 @@ function diagnosisFixLabel(fix: DiagnosisFix): string {
       <div class="settings-row">
         <div class="settings-row-main">
           <div class="settings-row-title">{{ t('game.titleLabel') }}</div>
+          <!-- M2.7：告诉用户当前标题从哪来，别让人以为「改了没生效」 -->
+          <div class="settings-row-hint title-source-hint">
+            <template v-if="titleSource === 'manual'">{{ t('game.titleFromManual') }}</template>
+            <template v-else-if="titleSource === 'dlsite'">{{ t('game.titleFromDlsite') }}</template>
+            <template v-else>{{ t('game.titleFromDirname') }}</template>
+          </div>
         </div>
-        <el-input v-model="title" :placeholder="t('wizard.titlePlaceholder')" style="width: 320px" />
+        <div class="row" style="flex: 0 0 auto">
+          <el-input v-model="title" :placeholder="t('wizard.titlePlaceholder')" style="width: 320px" />
+          <el-button v-if="canUseDlsiteTitle" size="small" :title="dlsiteTitle" @click="useDlsiteTitle">
+            {{ t('game.useDlsiteTitle') }}
+          </el-button>
+        </div>
       </div>
 
       <div class="settings-row">
@@ -723,10 +793,36 @@ function diagnosisFixLabel(fix: DiagnosisFix): string {
           <el-option v-for="option in engineOptions" :key="option.value" :label="option.label" :value="option.value" />
         </el-select>
       </div>
+    </section>
 
+    <!-- ===== M2.7：封面与标签（合并原来分散的「标签」与「图标」两个区块）===== -->
+    <section class="panel stack" style="margin-bottom: 16px">
+      <div>
+        <h3 style="margin: 0">{{ t('game.coverAndTags') }}</h3>
+        <div class="hint">{{ t('game.coverAndTagsHint') }}</div>
+      </div>
+
+      <!-- 封面预览：让用户看清「卡片上到底会显示哪张」 -->
+      <div class="settings-row">
+        <div class="settings-row-main">
+          <div class="settings-row-title">{{ t('game.coverPreview') }}</div>
+          <div class="settings-row-hint">
+            <template v-if="coverSource === 'dlsite'">{{ t('game.coverFromDlsite') }}</template>
+            <template v-else-if="coverSource === 'icon'">{{ t('game.coverFromIcon') }}</template>
+            <template v-else>{{ t('game.coverPlaceholder') }}</template>
+          </div>
+        </div>
+        <div class="cover-preview">
+          <img v-if="effectiveCoverSrc" :src="effectiveCoverSrc" :alt="title" />
+          <span v-else class="cover-preview-fallback">{{ coverPlaceholder }}</span>
+        </div>
+      </div>
+
+      <!-- 标签：**保留**。DLsite 不提供 genre（M2.6 D40 实测），这是唯一的标签来源。 -->
       <div class="settings-row">
         <div class="settings-row-main">
           <div class="settings-row-title">{{ t('game.tagsLabel') }}</div>
+          <div class="settings-row-hint">{{ t('game.tagsHint') }}</div>
         </div>
         <el-select
           v-model="tags"
@@ -741,10 +837,22 @@ function diagnosisFixLabel(fix: DiagnosisFix): string {
         </el-select>
       </div>
 
+      <!-- 图标：折叠（卡片优先用封面，图标只是没有元数据时的兜底） -->
       <div class="settings-row">
         <div class="settings-row-main">
+          <div class="settings-row-title">
+            <el-button text size="small" class="icon-toggle" @click="iconSectionOpen = !iconSectionOpen">
+              {{ iconSectionOpen ? '▾' : '▸' }} {{ t('game.iconAdvanced') }}
+            </el-button>
+          </div>
+          <div class="settings-row-hint">{{ t('game.iconAdvancedHint') }}</div>
+        </div>
+      </div>
+
+      <div v-if="iconSectionOpen" class="settings-row">
+        <div class="settings-row-main">
           <div class="settings-row-title">{{ t('game.iconLabel') }}</div>
-          <div class="settings-row-hint" style="word-break: break-all">{{ iconPath || '—' }}</div>
+          <div class="settings-row-hint" style="word-break: break-all">{{ iconPath || t('game.iconNone') }}</div>
         </div>
         <div class="row" style="flex: 0 0 auto">
           <img v-if="iconPreview" :src="iconPreview" alt="" style="width: 40px; height: 40px; border-radius: 8px" />

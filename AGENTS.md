@@ -20,7 +20,8 @@
 
 ## 当前项目状态（每次收尾必须更新）
 
-- **阶段**：**M1 / M2 / M2.5 / M3 / M2.6 已完成**（v0.2.0 已发布）
+- **阶段**：**M1 / M2 / M2.5 / M3 / M2.6 / M2.7 已完成**（v0.3.1 已发布）
+  - M2.7 = 编辑页重构（见 `docs/M2.7-实施方案.md`）：保存 bug 修复 + 封面与标签合并 + 标题来源提示
   - M2.6 = 海报墙与详情页重构（见 `docs/M2.6-实施方案.md`，**D39–D43**）——**已实施完毕**（详见下方「M2.6 全套」）
   - ⚠️ 注意编号：M2.6 方案初稿写的是 D36–D38，但那三个号已被 **M3 实际占用**，
     所以 M2.6 落在 **D39–D41**，实施中又新增 **D42–D43**（见方案 §10）
@@ -104,7 +105,7 @@
       · `mergeWork` 原来 `{...incoming}` 直接覆盖，而 `author`/`salesCount`/`rating`
         **只有搜索结果页才有**（详情页重拉拿不到）→ 一次「重新获取」会把用户已存的作者/销量抹掉。
         已改为「incoming 缺这三项时沿用旧值」（D42）
-- **测试 423 个全绿 / 16 个文件**（M1 的 76 + M2 的 89 + R18 打码 7 + M2.5 的 108 + M3 的 76 +
+- **测试 439 个全绿 / 17 个文件**（M1 的 76 + M2 的 89 + R18 打码 7 + M2.5 的 108 + M3 的 76 +
   M2.6 的 67：S1 数据层 18 + 卡片降级纯函数 40 + 落盘白名单与 mergeWork 回归 8 + GameCard 信息 1）
 - **M2.5 端到端实测（Windows 本机，`node scripts/probe-m25.cjs`）**：
   - 搜索：搜「傭兵」返回 **20 条真作品**（约 2.2s），第二次调用 828ms → 确实绕开了队列
@@ -125,7 +126,7 @@
   - `snapshot.games[0]` 的键只有 `gameEngine/gamePath/gameTitle/id` → **D18（GameRecord 零改动）实测验证**
 - **验证基线（Windows 本机实测）**：
   - `npm run typecheck` ✅ exit 0
-  - `npm test` ✅ **423 passed / 16 files**
+  - `npm test` ✅ **439 passed / 17 files**
   - `npm run build` ✅ exit 0
   - `node scripts/probe-m3.cjs` ✅ S3/S4 全链路通过（见下）
   - `node scripts/probe-m25.cjs` ✅ M2.5 全链路通过（见上）
@@ -223,6 +224,7 @@ npm run build:mac    # 出 mac 包（Windows 上只能出 zip/dir，签名需 Ma
 │   ├── M2.6-实施方案.md    ← ★ M2.6 交接稿（海报墙与详情页重构）
 │   ├── 竞品功能对照表.md    ← MTool / RPGMakerUtils 功能面调研（判断哪些值得加）
 │   ├── 需求-游戏内文本汉化.md ← 汉化需求记录（**暂不实现**，只沉淀格式与坑）
+│   ├── M2.7-实施方案.md    ← ★ M2.7 交接稿（编辑页重构 + 保存 bug）
 │   └── 技术选型-三方案对比.md
 ├── _xeno_probe/            # 上游 Xenolauncher clone，只读参考，gitignore
 ├── resources/core/
@@ -244,7 +246,8 @@ npm run build:mac    # 出 mac 包（Windows 上只能出 zip/dir，签名需 Ma
 │   │   ├── game-language.ts#  M2.5：语言标记剥离 + 标题归一化
 │   │   ├── language-group.ts# M2.5：多语言版本分组（相似度 + 前缀防线 + 父目录推断）
 │   │   ├── launch-language.ts# M2.5：启动时的语言切换决策
-│   │   └── gamecard-info.ts#  ★ M2.6：卡片/详情页取值降级（无值不画 vs 明说「暂无」）+ 作品类型代码表
+│   │   ├── gamecard-info.ts#  ★ M2.6：卡片/详情页取值降级（无值不画 vs 明说「暂无」）+ 作品类型代码表
+│   │   └── plain.ts      #   ★ M2.7：toPlain() 递归剥 Vue 响应式 Proxy（过 contextBridge 前必用）
 │   ├── preload/index.ts    # contextBridge 白名单桥（window.tsumi）
 │   └── renderer/src/       # Vue3 前端
 │       ├── pages/          #   Library / GameDetail（新） / GameEdit / Engines / Settings
@@ -257,12 +260,14 @@ npm run build:mac    # 出 mac 包（Windows 上只能出 zip/dir，签名需 Ma
 │   ├── probe-m2.cjs        #   M2 端到端验收探针（+ probe-m2-inner.cjs）
 │   ├── probe-m25.cjs       #   M2.5 端到端验收探针（+ probe-m25-inner.cjs）
 │   ├── probe-m3.cjs        #   M3 端到端验收探针（+ probe-m3-inner.cjs）
-│   └── probe-m26.cjs       #   M2.6 端到端验收探针（+ probe-m26-inner.cjs）
+│   ├── probe-m26.cjs       #   M2.6 端到端验收探针（+ probe-m26-inner.cjs）
+│   ├── probe-m27.cjs       #   M2.7 编辑页重构验收探针
+│   └── probe-save-fix.cjs  #   M2.7 保存 bug 修复验收探针（两阶段）
 └── test/
     ├── fixtures/           # 假游戏目录（MV/VX Ace/2000/Ren'Py）+ dlsite/RJ294126.html
     │                       #   + dlsite/search-mercenary.html（M2.5 真搜索页裁切）
     │                       #   + encrypted-rgss3a/（M3：0x03 魔数 + GBK Game.ini，.gitattributes 锁住字节）
-    └── *.test.ts           # vitest 单测（423 个，16 个文件，不依赖网络与 GUI）
+    └── *.test.ts           # vitest 单测（439 个，17 个文件，不依赖网络与 GUI）
 ```
 
 ## 架构与数据流（30 秒版）
@@ -328,6 +333,10 @@ Vue 组件 → Pinia store → api/client → preload(window.tsumi.invoke)
 | D41 | **启动按钮只在详情页**，卡片与列表行只有三点菜单 | 用户明确要求，且「点卡片 = 查看详情」才能避免误点启动（卡片是浏览入口，不是操作面） |
 | D42 | `mergeWork` 刷新时，**只在搜索结果页才有的字段**（`author` / `salesCount` / `rating`）在 `incoming` 缺失时**沿用旧值** | 这三项从详情页重拉天然拿不到（§3.1 `contents` JSON 不含）。原来 `{...incoming}` 直接覆盖，实测会让用户已经搜到并存下的作者/销量在一次「重新获取」后**凭空消失**。`summary` 不在此列（详情页拿得到，该被新值覆盖） |
 | D43 | 卡片/详情页的取值降级抽成 `src/shared/gamecard-info.ts`（零依赖纯函数），**不写在 .vue 里** | 全是「有就显示、没有就不画」的判断，画错了不报错、只是界面缺一块，端到端探针很难发现；抽出来能用单测钉死（40 条）。同一份逻辑同时服务卡片（无值不画）与详情页（无值明说「暂无」）两种取向 |
+| D44 | 过 contextBridge 的响应式数据**一律走通用 `toPlain()`**，且**在 store 层统一施加**，不做逐字段拷贝 | 逐字段方案踩了两次（M2.5 的 `plainWork` 只覆盖元数据路径；M2.7 保存基本信息时 `gameArgs` 又漏）。放 store 层 = 新加路径也不会漏。回归测试 `test/plain-bridge.test.ts` 直接钉死 |
+| D45 | 图标**不删除，折叠为「高级」**；封面与图标合并成一个「封面预览」区块并标明来源 | 图标在没有 DLsite 信息时是唯一兜底（用户拍板「保留手动改」）；合并是为了让用户看清「卡片到底显示哪张」，而不是面对两个独立区块猜 |
+| D46 | 标题**不改存储**，只做来源提示（manual/dlsite/dirname 三态）+ 「用 DLsite 标题」快捷按钮 | 自动改 `gameTitle` 会写进 `games.json`（上游 schema，D10）；显示层回落更安全，且 M2.6 卡片/详情页本来就有回落逻辑 |
+| D47 | 标签**必须保留**，并在 UI 上说明「DLsite 不提供分类标签」 | D19/D40 已实测 DLsite 的 genre 拿不到（`work_genre` 区块为空）；删了标签就没有任何标签来源 |
 
 ## 已知坑
 
@@ -368,6 +377,7 @@ Vue 组件 → Pinia store → api/client → preload(window.tsumi.invoke)
 | **`tarBinary()` 原来没有 Linux 分支 → CI 首次发版直接炸**（2026-11-04 v0.3.0 实测） | 原实现只判 `darwin`，否则一律拼 `%SystemRoot%/System32/tar.exe`；而 Linux 上 `SystemRoot` 是 undefined → 回落到 `C:/Windows/System32/tar.exe` → **spawn ENOENT**，CI 的 `npm test` 挂在 `installRtp 真的下载并落地` 那条上（本机 Windows 测不出来）。已改为显式三分支：darwin→`/usr/bin/tar`、win32→`%SystemRoot%/System32/tar.exe`、**其余→PATH 上的 `tar`** |
 | **`installDependencies` 的「拍平包裹层」方向写反 → RTP 落地层级错位**（v0.3.0 CI 炸出来） | 原写 `wrap = entries[0].name === name`（与依赖名同名就拍平），而真实 `RTP.zip` 顶层**就是** `RTP/`、`depDir` 本身已叫 `deps/RTP`，于是那层被拍掉 → 落地 `deps/RTP/RPGVXace` → `detectMissingRtp` 查 `deps/RTP/RTP/<版本>` **永远判缺失**（用户点「一键补装」后问题依旧）。已改为 `entries[0].name !== name`（只剥**无关**包裹层；同名的必须保留），并新增回归测试「与依赖名同名的顶层目录必须保留」+ 目标已存在时先删再 rename |
 | **RTP 目录名大小写不敏感问题 → Linux 上永远判「RTP 缺失」**（v0.3.0 CI 第三次失败实测） | 真实目录名是 `RPGVXace`（小写 a），而不少 `Game.ini` 写 `RPGVXAce`（大写 A）。Windows/macOS 文件系统**默认大小写不敏感**，两种写法都能 stat 成功 → 本机永远测不出来；**Linux 大小写敏感** → 找不到目录 → `missingRtp` 一直存在。已加 `normalizeRtpName()`（忽略大小写匹配三个已知目录名）+ `detectMissingRtp` 精确查不到时再 `findCaseInsensitive()` 扫实际目录（兜住用户手改过的名字）。**教训**：任何「按文件系统路径存在性判断」的逻辑，都要假设 CI 是 Linux（大小写敏感） |
+| **同一个 contextBridge Proxy 坑踩了第二次**（2026-11-04 用户实测） | M2.5 修 `saveGameMeta` 时写的是**逐字段**的 `plainWork()`，只覆盖了「DLsite 元数据」那一条路径；这次**保存基本游戏信息**时把 `gameArgs`（DynamicArgsForm 双向绑定的 reactive 对象）直接传过去 → 同样抛 `An object could not be cloned.`，用户看到「点保存没反应，只弹一句英文」。**逐字段方案天生会漏**——已改成通用 `toPlain()`（`src/shared/plain.ts`，递归剥对象/数组/嵌套/Date/循环引用）并**在 store 层统一使用**（`library.ts` 的 `saveGame` / `saveGameMeta`）：页面不用记得叫它，走 store 就一定被剥干净。回归测试 `test/plain-bridge.test.ts` 直接钉死：`structuredClone(reactive)` 抛、`structuredClone(toPlain(reactive))` 不抛 |
 | **PATH 上的 `tar` 在 Windows 是 GNU tar，不是 bsdtar** | 单测里造压缩包时 `execFileSync('tar', ...)` 拿到的是 `/usr/bin/tar`（GNU 版），它把 `C:\...` 当成远程主机名报 `tar: Cannot connect to C: resolve failed`（exit 128）。用 **`C:\Windows\System32\tar.exe`**（bsdtar，也是 `src/main/extract.ts` 生产环境用的那个） |
 | **给 `GameMeta` 加字段时必须同步改 `library-meta.ts` 的 `sanitize()`**（M2.6 S1 端到端探针实测踩到） | `sanitize()` 是**落盘的字段白名单**：它只挑自己认识的字段重建对象，所以 `DlsiteWork` 里新加了 `summary`/`author`/`salesCount`/`rating` 之后，`saveGameMeta` **回执的 keys 里根本没有它们**——不报错、不警告，界面表现是「解析到了但详情页全是暂无」。判定方法：改完解析层后先看 `saveGameMeta` 的返回键集。回归测试 `test/library-meta.test.ts` 的「M2.6 新增字段必须能落盘」8 条锁住这条 |
 | **`el-dropdown-item` 的 `aria-disabled` 是字符串 `"false"`**（M2.6 探针自己踩到） | `!!el.getAttribute(...)` 恒为 true（非空字符串都是真值），会把「三项菜单全 disabled」当成真实现象去查。判据写成 `el.getAttribute("aria-disabled") === "true"` 或 `el.classList.contains("is-disabled")` |

@@ -123,7 +123,21 @@
     "engineSwitchHint": "切换引擎会重置该引擎的参数",
     "saved": "已保存",
     "notFound": "游戏不存在，可能已被删除",
-    "backToLibrary": "返回游戏库"
+    "backToLibrary": "返回游戏库",
+    "titleFromManual": "当前使用你手动修改的标题（DLsite 标题不会覆盖它）",
+    "titleFromDlsite": "当前使用 DLsite 标题",
+    "titleFromDirname": "尚未获取 DLsite 信息，当前使用目录名/你填写的标题",
+    "useDlsiteTitle": "用 DLsite 标题",
+    "coverAndTags": "封面与标签",
+    "coverAndTagsHint": "卡片上显示的就是这里的封面。有 DLsite 信息时用 DLsite 封面，否则用本地图标或首字母。",
+    "coverPreview": "封面预览",
+    "coverFromDlsite": "来自 DLsite 封面",
+    "coverFromIcon": "来自本地图标（没有 DLsite 封面）",
+    "coverPlaceholder": "没有封面也没有图标，显示首字母",
+    "tagsHint": "DLsite 不提供分类标签，这里的标签是你自己的整理",
+    "iconAdvanced": "图标（高级）",
+    "iconAdvancedHint": "卡片优先用封面，图标只在没有 DLsite 封面时作为兜底显示",
+    "iconNone": "未设置图标"
   },
   "args": {
     "manageVersions": "管理版本",

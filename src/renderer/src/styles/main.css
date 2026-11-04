@@ -848,3 +848,44 @@ a {
   color: var(--tsmg-text-dim);
   font-style: italic;
 }
+
+/* ===== M2.7：编辑页「封面与标签」区块 ===== */
+
+/* 封面预览：固定 4:3（与卡片一致，让用户看到的就是最终效果） */
+.cover-preview {
+  width: 160px;
+  aspect-ratio: 4 / 3;
+  flex: 0 0 auto;
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--tsmg-accent) 8%, transparent);
+}
+
+.cover-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.cover-preview-fallback {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--tsmg-text-dim);
+}
+
+/* 图标折叠区的小三角按钮：不要撑成整块按钮 */
+.icon-toggle {
+  padding: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--tsmg-text);
+}
+
+/* 标题来源提示：次要信息，不要抢标题的注意力 */
+.title-source-hint {
+  margin-top: 2px;
+  font-size: 12px;
+}
