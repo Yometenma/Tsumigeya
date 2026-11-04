@@ -263,6 +263,27 @@ export const RTP_BY_RGSS_VERSION: Record<1 | 2 | 3, string> = {
   3: 'RPGVXace'
 }
 
+/**
+ * 把 `Game.ini` 里 `RTP=` 的写法归一化成**真实目录名**。
+ *
+ * ⚠️ 为什么必须做（v0.3.0 CI 第三次失败实测）：
+ * 真实目录名是 `RPGVXace`（小写 a），而不少游戏的 `Game.ini` 写成 `RPGVXAce`（大写 A）。
+ * - **Windows/macOS 默认文件系统大小写不敏感** → 两种写法都能 stat 成功，本机永远测不出来
+ * - **Linux 大小写敏感** → `RPGVXAce` 目录找不到 → 诊断永远判「RTP 缺失」
+ *   （CI 断言 `expected ['encryptedArchive','missingRtp'] not to include 'missingRtp'`）
+ *
+ * 规则：按**忽略大小写**匹配已知的三个目录名，命中就返回规范写法；
+ * 匹配不上（未知 RTP 名）原样返回——那种情况由调用方判「无法确定」。
+ */
+export function normalizeRtpName(value: string | null | undefined): string | null {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  const known = Object.values(RTP_BY_RGSS_VERSION)
+  const hit = known.find((name) => name.toLowerCase() === trimmed.toLowerCase())
+  return hit ?? trimmed
+}
+
 export interface GameIni {
   /** `RTP=` 的值（已 trim）；**`null` = 明确不使用 RTP**（写了空值或没有这一行）。 */
   rtp: string | null
@@ -383,9 +404,11 @@ export function decideWantedRtp(dir: string, ini: GameIni = readGameIni(dir)): W
     return { rtp: null, source: 'ini', rgssVersion: inferRgssVersionFromLibrary(ini.library) }
   }
   if (ini.rtp) {
-    // 值可能是 `RPGVXace` 也可能带子目录写法；只取合法的一段
+    // 值可能是 `RPGVXace` 也可能带子目录写法；只取合法的一段。
+    // **必须归一化大小写**：真实目录是 `RPGVXace`，而 Game.ini 常写 `RPGVXAce`
+    // （Windows 不敏感所以没事，Linux 上直接判缺失——见 normalizeRtpName 注释）。
     if (isSafeComponent(ini.rtp)) {
-      return { rtp: ini.rtp, source: 'ini', rgssVersion: inferRgssVersionFromLibrary(ini.library) }
+      return { rtp: normalizeRtpName(ini.rtp), source: 'ini', rgssVersion: inferRgssVersionFromLibrary(ini.library) }
     }
     return { rtp: null, source: 'unknown', rgssVersion: null }
   }
@@ -415,12 +438,12 @@ export function decideWantedRtp(dir: string, ini: GameIni = readGameIni(dir)): W
 export function detectMissingRtp(engineDir: string, engine: string, wanted: string | null): Diagnosis | null {
   if (!wanted) return null
   const target = path.join(engineDir, 'deps', 'RTP', 'RTP', wanted)
-  try {
-    const stat = fs.statSync(target)
-    if (stat.isDirectory()) return null
-  } catch {
-    // 不存在 → 缺失
-  }
+  if (existsAsDirectory(target)) return null
+  // 精确路径不存在时再按**忽略大小写**扫一遍实际目录：
+  // Linux 上 `RPGVXAce` 与 `RPGVXace` 是两个不同名字，光归一化还不够稳，
+  // 目录里真实的写法才作数（也兜住用户手改过的目录名）。
+  const spelled = findCaseInsensitive(path.join(engineDir, 'deps', 'RTP', 'RTP'), wanted)
+  if (spelled && existsAsDirectory(spelled)) return null
   return {
     code: 'missingRtp',
     level: 'warning',
@@ -428,6 +451,33 @@ export function detectMissingRtp(engineDir: string, engine: string, wanted: stri
     args: { rtp: wanted, engine },
     fix: { kind: 'installRtp', engine }
   }
+}
+
+/** 目录是否真的存在且是目录（不抛）。 */
+function existsAsDirectory(target: string): boolean {
+  try {
+    return fs.statSync(target).isDirectory()
+  } catch {
+    return false
+  }
+}
+
+/**
+ * 在 `parent` 里找与 `name` **忽略大小写**匹配的条目，返回它的完整路径。
+ *
+ * 用途：Windows 上 `RPGVXAce` 与 `RPGVXace` 是同一个目录，Linux 上不是。
+ * 只在精确路径查不到时才调用（不改变 Windows 的行为）。
+ */
+export function findCaseInsensitive(parent: string, name: string): string | null {
+  let entries: fs.Dirent[]
+  try {
+    entries = fs.readdirSync(parent, { withFileTypes: true })
+  } catch {
+    return null
+  }
+  const wantedLower = name.toLowerCase()
+  const hit = entries.find((entry) => entry.isDirectory() && entry.name.toLowerCase() === wantedLower)
+  return hit ? path.join(parent, hit.name) : null
 }
 
 // ===== ③④ 路径 / 模块 / 可执行（§3.2 ③④）=====

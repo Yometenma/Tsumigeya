@@ -22,6 +22,7 @@ import {
   inferRgssVersionFromLibrary,
   inferRgssVersionFromScripts,
   isBlocking,
+  normalizeRtpName,
   parseArchiveMagic,
   readGameIni,
   resolveGameDir,
@@ -552,6 +553,46 @@ describe('真实样本回归：test/fixtures/encrypted-rgss3a', () => {
       installedModules: ['mkxpz']
     })
     expect(diagnoses.map((item) => item.code)).toEqual(['encryptedArchive', 'missingRtp'])
-    expect(diagnoses[1].args?.rtp).toBe('RPGVXAce')
+    // ⚠️ Game.ini 里写的是 `RPGVXAce`（大写 A），但真实目录名是 `RPGVXace`（小写 a）。
+    // 诊断必须归一化到**真实目录名**，否则 Linux 上（大小写敏感）永远判缺失。
+    // 见 normalizeRtpName 的注释与 v0.3.0 CI 第三次失败。
+    expect(diagnoses[1].args?.rtp).toBe('RPGVXace')
+  })
+
+  describe('RTP 名大小写归一化（Linux 大小写敏感，Windows 测不出来）', () => {
+    test('Game.ini 的 RPGVXAce 归一化到真实目录名 RPGVXace', () => {
+      expect(normalizeRtpName('RPGVXAce')).toBe('RPGVXace')
+    })
+
+    test('已经正确的大小写原样保留', () => {
+      expect(normalizeRtpName('RPGVXace')).toBe('RPGVXace')
+      expect(normalizeRtpName('RPGXP')).toBe('RPGXP')
+      expect(normalizeRtpName('RPGVX')).toBe('RPGVX')
+    })
+
+    test('未知名字原样返回（由调用方判「无法确定」，不瞎猜）', () => {
+      expect(normalizeRtpName('SomeRtp')).toBe('SomeRtp')
+    })
+
+    test('空值 / null → null', () => {
+      expect(normalizeRtpName('')).toBeNull()
+      expect(normalizeRtpName('   ')).toBeNull()
+      expect(normalizeRtpName(null)).toBeNull()
+      expect(normalizeRtpName(undefined)).toBeNull()
+    })
+
+    test('★ 目录里只有 RPGVXace 时，问 RPGVXAce 也应判「已安装」（忽略大小写扫实际目录）', () => {
+      const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tsmg-ci-'))
+      try {
+        // 造真实目录：RTP/RPGVXace
+        fs.mkdirSync(path.join(root, 'deps', 'RTP', 'RTP', 'RPGVXace'), { recursive: true })
+        // 精确查 RPGVXAce 会失败（Windows 不敏感看不出来，Linux 会）
+        expect(detectMissingRtp(root, 'mkxpz', 'RPGVXAce')).toBeNull()
+        // 真正不存在的版本仍然要报缺失（别把大小写兜底写成「永远不报」）
+        expect(detectMissingRtp(root, 'mkxpz', 'RPGXP')?.code).toBe('missingRtp')
+      } finally {
+        fs.rmSync(root, { recursive: true, force: true })
+      }
+    })
   })
 })
