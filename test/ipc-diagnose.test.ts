@@ -76,7 +76,15 @@ function installModule(folder: string): void {
 function buildTarWithNestedDir(tarPath: string, depName: string, rtpVersion: string): void {
   const staging = fs.mkdtempSync(path.join(os.tmpdir(), 'tsmg-tar-'))
   try {
-    const target = path.join(staging, depName, 'RTP', rtpVersion)
+    // ⚠️ **必须还原真实结构**：真实 `RTP.zip` 内部顶层只有一个 `RTP/`，
+    // 里面直接是版本目录（`RTP/RPGVXace/…`，M3 §2.3 实测）。
+    // 而 `depDir` 本身已经叫 `deps/RTP`，所以落盘结果才是 `deps/RTP/RTP/RPGVXace`。
+    //
+    // 这里以前写成 `staging/depName/RTP/rtpVersion`（= `RTP/RTP/RPGVXace`），
+    // 比真实结构多套了一层同名 `RTP/`——恰好被旧实现「把与依赖名同名的层拍平」
+    // 的 bug 抵消，所以测试一直是绿的；真实现修好之后反而暴露出来。
+    // 现在按真实结构造：`staging/<depName>/<rtpVersion>`。
+    const target = path.join(staging, depName, rtpVersion)
     fs.mkdirSync(path.join(target, 'Graphics'), { recursive: true })
     fs.writeFileSync(path.join(target, 'Graphics', 'marker.txt'), 'rtp fixture')
     fs.mkdirSync(path.join(target, 'Audio'), { recursive: true })
@@ -446,5 +454,57 @@ describe('repairGame', () => {
         signal()
       )
     ).rejects.toMatchObject({ translationKey: 'error.download' })
+  })
+
+  /**
+   * 「拍平包裹层」的方向必须是**只剥无关包裹层**，不能剥与依赖名同名的那一层。
+   *
+   * 这条锁的是 v0.3.0 在 CI 炸出来的真实 bug：
+   * 原实现 `wrap = entries[0].name === name`（与依赖名同名就拍平）把
+   * 真实 `RTP.zip` 的 `RTP/` 层拍掉了 → 落地成 `deps/RTP/RPGVXace` →
+   * `detectMissingRtp` 查 `deps/RTP/RTP/<版本>` 永远判缺失 →
+   * 用户点「一键补装」后问题依旧，比不修更糟。
+   */
+  test('★ 与依赖名同名的顶层目录必须保留（否则 RTP 落地层级错位）', async () => {
+    const gameDir = makeEncryptedGame()
+    installModule('mkxpz')
+    const manifestPath = path.join(dataDir, 'modules', 'mkxpz', 'manifest.json')
+    fs.writeFileSync(
+      manifestPath,
+      JSON.stringify({
+        name: 'MKXP-Z',
+        version: '1.1.5',
+        dependencies: {
+          RTP: { universal: { link: 'https://example.invalid/RTP.zip', unzip: true } }
+        }
+      })
+    )
+    host.store.saveGame({ game: { gameTitle: 'm', gamePath: gameDir, gameEngine: 'mkxpz' } })
+
+    // 真实结构：解压后顶层只有一个 `RTP/`
+    const tar = path.join(dataDir, 'fake-rtp2.tar')
+    buildTarWithNestedDir(tar, 'RTP', 'RPGVXace')
+    const archive = fs.readFileSync(tar)
+
+    const fakeHost = createCoreHost({
+      dataDir,
+      corePath: resolveCorePath({ isPackaged: false, appPath: process.cwd() }),
+      fetchImpl: (async () =>
+        new Response(archive, {
+          status: 200,
+          headers: { 'content-length': String(archive.length) }
+        })) as never
+    })
+    await createDispatcher({ host: fakeHost }).dispatch(
+      'repairGame',
+      { gameId: '1', fix: { kind: 'installRtp', engine: 'mkxpz' } },
+      signal()
+    )
+
+    const depRoot = path.join(dataDir, 'modules', 'mkxpz', 'deps', 'RTP')
+    // ✅ 保留 RTP 那一层（detectMissingRtp 查的就是这个路径）
+    expect(fs.existsSync(path.join(depRoot, 'RTP', 'RPGVXace'))).toBe(true)
+    // ❌ 不能把 RTP 拍平掉
+    expect(fs.existsSync(path.join(depRoot, 'RPGVXace'))).toBe(false)
   })
 })

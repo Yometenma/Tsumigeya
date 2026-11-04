@@ -579,16 +579,27 @@ export function createDispatcher(deps: IpcDeps): Dispatcher {
       if (spec.unzip) {
         const extracted = path.join(depDir, '.extract')
         await extractArchive(archivePath, extracted, { signal })
-        // 归档内部可能还带一层**同名**顶层目录（§2.3 实测：RTP.zip 内部顶层是 `RTP/…`，
-        // 所以真实结构是 deps/RTP/**RTP**/<版本>/——注意 depDir 本身就叫 deps/RTP）。
-        // 只有当那层与依赖名同名时才拍平它，其它结构原样保留：
-        // 盲目「拍平任意单层目录」会把 `deps/RTP/RPGVXace` 这种结构也当成包裹层，
-        // 结果版本目录被吞掉，诊断查 deps/RTP/RTP/<版本> 就会永远判缺失。
+        // ⚠️ 这里的「拍平」只针对**无关的包裹层**，绝不针对与依赖名同名的那一层。
+        //
+        // §2.3 实测：RTP.zip 内部顶层就是 `RTP/<版本>/…`，而 depDir 本身已经叫
+        // `deps/RTP`，所以**必须保留那层 `RTP/`**，最终才是 `deps/RTP/RTP/RPGVXace`
+        // （`detectMissingRtp` 查的就是这个路径）。
+        //
+        // 原来写 `entries[0].name === name` 反而把 `RTP/` 拍平掉了 → 落地成
+        // `deps/RTP/RPGVXace` → 诊断永远判「缺失」，用户点修复后问题依旧
+        // （Windows 上恰好没暴露，Linux CI 才炸出来：断言 expected [...]
+        //   to not include 'missingRtp'）。
+        //
+        // 规则：解压结果**有且只有一个目录**且它 **≠** 依赖名时，才当包裹层剥掉。
         const entries = fs.readdirSync(extracted, { withFileTypes: true })
-        const wrap = entries.length === 1 && entries[0].isDirectory() && entries[0].name === name
-        const source = wrap ? path.join(extracted, name) : extracted
+        const wrap = entries.length === 1 && entries[0].isDirectory() && entries[0].name !== name
+        const source = wrap ? path.join(extracted, entries[0].name) : extracted
         for (const entry of fs.readdirSync(source)) {
-          fs.renameSync(path.join(source, entry), path.join(depDir, entry))
+          const from = path.join(source, entry)
+          const to = path.join(depDir, entry)
+          // 目标已存在时 rename 会抛 EEXIST/ENOTEMPTY，先删再搬
+          if (fs.existsSync(to)) fs.rmSync(to, { recursive: true, force: true })
+          fs.renameSync(from, to)
         }
         fs.rmSync(extracted, { recursive: true, force: true })
         fs.rmSync(archivePath, { force: true })
