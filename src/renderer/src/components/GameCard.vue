@@ -34,6 +34,13 @@ const props = defineProps<{
    * 卡片空间有限，且 D41 的精神是「卡片是浏览入口不是操作面」。
    */
   running?: boolean
+  /**
+   * M5.0 U1：批量模式。为 true 时卡片左上角出现复选框，
+   * 点卡片主体变成「切换选中」而不是进详情页（否则用户在批量模式下点一下就跳走了）。
+   */
+  batchMode?: boolean
+  /** 该游戏是否已被选中（只在 batchMode 下有意义）。 */
+  selected?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -43,6 +50,8 @@ const emit = defineEmits<{
   /** M2.6：三点菜单的「重新获取元数据」（等同编辑页原来的「刷新」）。 */
   refresh: [id: string]
   remove: [id: string]
+  /** M5.0 U1：批量模式下点卡片主体 = 切换选中。 */
+  toggleSelect: [id: string]
 }>()
 
 const { t } = useI18n()
@@ -130,8 +139,17 @@ function onImageError(): void {
   else coverBroken.value = true
 }
 
-/** 点卡片主体 → 进详情页。三点菜单自己 stop，不会走到这里（R4：防误触）。 */
+/**
+ * 点卡片主体 → 进详情页。
+ *
+ * M5.0 U1：批量模式下改成**切换选中** —— 否则用户在批量模式里点一下卡片就跳去详情页，
+ * 整个批量流程根本走不通。三点菜单自己 stop，不会走到这里（R4：防误触）。
+ */
 function openDetail(): void {
+  if (props.batchMode) {
+    emit('toggleSelect', props.game.id)
+    return
+  }
   emit('open', props.game.id)
 }
 
@@ -144,15 +162,31 @@ function onMenuCommand(command: string): void {
   else if (command === 'refresh') emit('refresh', props.game.id)
   else if (command === 'remove') emit('remove', props.game.id)
 }
+
+/**
+ * 复选框的点击。
+ *
+ * 包成函数而不是在模板里直接写 `emit(...)`：模板里只留简单调用，
+ * 复杂逻辑进 `<script setup>`（AGENTS.md 的已知坑，模板表达式最容易白屏）。
+ */
+function toggleSelect(): void {
+  emit('toggleSelect', props.game.id)
+}
 </script>
 
 <template>
-  <article v-if="variant === 'card'" class="game-card" @click="openDetail">
+  <article v-if="variant === 'card'" class="game-card" :class="{ 'is-selected': batchMode && selected }" @click="openDetail">
     <div class="game-card-cover">
       <img v-if="src" :src="src" :alt="game.gameTitle" @error="onImageError" />
       <span v-else class="game-card-placeholder">{{ placeholder }}</span>
       <div v-if="adultMasked" class="game-card-cover-hint">{{ t('dlsite.adultCoverHidden') }}</div>
       <div v-else-if="!coverSrc && meta" class="game-card-cover-hint">{{ t('dlsite.coverMissing') }}</div>
+
+      <!-- M5.0 U1：批量模式的复选框（左上角）。
+           @click.stop 必须留：否则点复选框会冒泡到卡片主体，触发第二次 toggle（选了又取消）。 -->
+      <div v-if="batchMode" class="game-card-check" @click.stop="toggleSelect">
+        <el-checkbox :model-value="selected" />
+      </div>
 
       <!-- M2.6：三点菜单（右上角浮层）。@click.stop 必须留在这一层，
            否则点它等于点卡片，会被带进详情页（R4）。 -->
@@ -161,7 +195,10 @@ function onMenuCommand(command: string): void {
         <span class="game-card-running-dot" aria-hidden="true" />
       </div>
 
-      <div class="game-card-menu" @click.stop>
+      <!-- M5.0 U1：批量模式下不画三点菜单 —— 这时它承载的是「单条操作」，
+           与批量语义冲突（用户点编辑会跳出批量模式，点删除又只是删一条）。
+           批量模式只做选择，操作一律走顶部工具条。 -->
+      <div v-if="!batchMode" class="game-card-menu" @click.stop>
         <el-dropdown trigger="click" placement="bottom-end" @command="onMenuCommand">
           <span class="game-card-menu-trigger" :title="t('library.moreActions')">
             <el-icon><MoreFilled /></el-icon>
@@ -200,10 +237,14 @@ function onMenuCommand(command: string): void {
     </div>
   </article>
 
-  <div v-else class="game-row" @click="openDetail">
+  <div v-else class="game-row" :class="{ 'is-selected': batchMode && selected }" @click="openDetail">
     <div class="game-row-icon">
       <img v-if="src" :src="src" :alt="game.gameTitle" @error="onImageError" />
       <span v-else>{{ placeholder }}</span>
+    </div>
+    <!-- M5.0 U1：列表行同样有复选框（位置在图标与标题之间，与网格的左上角语义一致） -->
+    <div v-if="batchMode" class="game-row-check" @click.stop="toggleSelect">
+      <el-checkbox :model-value="selected" />
     </div>
     <div class="game-row-main">
       <div class="game-row-title" :title="game.gameTitle">{{ game.gameTitle }}</div>
@@ -221,7 +262,8 @@ function onMenuCommand(command: string): void {
       </div>
     </div>
     <!-- M2.6：列表行同样只有三点菜单，没有启动按钮（D38）。 -->
-    <div class="game-row-actions" @click.stop>
+    <!-- M5.0 U1：批量模式下隐藏（与网格卡片同理） -->
+    <div v-if="!batchMode" class="game-row-actions" @click.stop>
       <el-dropdown trigger="click" placement="bottom-end" @command="onMenuCommand">
         <span class="game-card-menu-trigger" :title="t('library.moreActions')">
           <el-icon><MoreFilled /></el-icon>

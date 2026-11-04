@@ -165,6 +165,44 @@ export const useLibraryStore = defineStore('library', () => {
   }
 
   /**
+   * M5.0 U1：批量删除（**逐个执行**，一个失败不中断后续）。
+   *
+   * 为什么不是「一次 IPC 删 N 个」：
+   *   · 方案 §4.1 明确要求「逐个执行 + 进度反馈，不能一个失败全崩」；
+   *   · 每条 deleteGame 都要写盘（games.json / library-meta / play-stats），
+   *     合并成一次批量写要么全成功要么全失败，中途出错会让磁盘状态与内存状态分叉；
+   *   · 主进程那边的 deleteGame 已经在写盘前校验存在性，逐条调用的失败信息更精确
+   *     （能告诉用户「第几个没删掉」而不是一个笼统的失败）。
+   *
+   * ⚠️ 每次 deleteGame 都返回完整 Snapshot，所以这里**只用最后一次的结果**
+   * 覆盖一次（不是每条都 applySnapshot —— 那会让界面在中间态闪）。
+   * 中途某条失败时，已成功的那些仍在磁盘上，为了不让界面显示"没删"，
+   * 最后一次成功的结果**照样应用**。
+   */
+  async function removeGames(
+    ids: readonly string[],
+    onProgress?: (done: number, total: number) => void
+  ): Promise<{ removed: number; failed: Array<{ id: string; error: unknown }> }> {
+    const total = ids.length
+    const failed: Array<{ id: string; error: unknown }> = []
+    let removed = 0
+    let lastSnapshot: Snapshot | null = null
+    for (let index = 0; index < total; index += 1) {
+      const id = ids[index]!
+      try {
+        lastSnapshot = await api.deleteGame(id)
+        removed += 1
+      } catch (error) {
+        failed.push({ id, error })
+      }
+      onProgress?.(index + 1, total)
+    }
+    // 只应用最后一次成功的结果（中间态不必闪一次）
+    if (lastSnapshot) applySnapshot(lastSnapshot)
+    return { removed, failed }
+  }
+
+  /**
    * 启动游戏（M3 §4.2 起返回结构化结果，不再只有 message）。
    *
    * `diagnoseAllowed=false` 表示「诊断框已经看过了，别再拦」——
@@ -312,6 +350,7 @@ export const useLibraryStore = defineStore('library', () => {
     load,
     saveGame,
     removeGame,
+    removeGames,
     launch,
     stopGame,
     diagnose,

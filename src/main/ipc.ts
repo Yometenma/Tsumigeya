@@ -1167,6 +1167,21 @@ export function createDispatcher(deps: IpcDeps): Dispatcher {
         } catch (error) {
           console.warn(`[tsumigeya] 清理 DLsite 元数据失败（已忽略）：${(error as Error).message}`)
         }
+        // M5.0 S6（U1）修的真 bug：**从来没清 play-stats.json**。
+        //
+        // `PlayStatsStore.remove()` 从 M3.5 就写好了，但**没有任何调用点**（死代码）。
+        // 单条删除时它隐蔽（孤儿记录谁也看不到，只是文件慢慢变大）；
+        // **批量删除会把它放大**：删掉一批之后新建游戏，id 是从
+        // `Math.max(...)+1` 算的（games-store.ts 的 saveGame），很容易正好落回刚删掉的号。
+        // 那时用户的**新游戏会显示上一个游戏的游玩历史** —— 数据串台，比丢数据更难查，
+        // 因为界面一切正常、数字看起来也合理。回归测试见 test/delete-cleanup.test.ts。
+        //
+        // 与 meta 同理：清理失败不能让删游戏失败（统计是附属品，games.json 才是用户数据）。
+        try {
+          playStats.remove(id)
+        } catch (error) {
+          console.warn(`[tsumigeya] 清理游玩记录失败（已忽略）：${(error as Error).message}`)
+        }
         return snapshot()
       }
 

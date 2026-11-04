@@ -21,7 +21,7 @@
   M3（故障自愈）、M2.6（海报墙与详情页）、M2.7（编辑页重构）、M3.5（进程管理）、M4.0（自实现启动）、
   M4.1（引擎清单自己维护）、**M4.2（彻底零上游）**
 - **已发布**：**v0.5.3**（含 M4.2 + 两个启动修复；GitHub `Yometenma/Tsumigeya`）
-- **测试**：**949 个 / 40 文件**全绿；`typecheck` / `test` / `build` 三绿
+- **测试**：**988 个 / 44 文件**全绿；`typecheck` / `test` / `build` 三绿
 - **M5.0 进行中**（`docs/M5.0-实施方案.md`）：12 项体验优化，**逐条提交**（用户拍板）
   - 顺序见方案 §12：B1 版本号 → U3+U4 筛选 → U5 选文件 → U6 去跳过 → N1 游玩时间
     → U1 批量 → U2 分类 → U10 全部安装 → U9 设置页 → U7 抽组件 → U8 编辑页重构
@@ -35,6 +35,8 @@
     （判据抽到 `shared/wizard-engine.ts`，14 条单测）
   - ✅ **S5 / N1 已提交**：详情页启动按钮下方加游玩时间统计
     （判据抽到 `shared/play-time.ts`，17 条单测 + snapshot 端到端 4 条）
+  - ✅ **S6 / U1 已提交**：库页批量模式（多选 + 批量删除 + 逐个进度）
+    （判据抽到 `shared/bulk-select.ts`，22 条单测；**顺带修掉删游戏不清 play-stats 的真 bug**）
 
 ### 各模块在哪（一句话）
 
@@ -54,6 +56,7 @@
 | 选文件反推目录 | `src/shared/import-target.ts` | 只选文件后逐层上退（上限 2 层）；向导与编辑页**共用**这一份判据 |
 | 向导改引擎 | `src/shared/wizard-engine.ts` | 下拉选项来源 + 第 2 步放行判据；装失败也放行（断网不能卡死） |
 | 游玩时间展示 | `src/shared/play-time.ts` | 时长分级 + 「无记录」vs「0 秒」的区分；`snapshot.playStats` 供详情页读 |
+| 批量选择/确认 | `src/shared/bulk-select.ts` | 选中集∩可见集（防误删）；确认弹窗列前 3 + 等 N；三态全选 |
 
 ## 开发命令
 
@@ -144,6 +147,7 @@ Vue → Pinia → api/client → preload(window.tsumi.invoke)
 | 坑 | 对策 |
 |---|---|
 | **给 `GameMeta` 加字段必须同步改 `library-meta.ts` 的 `sanitize()`** | 它是落盘白名单，漏了会**静默丢弃**；改完先看 `saveGameMeta` 的返回键集 |
+| **删游戏要清三处旁挂数据**：`games.json` / `library-meta` / `play-stats` | 漏掉 `play-stats` 会在 id 复用时**把上一个游戏的游玩历史安到新游戏头上**（saveGame 的 `Math.max(...)+1` 容易落回刚删的号）。回归测试 `test/delete-cleanup.test.ts` |
 
 ### 验收探针（本机无画面时）
 

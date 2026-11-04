@@ -447,6 +447,59 @@ a {
   font-size: 12px;
 }
 
+/* ===== M5.0 U1：批量管理 ===== */
+
+.batch-toolbar {
+  /* 与普通工具条区分开：批量是"另一种模式"，配色要让人意识到状态变了 */
+  padding: 8px 12px;
+  border: 1px solid var(--el-border-color);
+  border-radius: 6px;
+  background: var(--el-fill-color-light);
+}
+
+.batch-count {
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
+}
+
+/* 卡片左上角的复选框浮在封面上 */
+.game-card-check {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 2;
+  /*
+   * 给一个底色：封面可能是亮色/复杂图案，纯白复选框会看不清。
+   * 半透明黑底 + 白勾在任何封面上都够对比。
+   */
+  padding: 2px 4px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.game-row-check {
+  flex: 0 0 auto;
+  margin-right: 4px;
+}
+
+/*
+ * 选中态：加一圈主色边框。
+ * 不靠复选框本身做唯一标记 —— 卡片在网格里，用户扫一眼要靠整体高亮才看得出选了哪些。
+ */
+.game-card.is-selected,
+.game-row.is-selected {
+  outline: 2px solid var(--el-color-primary);
+  outline-offset: -2px;
+}
+
+/* 批量确认弹窗放宽一点（标题可能长） */
+.tsmg-bulk-confirm .el-message-box__message {
+  white-space: pre-line;
+  word-break: break-all;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
 /* ===== 引擎页 ===== */
 
 .engine-grid {
