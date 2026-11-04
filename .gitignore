@@ -48,3 +48,8 @@ release/
 .dev-data-m41boot.txt
 .dev-data-m41probe.json
 .dev-data-m41probe/
+
+# M4.2 删 module.js 探针的产物
+.dev-data-m42boot.txt
+.dev-data-m42probe.json
+.dev-data-m42probe/
