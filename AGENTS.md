@@ -160,6 +160,7 @@ npm run build:mac    # 出 mac 包（Windows 上只能出 zip/dir，签名需 Ma
 │   ├── M2.5-实施方案.md    ← ★ M2.5 交接稿（搜索/可编辑元数据/多语言偏好）
 │   ├── M3-实施方案.md      ← ★ M3 交接稿（故障自愈：加密发行/RTP/字体/一键修复）
 │   ├── M2.6-实施方案.md    ← ★ M2.6 交接稿（海报墙与详情页重构）
+│   ├── 竞品功能对照表.md    ← MTool / RPGMakerUtils 功能面调研（判断哪些值得加）
 │   └── 技术选型-三方案对比.md
 ├── _xeno_probe/            # 上游 Xenolauncher clone，只读参考，gitignore
 ├── resources/core/
