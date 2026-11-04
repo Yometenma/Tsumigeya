@@ -131,6 +131,7 @@
     "next": "下一步",
     "prev": "上一步",
     "saved": "已添加「{title}」",
+    "metaSaveFailed": "游戏已保存，但 DLsite 信息没提交成功（可稍后在编辑页补）",
     "needPath": "请先选择游戏路径",
     "needTitle": "请填写游戏标题"
   },
@@ -355,6 +356,9 @@
   "dlsite": {
     "sectionTitle": "DLsite 信息",
     "sectionHint": "填入 RJ 号后可从 DLsite 获取封面与作品信息。需要系统代理可用。",
+    "save": "保存",
+    "applyToNewGame": "用于新游戏",
+    "stagedSaved": "已选定，添加游戏时会一起保存",
     "rjLabel": "RJ 号",
     "rjPlaceholder": "例如 RJ294126",
     "detect": "从游戏目录识别",

@@ -4,7 +4,8 @@ import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { api, translateError, type DetectCandidate, type DetectFolderResult } from '@/api/client'
+import GameInfoForm from '@/components/GameInfoForm.vue'
+import { api, translateError, type DetectCandidate, type DetectFolderResult, type DlsiteWork } from '@/api/client'
 import { buildImportAttempts, importOutcome, type ImportDetection } from '../../../shared/import-target'
 import { canAdvanceEngineStep, engineOptionsFrom, engineSourceBadge } from '../../../shared/wizard-engine'
 import { useLibraryStore } from '@/stores/library'
@@ -49,6 +50,25 @@ const installFailed = ref(false)
 const title = ref('')
 const tags = ref<string[]>([])
 const iconPath = ref<string | undefined>(undefined)
+
+/**
+ * M5.0 S10（U7）：向导里选好的 DLsite 元数据（**暂存，还没落盘**）。
+ *
+ * 为什么需要这一份：向导里游戏**还没保存** → 没有 gameId → 元数据无处可挂。
+ * 这正是原实现只能弹 `error.dlsiteGameRequired`（"先保存游戏"）的原因，
+ * 也是用户抱怨的割裂感的来源：查到了元数据、点保存却被要求"先存游戏"。
+ *
+ * 现在由 `GameInfoForm` 的 **staged 模式**把动作都收在内存里，
+ * 通过 `stage-change` 事件交到这里，等 `finish()` 建好游戏记录后再一起提交。
+ */
+const stagedMeta = ref<DlsiteWork | null>(null)
+/** 表单实例（用来取「该提交的那份」）。 */
+const infoForm = ref<InstanceType<typeof GameInfoForm> | null>(null)
+
+/** 组件报上来的暂存元数据（null = 用户点了「清除」）。 */
+function onStageChange(work: DlsiteWork | null): void {
+  stagedMeta.value = work
+}
 
 const installedFolders = computed(() => new Set(engines.modules.map((module) => module.id)))
 
@@ -297,6 +317,20 @@ async function installEngine(): Promise<void> {
 
 // ===== 第 3 步：保存 =====
 
+/**
+ * M5.0 S10（U7）：保存游戏 + **一起提交暂存的 DLsite 元数据**。
+ *
+ * 原流程的割裂就在这一步：用户在第 3 步查到了元数据，但那时没有 gameId，
+ * 只能"先存游戏、再进编辑页重查一遍"。现在两步合并 —— 正是用户要的
+ * 「导入游戏时就把元数据弄好」。
+ *
+ * ⚠️ 顺序不能反：**先 saveGame 拿到 id，再 saveGameMeta**。
+ * 元数据挂的是 gameId；反过来主进程会报 error.dlsiteGameRequired。
+ *
+ * ⚠️ 元数据提交失败**不回滚游戏**：游戏本体已经存好了（那是主数据），
+ * 丢一次元数据不该让用户整个重新添加。所以单独 catch、单独提示，
+ * 用户可以去编辑页补（那时就有 id 了）。
+ */
 async function finish(): Promise<void> {
   if (!title.value.trim()) {
     ElMessage.warning(t('wizard.needTitle'))
@@ -304,6 +338,7 @@ async function finish(): Promise<void> {
   }
   busy.value = true
   try {
+    const before = new Set(library.games.map((item) => item.id))
     await library.saveGame(undefined, {
       gameTitle: title.value.trim(),
       gamePath: gamePath.value,
@@ -312,8 +347,25 @@ async function finish(): Promise<void> {
       tags: tags.value.filter((tag) => tag.trim()),
       gameArgs: {}
     })
+
+    // 新建出来的那条记录的 id（saveGame 内部生成的）
+    const created = library.games.find((item) => !before.has(item.id))
+    const work = infoForm.value?.stagedMeta() ?? stagedMeta.value
+    if (created && work) {
+      try {
+        await library.saveGameMeta(created.id, work)
+      } catch (error) {
+        // 游戏已经存好了 —— 元数据失败只提示、不阻断
+        console.warn(`[tsumigeya] 提交 DLsite 元数据失败：${(error as Error).message}`)
+        ElMessage.warning(t('wizard.metaSaveFailed'))
+      }
+    }
+
     ElMessage.success(t('wizard.saved', { title: title.value.trim() }))
-    void router.push('/library')
+    // M5.0 S10：存完直接进**该游戏的详情页**（能看到刚弄好的封面与信息），
+    // 而不是回库页让他再找一遍。新建时 always 有 id（上面已拿到）。
+    if (created) void router.push(`/game/${created.id}`)
+    else void router.push('/library')
   } catch (error) {
     ElMessage.error(translateError(error, t))
   } finally {
@@ -336,6 +388,7 @@ function reset(): void {
   title.value = ''
   tags.value = []
   iconPath.value = undefined
+  stagedMeta.value = null
 }
 </script>
 
@@ -472,13 +525,20 @@ function reset(): void {
   </section>
 
   <!-- 第 3 步：完善信息 -->
+  <!-- M5.0 S10（U7）：这一步**复用编辑页的 GameInfoForm**（方案 §8 的「不要复制第二份」）。
+       原来这里只有「标题 / 路径 / 引擎 / 标签 / 图标」五个裸字段，用户查 DLsite 得
+       先存游戏 → 进编辑页 → 再搜一遍 —— 正是他说的「好割裂」。
+
+       game-id 故意不传（新游戏还没保存）→ 组件进入 **staged 模式**：
+       查询与字段编辑都只进内存，由 finish() 在 saveGame 之后一起提交。 -->
   <section v-else class="panel stack">
-    <div class="settings-row">
-      <div class="settings-row-main">
-        <div class="settings-row-title">{{ t('wizard.titleLabel') }}</div>
-      </div>
-      <el-input v-model="title" :placeholder="t('wizard.titlePlaceholder')" style="width: 320px" />
-    </div>
+    <GameInfoForm
+      ref="infoForm"
+      v-model:title="title"
+      :game-path="gamePath"
+      :icon-path="iconPath"
+      @stage-change="onStageChange"
+    />
 
     <div class="settings-row">
       <div class="settings-row-main">
