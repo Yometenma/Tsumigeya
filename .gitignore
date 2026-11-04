@@ -33,3 +33,7 @@ node_modules/
 out/
 release/
 .dev-data-m26/
+.dev-data-fix/
+.dev-data-fixprobe.json
+.dev-data-diag/
+.dev-data-diagprobe.json

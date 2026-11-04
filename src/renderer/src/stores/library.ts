@@ -19,6 +19,9 @@ import {
   type RepairResult,
   type Snapshot
 } from '@/api/client'
+// 过 contextBridge 前必须把 Vue 的响应式 Proxy 剥成纯值，否则 structured clone 抛
+// `An object could not be cloned.`（症状：点保存没反应，只弹一句英文）。见 plain.ts 注释。
+import { toPlain } from '../../../shared/plain'
 
 export const useLibraryStore = defineStore('library', () => {
   const games = ref<GameRecord[]>([])
@@ -83,7 +86,9 @@ export const useLibraryStore = defineStore('library', () => {
   }
 
   async function saveGame(id: string | undefined, draft: GameDraft): Promise<Snapshot> {
-    const snapshot = await api.saveGame(id, draft)
+    // ⚠️ 必须 toPlain：draft 里的 `gameArgs` 来自 DynamicArgsForm 的双向绑定，
+    // 是 reactive 代理树；直接传会撞 structured clone 失败（用户看到「保存没反应」）。
+    const snapshot = await api.saveGame(id, toPlain(draft))
     applySnapshot(snapshot)
     return snapshot
   }
@@ -145,7 +150,8 @@ export const useLibraryStore = defineStore('library', () => {
     work: DlsiteWork,
     editedFields?: EditableField[]
   ): Promise<Snapshot> {
-    const snapshot = await api.saveGameMeta(gameId, { work, editedFields })
+    // 同上：work 也常来自响应式状态（编辑页的预览对象），统一剥成纯值。
+    const snapshot = await api.saveGameMeta(gameId, { work: toPlain(work), editedFields })
     applySnapshot(snapshot)
     return snapshot
   }
