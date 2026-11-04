@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { api, translateError, type DetectCandidate, type DetectFolderResult } from '@/api/client'
+import { buildImportAttempts, importOutcome, type ImportDetection } from '../../../shared/import-target'
 import { useLibraryStore } from '@/stores/library'
 import { useEnginesStore } from '@/stores/engines'
 import { useTaskStore } from '@/stores/task'
@@ -71,15 +72,6 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   })
 }
 
-async function pickFolder(): Promise<void> {
-  try {
-    const picked = await api.pickPath('folder')
-    if (picked) await analyze(picked)
-  } catch (error) {
-    ElMessage.error(translateError(error, t))
-  }
-}
-
 async function pickFile(): Promise<void> {
   try {
     const picked = await api.pickPath('file')
@@ -116,28 +108,61 @@ function handleDrop(event: DragEvent): void {
   }
   void analyze(dropped)
 }
-
-/** 识别 + 决定引擎；未装则停在第 2 步让用户安装。 */
+/**
+ * 识别 + 决定引擎；未装则停在第 2 步让用户安装。
+ *
+ * M5.0 U5：target 现在**几乎总是文件**（选文件夹入口已删），所以这里要按
+ * shared/import-target.ts 的顺序逐层试：先看文件本身，认不出再往上退（上限 2 层）。
+ * 覆盖「选错文件」与「Ren'Py 的入口在 game/ 子目录」两个例外。
+ * 用户手输的路径可能仍是目录 —— 那样第 0 层就能认出，退不到第二层。
+ */
 async function analyze(target: string): Promise<void> {
+  const attempts = buildImportAttempts(target)
+  if (!attempts.length) {
+    ElMessage.error(translateError(new Error('empty path'), t))
+    return
+  }
+
   gamePath.value = target
   busy.value = true
   detection.value = null
   chosen.value = null
   engineFolder.value = ''
   engineInstalled.value = false
+  const detections: ImportDetection[] = []
+  let result: DetectFolderResult | null = null
   try {
-    const result = await withTimeout(api.detectFolder(target, true), ANALYZE_TIMEOUT_MS)
+    for (const attempt of attempts) {
+      const found = await withTimeout(api.detectFolder(attempt.path, true), ANALYZE_TIMEOUT_MS)
+      // 最后一层的 candidates 留着给候选列表用（哪怕它没认出引擎）
+      result = found
+      detections.push({
+        level: attempt.level,
+        engine: found.best?.engine ?? null,
+        bestPath: found.best?.path ?? null
+      })
+      if (found.best?.engine) break
+    }
+
+    const outcome = importOutcome(target, attempts, detections)
     detection.value = result
-    const best = result.best ?? result.candidates.find((candidate) => candidate.engine) ?? null
-    chosen.value = best
-    engineFolder.value = best?.engine ?? ''
-    engineInstalled.value = isInstalled(best?.engine ?? null)
+    // ⚠️ 存盘路径取 outcome.gamePath（可能被上退纠正过），不是用户选的原值
+    gamePath.value = outcome.gamePath
+    if (outcome.engine) {
+      chosen.value = result?.best ?? null
+      engineFolder.value = outcome.engine
+      engineInstalled.value = isInstalled(outcome.engine)
+    }
+
+    // 上退纠正过就要说一声：用户以为自己选对了文件，静默换路径会让他后面困惑
+    if (outcome.ascended) {
+      ElMessage.info(t('wizard.ascended', { path: outcome.gamePath }))
+    }
 
     // 默认标题用路径最后一段
-    if (!title.value) title.value = folderName(target)
+    if (!title.value) title.value = folderName(outcome.gamePath)
 
-    if (engineInstalled.value && step.value === 0) step.value = 1
-    else if (engineFolder.value) step.value = 1
+    if (engineFolder.value) step.value = 1
   } catch (error) {
     ElMessage.error(translateError(error, t))
   } finally {
@@ -251,8 +276,11 @@ function reset(): void {
       <div>{{ t('wizard.dropHint') }}</div>
       <div class="hint" style="margin-top: 12px">{{ t('wizard.dropOr') }}</div>
       <div class="row" style="justify-content: center; margin-top: 12px">
-        <el-button type="primary" @click="pickFolder">{{ t('wizard.chooseFolder') }}</el-button>
-        <el-button @click="pickFile">{{ t('wizard.chooseFile') }}</el-button>
+        <!-- M5.0 U5：只留「选择文件」，「选择文件夹」删掉。
+             四个引擎的游戏入口都是「目录里有哪些文件」，所以选任何一个标志性文件
+             （Game.ini / RPG_RT.ldb / Game.exe / package.json）都能反推目录；
+             选了别的文件就按 import-target.ts 逐层上退，认不出才肯罢休。 -->
+        <el-button type="primary" @click="pickFile">{{ t('wizard.chooseFile') }}</el-button>
       </div>
     </div>
 

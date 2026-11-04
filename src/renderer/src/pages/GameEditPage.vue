@@ -21,6 +21,7 @@ import {
   type ManifestRaw
 } from '@/api/client'
 import { stripLanguageSuffix } from '../../../shared/game-language'
+import { buildImportAttempts, importOutcome, type ImportDetection } from '../../../shared/import-target'
 import { useLibraryStore } from '@/stores/library'
 import { useEnginesStore } from '@/stores/engines'
 
@@ -165,13 +166,6 @@ watch(engine, (next, previous) => {
   gameArgs.value = reset
 })
 
-async function chooseFolder(): Promise<void> {
-  const picked = await api.pickPath('folder')
-  if (!picked) return
-  path.value = picked
-  await autoDetect(picked)
-}
-
 async function chooseFile(): Promise<void> {
   const picked = await api.pickPath('file')
   if (!picked) return
@@ -179,11 +173,30 @@ async function chooseFile(): Promise<void> {
   await autoDetect(picked)
 }
 
-/** 选了路径就顺手识别一次引擎（未装引擎的提示交给向导，这里只填已装的）。 */
+/**
+ * 选了路径就顺手识别一次引擎（未装引擎的提示交给向导，这里只填已装的）。
+ *
+ * M5.0 U5：与向导共用 `shared/import-target.ts` 的逐层上退 —— 这里也只能选文件了，
+ * 选了 `readme.txt` 或 Ren'Py 的 `game/script.rpy` 时要能退到真正的游戏根，
+ * 否则引擎下拉不会被自动填上。**两处必须同一套判据**，不能各写一份。
+ */
 async function autoDetect(target: string): Promise<void> {
   try {
-    const result = await api.detectFolder(target, false)
-    if (result.best?.engine) engine.value = result.best.engine
+    const attempts = buildImportAttempts(target)
+    const detections: ImportDetection[] = []
+    for (const attempt of attempts) {
+      const result = await api.detectFolder(attempt.path, false)
+      detections.push({
+        level: attempt.level,
+        engine: result.best?.engine ?? null,
+        bestPath: result.best?.path ?? null
+      })
+      if (result.best?.engine) break
+    }
+    const outcome = importOutcome(target, attempts, detections)
+    // 上退纠正过就跟着改路径，别让「显示的路径」与「实际存的路径」分叉
+    path.value = outcome.gamePath
+    if (outcome.engine) engine.value = outcome.engine
   } catch {
     /* 识别失败不阻塞编辑 */
   }
@@ -779,7 +792,7 @@ function diagnosisFixLabel(fix: DiagnosisFix): string {
           <div class="settings-row-hint" style="word-break: break-all">{{ path || '—' }}</div>
         </div>
         <div class="row" style="flex: 0 0 auto">
-          <el-button @click="chooseFolder">{{ t('wizard.chooseFolder') }}</el-button>
+          <!-- M5.0 U5：只留「选择文件」，与向导一致（选文件能反推目录，见 import-target.ts） -->
           <el-button @click="chooseFile">{{ t('wizard.chooseFile') }}</el-button>
         </div>
       </div>
