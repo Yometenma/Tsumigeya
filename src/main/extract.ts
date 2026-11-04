@@ -12,8 +12,20 @@ const runFile = promisify(execFile)
 /** 解压进程的等待上限（大引擎包给足时间）。 */
 const MAX_BUFFER = 32 * 1024 * 1024
 
+/**
+ * 定位系统的 bsdtar。
+ *
+ * 平台差异（**CI 首次发版实测炸在这**）：
+ * - macOS：`/usr/bin/tar` 就是 bsdtar
+ * - Windows：必须用 `%SystemRoot%\System32\tar.exe`（bsdtar）。PATH 上的 `tar` 是 GNU 版，
+ *   会把 `C:\...` 当远程主机名报 `tar: Cannot connect to C: resolve failed`
+ * - **Linux**（CI 跑 vitest、未来若有 linux 构建）：以前这里没有分支，
+ *   `process.env.SystemRoot` 是 undefined 就回落到 `C:\\Windows\\System32\\tar.exe`
+ *   → Linux 上直接 **ENOENT**。现在显式：非 Windows 一律走 PATH 上的 `tar`
+ */
 export function tarBinary(): string {
   if (process.platform === 'darwin') return '/usr/bin/tar'
+  if (process.platform !== 'win32') return 'tar'
   const systemRoot = process.env.SystemRoot ?? 'C:\\Windows'
   return path.join(systemRoot, 'System32', 'tar.exe')
 }
