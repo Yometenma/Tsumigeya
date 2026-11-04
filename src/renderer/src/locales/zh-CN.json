@@ -67,7 +67,16 @@
     "launchPreferred": "启动{lang}版",
     "launchCurrent": "就启动这个",
     "openDetail": "查看详情",
-    "moreActions": "更多操作"
+    "moreActions": "更多操作",
+    "runningSince": "正在运行（已 {duration}）",
+    "runningMinutes": "{minutes} 分钟",
+    "runningHours": "{hours} 小时",
+    "runningHoursMinutes": "{hours} 小时 {minutes} 分钟",
+    "runningSeconds": "{seconds} 秒",
+    "runningBadge": "正在运行",
+    "stopGame": "关闭游戏",
+    "stopGraceful": "已关闭游戏",
+    "stopKilled": "游戏没有响应，已强制关闭"
   },
   "wizard": {
     "title": "添加游戏",
@@ -385,7 +394,9 @@
     "languagePreference": "语言偏好设置不合法：{value}",
     "repairFixMissing": "缺少修复动作，请刷新诊断后重试",
     "repairUnknownFix": "不认识的修复动作：{action}",
-    "dependencyMissing": "引擎「{module}」的清单里没有依赖「{dependency}」，无法补装"
+    "dependencyMissing": "引擎「{module}」的清单里没有依赖「{dependency}」，无法补装",
+    "gameNotRunning": "这个游戏没有在运行。",
+    "gameAlreadyRunning": "这个游戏已经在运行了。"
   },
   "detail": {
     "backToLibrary": "返回游戏库",

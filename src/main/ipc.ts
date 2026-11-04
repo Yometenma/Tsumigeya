@@ -19,6 +19,18 @@ import { extractArchive } from './extract'
 import { detectRjFromPath } from './dlsite'
 import { mergeWork, normalizeEditedFields } from './library-meta'
 import { diagnoseGame, type Diagnosis, type DiagnosisFix } from './diagnose'
+import { createPlayStatsStore, sessionSeconds, type PlayStatsStore } from './play-stats'
+import {
+  createProcessRegistry,
+  isProcessAlive,
+  looksLikeSameExecutable,
+  processCommand,
+  sendSignal,
+  waitForExit,
+  type ProcessRegistry,
+  type RunningGame
+} from './process-registry'
+import type { ExecExitInfo, ExecSpawnInfo } from './exec-inject'
 import { groupByLanguage } from '../shared/language-group'
 import type { CoreHost, CoreEvent, ProgressBridge, RemoteManifest } from './core-host'
 
@@ -52,11 +64,15 @@ export const OFF_QUEUE_METHODS: ReadonlySet<string> = new Set([
   // M3：启动前诊断——纯本地文件扫描（读魔数 8 字节 / 读 Game.ini / 查目录），
   // 毫秒级、只读、不写盘。用户点「启动」就在等它，排到 60 秒更新检查后面就是「点了没反应」。
   // **repairGame 不在名单里**：它可能触发 244MB 的 RTP 下载，必须排队（§4.1）。
-  'diagnoseGame'
+  'diagnoseGame',
+  // M3.5：进程表只在内存里（D50），读它是 O(n) 的内存遍历，连盘都不碰。
+  // 详情页一进去就要知道「在不在跑」，排在更新检查后面就是「进来先转圈 60 秒」。
+  // **stopGame 不在名单里**：它要等进程退出（最多 5 秒），必须排队。
+  'runningGames'
 ])
 
 /**
- * `launch` 的返回类型（M3 §4.2 扩展）。
+ * `launch` 的返回类型（M3 §4.2 扩展；M3.5 再加 running 信息）。
  *
  * - 正常启动：`{ message }`
  * - 被 fatal 诊断拦下：`{ blocked: true, diagnoses }` —— UI 弹中文诊断框
@@ -65,6 +81,33 @@ export const OFF_QUEUE_METHODS: ReadonlySet<string> = new Set([
  * 才去读 `message`（漏判会在 TS 里报错，而不是在用户面前变成 `undefined`）。
  */
 export type LaunchResult = { message: string } | { blocked: true; diagnoses: Diagnosis[] }
+
+/** `stopGame` 的返回（M3.5 §6）。 */
+export interface StopGameResult {
+  ok: boolean
+  /** `terminated` = SIGTERM 就退了；`killed` = 等到 5 秒没退，走了 SIGKILL。 */
+  action: 'terminated' | 'killed'
+  /** i18n key（不是原文，渲染层自己查 locales —— §3.9 的老规矩）。 */
+  messageKey: string
+}
+
+/** 进程表 / 游玩记录的接线（注入以便单测替身，生产用默认实现）。 */
+export interface ProcessDeps {
+  registry?: ProcessRegistry
+  playStats?: PlayStatsStore
+  /** 存活判定（单测可替换成假的，免得依赖真实进程）。 */
+  isAlive?: (pid: number) => boolean
+  /** 等待退出（单测可替换，避免真的等 5 秒）。 */
+  waitExit?: (pid: number, timeoutMs: number) => Promise<boolean>
+  /** 发信号（单测可替换，避免真的 kill）。 */
+  signal?: (pid: number, name: NodeJS.Signals) => boolean
+  /** 取 PID 当前的可执行文件名（PID 复用复核）。 */
+  probeCommand?: (pid: number) => Promise<string | null>
+  /** SIGTERM 之后等多久再 SIGKILL（D52：5 秒）。 */
+  terminateGraceMs?: number
+  /** SIGKILL 之后等多久确认退出（不阻塞用户太久）。 */
+  killGraceMs?: number
+}
 
 export interface EngineUpdate {
   id: string
@@ -92,6 +135,8 @@ export interface IpcDeps {
   openExternal?: (url: string) => Promise<void>
   /** pickPath 的实际实现；默认返回 null（测试环境没有原生对话框）。 */
   pickPath?: (kind: 'file' | 'folder') => Promise<string | null>
+  /** M3.5：进程表 / 游玩记录的替身（不传即用默认实现，真实进程 + play-stats.json）。 */
+  process?: ProcessDeps
 }
 
 function abortCheck(signal?: AbortSignal): void {
@@ -161,12 +206,146 @@ export interface Dispatcher {
   snapshot(): unknown
   /** 上一次 checkEngineUpdates 的报告（updateAllEngines 依赖）。 */
   engineUpdateReport(): EngineUpdateReport | null
+  /** M3.5：进程表的只读视图（测试与内部使用；IPC 走 `runningGames` 命令）。 */
+  runningGames(): RunningGame[]
 }
 
 /** 造一个可测试的分派器（不含任何 ipcMain 绑定）。 */
 export function createDispatcher(deps: IpcDeps): Dispatcher {
   const { host } = deps
   let report: EngineUpdateReport | null = null
+
+  // ===== M3.5：进程追踪 + 游玩记录（D48–D52）=====
+  //
+  // 三个对象都是**每个 dispatcher 一份**：进程表是运行时事实（D50，不落盘），
+  // 游玩记录落独立的 play-stats.json（D51）。
+  const registry: ProcessRegistry = deps.process?.registry ?? createProcessRegistry()
+  const playStats: PlayStatsStore = deps.process?.playStats ?? createPlayStatsStore(host.dataDir)
+  const isAlive = deps.process?.isAlive ?? isProcessAlive
+  const waitExit = deps.process?.waitExit ?? ((pid: number, ms: number) => waitForExit(pid, ms))
+  const sendSignalImpl = deps.process?.signal ?? sendSignal
+  const probeCommand = deps.process?.probeCommand ?? processCommand
+  /** D52：温和优先（游戏可能要存档），卡死也要能救。 */
+  const terminateGraceMs = deps.process?.terminateGraceMs ?? 5_000
+  const killGraceMs = deps.process?.killGraceMs ?? 2_000
+
+  /**
+   * 一次启动用的 exec 拦截器。
+   *
+   * 为什么每次启动都造一个新的：`gameId` / `engine` 是**这次启动**的上下文，
+   * 而拦截器要带着它们去登记进程表。共用一个的话就得靠「最后一次启动是谁」猜，
+   * 同时启动两个游戏时会登记错。
+   *
+   * 这里的两个回调**绝不抛错、绝不阻塞**（exec 在 launcher 的同步路径上调用它们，
+   * 抛错会让上游以为启动失败）。所有内部的失败都只写 console.warn。
+   */
+  function makeInterceptor(gameId: string, engine: string): {
+    onSpawn(info: ExecSpawnInfo): void
+    onExit(info: ExecExitInfo): void
+  } {
+    let startedAt = ''
+    return {
+      onSpawn(info) {
+        // 没有 PID 就别登记：登记一个 pid=null 的记录，会诱导 stopGame 去 kill(0)（= 杀掉整个进程组）
+        if (!info.pid) {
+          console.warn(`[tsumigeya] 启动 ${gameId} 时没能拿到 PID（上游可能改了启动方式）`)
+          return
+        }
+        startedAt = new Date().toISOString()
+        registry.add({
+          gameId,
+          pid: info.pid,
+          engine,
+          command: info.command,
+          execPath: info.execPath,
+          startedAt
+        })
+        try {
+          playStats.record(gameId, startedAt)
+        } catch (error) {
+          // 记录失败不能让游戏启动失败（那是统计，不是功能）
+          console.warn(`[tsumigeya] 写游玩记录失败（已忽略）：${(error as Error).message}`)
+        }
+        host.emit({
+          event: 'gameStarted',
+          gameId,
+          pid: info.pid,
+          engine,
+          startedAt
+        })
+      },
+      onExit(info) {
+        // pid 复核：老记录退出的迟到回调不能删掉**新一次启动**的记录
+        const removed = registry.remove(gameId, info.pid ?? undefined)
+        if (!removed) return
+        try {
+          playStats.finish(gameId, sessionSeconds(startedAt, Date.now()))
+        } catch (error) {
+          console.warn(`[tsumigeya] 退出时写游玩记录失败（已忽略）：${(error as Error).message}`)
+        }
+        host.emit({
+          event: 'gameExited',
+          gameId,
+          pid: info.pid ?? undefined,
+          engine,
+          exitCode: info.code,
+          signal: info.signal
+        })
+      }
+    }
+  }
+
+  /** M3.5：正在运行的游戏（只读内存快照，绕队列）。 */
+  function runningGames(): RunningGame[] {
+    return registry.list()
+  }
+
+  /**
+   * 关闭游戏（M3.5 §6，D52）。
+   *
+   * 两段式：SIGTERM（给游戏存档机会）→ 等 5 秒 → SIGKILL（卡死也要能救）。
+   *
+   * PID 复用防护（§6 风险 / §9 R3）：
+   * 退出监听会立刻 `registry.remove`，所以正常情况这里不会对着一个已死的 PID 动手。
+   * 但万一退出回调丢了（上游杀法异常、或我们在退出的瞬间去点关闭），
+   * `ps -p` 复核一次「这个号现在跑的是不是当初那个可执行文件」。
+   * 复核结果是「明确不像」→ 拒绝并清掉脏记录；「不确定」→ 照常动手但记日志
+   * （宁可让用户看到「已关闭」而它其实早就退出了，也不要完全失去关闭能力）。
+   */
+  async function stopGame(params: Record<string, unknown>): Promise<StopGameResult> {
+    const gameId = String(params.gameId ?? params.id ?? '')
+    if (!gameId) throw failure('error.gameNotFound', 'Game not found', { id: gameId })
+    const entry = registry.get(gameId)
+    if (!entry) throw failure('error.gameNotRunning', 'Game is not running.', { id: gameId })
+
+    if (!isAlive(entry.pid)) {
+      // 进程其实早就没了（退出回调没到）：清掉脏记录，别让 UI 一直显示「运行中」
+      registry.remove(gameId, entry.pid)
+      throw failure('error.gameNotRunning', 'Game is not running.', { id: gameId })
+    }
+
+    const actual = await probeCommand(entry.pid)
+    const same = looksLikeSameExecutable(entry.execPath, actual)
+    if (same === false) {
+      registry.remove(gameId, entry.pid)
+      throw failure('error.gameNotRunning', 'Game is not running.', { id: gameId })
+    }
+    if (same === null) {
+      console.warn(
+        `[tsumigeya] 无法复核 PID ${entry.pid} 的可执行文件（记录 ${entry.execPath ?? '未知'} / 实际 ${actual ?? '未知'}），仍按记录关闭`
+      )
+    }
+
+    // ① 温和
+    sendSignalImpl(entry.pid, 'SIGTERM')
+    if (await waitExit(entry.pid, terminateGraceMs)) {
+      return { ok: true, action: 'terminated', messageKey: 'library.stopGraceful' }
+    }
+    // ② 还在，强杀
+    sendSignalImpl(entry.pid, 'SIGKILL')
+    await waitExit(entry.pid, killGraceMs)
+    return { ok: true, action: 'killed', messageKey: 'library.stopKilled' }
+  }
 
   function snapshot(): unknown {
     const manifests = host.core.readLocalManifests()
@@ -177,7 +356,14 @@ export function createDispatcher(deps: IpcDeps): Dispatcher {
       dataDirWarning: host.dataDirWarning,
       // M2：旁挂元数据随 snapshot 一起下发（只增字段，GameRecord 不动，D18）。
       // 读失败不能让整页崩——meta 是附属品，读不出来就当没有。
-      meta: readMetaSafely()
+      meta: readMetaSafely(),
+      // M3.5：运行态（只读投影，D50 不落盘）。少带 command/execPath：UI 用不到，
+      // 而且命令串里可能有用户的本地路径，没必要过桥。
+      running: registry.list().map((item) => ({
+        gameId: item.gameId,
+        pid: item.pid,
+        startedAt: item.startedAt
+      }))
     })
   }
 
@@ -422,7 +608,15 @@ export function createDispatcher(deps: IpcDeps): Dispatcher {
     // 按 manifest.gameArgs 合并缺省值并落盘（上游同名 API）
     host.core.reconcileAndPersistGameArgs(id)
 
-    const launcher = host.loadScript(game.gameEngine, 'launcher.js')
+    // M3.5：同一个游戏已经在跑就别再启一次（双份进程既浪费又会让 PID 记录打架）
+    if (registry.has(id)) {
+      throw failure('error.gameAlreadyRunning', 'Game is already running.', { id })
+    }
+
+    const launcher = host.loadScript(game.gameEngine, 'launcher.js', {
+      // D48/D49：只劫持这一条脚本的 `require('child_process')`，只换 exec
+      execInterceptor: makeInterceptor(id, game.gameEngine)
+    })
     if (typeof launcher.launch !== 'function') {
       throw failure('error.launchExport', 'Module does not export launch()', { module: game.gameEngine })
     }
@@ -757,6 +951,14 @@ export function createDispatcher(deps: IpcDeps): Dispatcher {
       case 'launch':
         return await launch(params)
 
+      // M3.5：只读内存里的进程表，毫秒级 → 绕队列（用户点开详情页就在等它）
+      case 'runningGames':
+        return runningGames()
+
+      // M3.5：关闭游戏——要等进程退出（最多 5 秒），必须进队列
+      case 'stopGame':
+        return await stopGame(params)
+
       case 'detect': {
         const target = String(params.path ?? '')
         const installed = host.core.detectEngineForPath(target, host.core.readLocalManifests())
@@ -1005,7 +1207,7 @@ export function createDispatcher(deps: IpcDeps): Dispatcher {
     }
   }
 
-  return { dispatch, snapshot, engineUpdateReport: () => report }
+  return { dispatch, snapshot, engineUpdateReport: () => report, runningGames }
 }
 
 // ===== electron 默认实现（懒加载，测试环境不会走到）=====

@@ -70,6 +70,21 @@ export interface Snapshot {
   engineUpdates: unknown
   /** M2：DLsite 旁挂元数据（键 = gameId）。GameRecord 不动，这是新增字段（D18）。 */
   meta: Record<string, unknown>
+  /**
+   * M3.5：正在运行的游戏（**运行时状态，不落盘**，D50）。
+   *
+   * 为什么放进 snapshot：详情页/卡片要立刻知道「这个游戏在不在跑」，
+   * 而它们本来就在读 snapshot。单独一条 `runningGames` 命令留给「正在运行时
+   * 定时刷新」和探针；两者用同一份内存数据，不会不一致。
+   */
+  running: RunningGameLite[]
+}
+
+/** snapshot 里的运行态条目（比主进程内部的 RunningGame 少几个字段：UI 用不到命令串）。 */
+export interface RunningGameLite {
+  gameId: string
+  pid: number
+  startedAt: string
 }
 
 /** 带翻译键的错误：主进程只给 key，渲染层查 locales（§3.9）。 */
@@ -201,6 +216,8 @@ export interface GameStore {
     engineUpdates?: unknown
     dataDirWarning?: Snapshot['dataDirWarning']
     meta?: Record<string, unknown>
+    /** M3.5：进程表的只读投影（不传 = 没有正在运行的游戏）。 */
+    running?: RunningGameLite[]
   }): Snapshot
 }
 
@@ -301,6 +318,7 @@ export function createGameStore(dataDir: string): GameStore {
     engineUpdates?: unknown
     dataDirWarning?: Snapshot['dataDirWarning']
     meta?: Record<string, unknown>
+    running?: RunningGameLite[]
   } = {}): Snapshot {
     return {
       games: Object.entries(loadGames()).map(([id, value]) => ({ ...value, id })),
@@ -310,7 +328,9 @@ export function createGameStore(dataDir: string): GameStore {
       dataDirWarning: extra.dataDirWarning ?? null,
       nodeVersion: extra.nodeVersion ?? process.version,
       engineUpdates: extra.engineUpdates ?? null,
-      meta: extra.meta ?? {}
+      meta: extra.meta ?? {},
+      // M3.5：默认空数组（不传 = 没有正在运行的游戏）。**绝不**在这里落盘任何东西（D50）。
+      running: extra.running ?? []
     }
   }
 

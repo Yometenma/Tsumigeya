@@ -12,7 +12,7 @@
 // 3. R18 封面的打码规则沿用（与卡片同一份 shared/age-rating.ts 判定）。
 //
 // ⚠️ 模板禁 TS 类型断言（会白屏）；所有 ref/computed 都声明在任何 watch 之前（TDZ 白屏）。
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -53,6 +53,12 @@ const diagnosisOpen = ref(false)
 const diagnosisItems = ref<Diagnosis[]>([])
 /** 「重新获取」进行中（防重复点击）。 */
 const refreshing = ref(false)
+/** M3.5：关闭游戏进行中（防重复点击；主进程最多等 5 秒）。 */
+const stopping = ref(false)
+/** M3.5：每秒刷新的「已运行多久」文本（只在运行时才有意义）。 */
+const runningSince = ref(Date.now())
+/** 定时器句柄（组件卸载时清掉，别让它在后台跑）。 */
+let runningTimer: ReturnType<typeof setInterval> | null = null
 
 // ===== 派生数据 =====
 
@@ -117,6 +123,26 @@ const dlsiteUrl = computed(() => {
 /** 该条目识别出的语言（如「中文」）。没识别出来就什么都不标。 */
 const languageLabel = computed(() => (language.value ? languageShortName(language.value) : ''))
 
+// ===== M3.5：运行状态（唯一来源是主进程的进程表，D50）=====
+
+/** 这个游戏是否正在运行。 */
+const runningNow = computed(() => library.isRunning(props.id))
+
+/**
+ * 「已运行 12 分钟」里的那个时长文案。
+ *
+ * 注意：这里读 `runningSince` 是为了让 computed 依赖它、从而**每秒重算**——
+ * 如果只依赖 `library.running[props.id].startedAt`，进程启动后文本就再也不变了。
+ */
+const runningDurationText = computed(() => {
+  if (!runningNow.value) return ''
+  const startedAt = library.running[props.id]?.startedAt
+  if (!startedAt) return ''
+  const start = Date.parse(startedAt)
+  if (Number.isNaN(start)) return ''
+  const seconds = Math.max(0, Math.floor((runningSince.value - start) / 1000))
+  return formatDuration(seconds)
+})
 /** 同组其他语言版本（用于「也有 xx 版」）。 */
 const alternateText = computed(() => {
   const alternates = (library.alternatesOf[props.id] ?? []).filter((item) => item.lang !== language.value)
@@ -137,6 +163,23 @@ function hasValue(value: string | undefined): boolean {
   return !!value
 }
 
+/**
+ * 秒 → 「12 分钟 / 3 小时 5 分钟 / 45 秒」。
+ *
+ * 用普通拼接而不是 ICU 复数（AGENTS.md 的已知坑：文案里写 ICU 会让组件白屏）。
+ * 这里的数字与单位之间不加空格，中文本来也不加。
+ */
+function formatDuration(totalSeconds: number): string {
+  if (totalSeconds < 60) return t('library.runningSeconds', { seconds: totalSeconds })
+  const minutes = Math.floor(totalSeconds / 60)
+  if (minutes < 60) return t('library.runningMinutes', { minutes })
+  const hours = Math.floor(minutes / 60)
+  const rest = minutes % 60
+  return rest > 0
+    ? t('library.runningHoursMinutes', { hours, minutes: rest })
+    : t('library.runningHours', { hours })
+}
+
 /** 换了游戏就重置所有视图状态（否则上一个游戏的封面失败标记会残留）。 */
 watch(
   () => props.id,
@@ -146,9 +189,36 @@ watch(
     summaryExpanded.value = false
     diagnosisOpen.value = false
     diagnosisItems.value = []
+    stopping.value = false
+    runningSince.value = Date.now()
+    // 进详情页时立刻对一次运行态（用户可能是从外面启动的，或退回本页）
+    void library.refreshRunning()
   },
   { immediate: true }
 )
+
+/**
+ * M3.5：运行时每秒刷新一次「已运行多久」。
+ *
+ * 只在这一页跑，且卸载时清掉——常驻的 setInterval 在渲染层白白烧 CPU，
+ * 而这个文案只在详情页可见。
+ */
+function startRunningTicker(): void {
+  stopRunningTicker()
+  runningTimer = setInterval(() => {
+    runningSince.value = Date.now()
+  }, 1_000)
+}
+
+function stopRunningTicker(): void {
+  if (runningTimer) {
+    clearInterval(runningTimer)
+    runningTimer = null
+  }
+}
+
+onMounted(startRunningTicker)
+onBeforeUnmount(stopRunningTicker)
 
 function onImageError(): void {
   if (coverBroken.value) iconBroken.value = true
@@ -246,6 +316,28 @@ async function launchAnyway(): Promise<void> {
 }
 
 /**
+ * M3.5：关闭游戏（SIGTERM → 5s → SIGKILL，D52）。
+ *
+ * 成功后**不**手动把 running 抹掉：`gameExited` 事件是唯一可信信号。
+ * 但如果进程早就没了、主进程报「未运行」，这里要把本地的陈旧状态清一下
+ * ——否则 UI 会一直显示「运行中」而按关闭没反应。
+ */
+async function stopGame(): Promise<void> {
+  if (stopping.value) return
+  stopping.value = true
+  try {
+    const result = await library.stopGame(props.id)
+    ElMessage.success(t(result.messageKey))
+  } catch (error) {
+    ElMessage.error(translateError(error, t))
+    // 目标其实没在跑 / 号被别的进程占用 → 主进程已清掉脏记录，这里同步一次
+    await library.refreshRunning()
+  } finally {
+    stopping.value = false
+  }
+}
+
+/**
  * 决定最终要启动哪个 id（§C.5）。返回原 id 表示「按用户点的那个启动」。
  * 判定逻辑抽在 shared/launch-language.ts（纯函数、有单测），这里只负责取数据 → 问用户 → 返回结果。
  */
@@ -314,7 +406,19 @@ async function resolveLaunchTarget(id: string): Promise<string> {
           <span v-else class="detail-cover-placeholder">{{ placeholder }}</span>
         </div>
 
-        <el-button class="detail-launch" type="primary" size="large" @click="launch">
+        <!-- M3.5 §7.1：未运行 → 启动按钮；运行中 → 运行态 + 关闭游戏 -->
+        <template v-if="runningNow">
+          <div class="detail-running">
+            <span class="detail-running-dot" aria-hidden="true" />
+            <span class="detail-running-text">
+              {{ t('library.runningSince', { duration: runningDurationText }) }}
+            </span>
+          </div>
+          <el-button class="detail-launch" :loading="stopping" @click="stopGame">
+            {{ t('library.stopGame') }}
+          </el-button>
+        </template>
+        <el-button v-else class="detail-launch" type="primary" size="large" @click="launch">
           {{ t('detail.launch') }}
         </el-button>
 

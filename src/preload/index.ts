@@ -5,7 +5,7 @@ import { encodeBridgeError } from '../shared/bridge-error'
 
 /** 主进程事件形态（与 api/client.ts 的 CoreEvent 保持一致）。 */
 export interface CoreEvent {
-  event: 'progress' | 'log' | 'dialog' | 'ready'
+  event: 'progress' | 'log' | 'dialog' | 'ready' | 'gameStarted' | 'gameExited'
   requestID?: string
   name?: string
   key?: string
@@ -16,6 +16,13 @@ export interface CoreEvent {
   kind?: 'alert' | 'confirm'
   title?: string
   nodeVersion?: string
+  /** M3.5：进程事件的字段。 */
+  gameId?: string
+  pid?: number
+  engine?: string
+  startedAt?: string
+  exitCode?: number | null
+  signal?: string | null
 }
 
 interface InvokeResponse<T> {

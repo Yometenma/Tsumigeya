@@ -39,3 +39,7 @@ release/
 .dev-data-diagprobe.json
 .dev-data-m27/
 .dev-data-m27probe.json
+# M3.5 进程管理探针的产物
+.dev-data-m35boot.txt
+.dev-data-m35probe.json
+.dev-data-m35probe/

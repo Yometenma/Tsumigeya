@@ -15,12 +15,22 @@ export interface TaskState {
 /** 日志只留尾巴，避免无限增长。 */
 const MAX_LOGS = 200
 
+/** 进程事件的接收方（由 App 在 install 时注入，指向 library store）。 */
+export type ProcessEventListener = (event: {
+  event: string
+  gameId?: string
+  pid?: number
+  startedAt?: string
+}) => void
+
 export const useTaskStore = defineStore('task', () => {
   const current = ref<TaskState | null>(null)
   const logs = ref<string[]>([])
   const error = shallowRef<unknown>(null)
   /** 事件订阅只装一次（App 挂载时调 install）。 */
   let unsubscribe: (() => void) | null = null
+  /** M3.5：进程事件的转发目标（不 inject 时就是没人听，不影响启动）。 */
+  let onProcessEvent: ProcessEventListener | null = null
 
   const running = computed(() => current.value !== null)
   const progressKey = computed(() => current.value?.key)
@@ -30,10 +40,16 @@ export const useTaskStore = defineStore('task', () => {
     if (logs.value.length > MAX_LOGS) logs.value.splice(0, logs.value.length - MAX_LOGS)
   }
 
-  /** 处理一条主进程事件（进度 / 日志）。 */
+  /** 处理一条主进程事件（进度 / 日志 / M3.5 进程事件）。 */
   function handleEvent(event: CoreEvent): void {
     if (event.event === 'log' && event.message) {
       pushLog(event.message)
+      return
+    }
+    // M3.5：gameStarted / gameExited 交给 library store（进程表是它的数据）。
+    // 在这里转一手而不是让 library 自己订阅，是因为事件订阅只该装一次（install()）。
+    if (event.event === 'gameStarted' || event.event === 'gameExited') {
+      onProcessEvent?.(event as never)
       return
     }
     if (event.event !== 'progress') return
@@ -45,14 +61,22 @@ export const useTaskStore = defineStore('task', () => {
     current.value.detail = event.detail ?? current.value.detail
   }
 
-  function install(): void {
+  function install(listener?: ProcessEventListener): void {
+    // M3.5：进程事件监听器可以在 install 时给，也可以后补（App 里 store 都已存在）
+    if (listener) onProcessEvent = listener
     if (unsubscribe) return
     unsubscribe = bridge().onEvent(handleEvent)
+  }
+
+  /** M3.5：单独设进程事件接收方（已在 install 时给过就不用调）。 */
+  function setProcessListener(listener: ProcessEventListener | null): void {
+    onProcessEvent = listener
   }
 
   function dispose(): void {
     unsubscribe?.()
     unsubscribe = null
+    onProcessEvent = null
   }
 
   /**
@@ -114,6 +138,7 @@ export const useTaskStore = defineStore('task', () => {
     running,
     progressKey,
     install,
+    setProcessListener,
     dispose,
     handleEvent,
     pushLog,

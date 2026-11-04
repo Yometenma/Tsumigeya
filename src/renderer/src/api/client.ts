@@ -121,6 +121,40 @@ export interface Snapshot {
   engineUpdates: EngineUpdateReport | null
   /** M2：DLsite 旁挂元数据（键 = gameId）。没有元数据的游戏不会出现在这里。 */
   meta: Record<string, GameMeta>
+  /** M3.5：正在运行的游戏（运行时状态，不落盘）。 */
+  running: RunningGameLite[]
+}
+
+/** M3.5：运行态条目（snapshot 里的投影）。 */
+export interface RunningGameLite {
+  gameId: string
+  pid: number
+  startedAt: string
+}
+
+/** M3.5：进程表的完整条目（`runningGames` 命令返回）。 */
+export interface RunningGame extends RunningGameLite {
+  engine: string
+  /** 上游传给 exec 的原始命令串（诊断用）。 */
+  command: string
+  /** 从命令串里抠出的可执行文件路径（无法解析时为 null）。 */
+  execPath: string | null
+}
+
+/** M3.5：关闭游戏的结果（`stopGame`）。 */
+export interface StopGameResult {
+  ok: boolean
+  /** `terminated` = SIGTERM 就退了；`killed` = 5 秒没退，走了 SIGKILL。 */
+  action: 'terminated' | 'killed'
+  /** i18n key（渲染层自己查 locales）。 */
+  messageKey: string
+}
+
+/** M3.5：游玩记录（`play-stats.json` 里的条目）。 */
+export interface PlayStat {
+  lastPlayedAt: string
+  playCount: number
+  totalSeconds: number
 }
 
 // ===== M2：DLsite 元数据（docs/M2-实施方案.md §3.4）=====
@@ -284,7 +318,7 @@ export interface DetectFolderResult {
 }
 
 export interface CoreEvent {
-  event: 'progress' | 'log' | 'dialog' | 'ready'
+  event: 'progress' | 'log' | 'dialog' | 'ready' | 'gameStarted' | 'gameExited'
   requestID?: string
   name?: string
   key?: string
@@ -295,6 +329,13 @@ export interface CoreEvent {
   kind?: 'alert' | 'confirm'
   title?: string
   nodeVersion?: string
+  /** M3.5：进程事件的字段（gameStarted / gameExited）。 */
+  gameId?: string
+  pid?: number
+  engine?: string
+  startedAt?: string
+  exitCode?: number | null
+  signal?: string | null
 }
 
 // ===== 桥（§3.5）=====
@@ -450,7 +491,21 @@ export const api = {
    * 只处理传入的那**一条** fix（§11-③：第一版不并行处理多条）。
    */
   repairGame: (gameId: string, fix: DiagnosisFix): Promise<RepairResult> =>
-    bridge().invoke<RepairResult>('repairGame', { gameId, fix })
+    bridge().invoke<RepairResult>('repairGame', { gameId, fix }),
+
+  // ===== M3.5：进程管理（全部走既有 tsumi:invoke，无新 preload channel）=====
+
+  /**
+   * M3.5：正在运行的游戏（只读内存里的进程表、绕队列、毫秒级）。
+   * UI 平时读 `snapshot.running`；这条命令留给「运行中定时刷新」与探针。
+   */
+  runningGames: (): Promise<RunningGame[]> => bridge().invoke<RunningGame[]>('runningGames'),
+
+  /**
+   * M3.5：关闭游戏（进队列——要等进程退出，最多 5 秒）。
+   * 目标没在运行时抛 `error.gameNotRunning`（不是静默成功）。
+   */
+  stopGame: (gameId: string): Promise<StopGameResult> => bridge().invoke<StopGameResult>('stopGame', { gameId })
 }
 
 // ===== 图片 URL（§3.7）=====

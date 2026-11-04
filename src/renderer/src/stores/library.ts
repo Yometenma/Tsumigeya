@@ -17,7 +17,9 @@ import {
   type LanguageGroup,
   type LaunchResult,
   type RepairResult,
-  type Snapshot
+  type RunningGameLite,
+  type Snapshot,
+  type StopGameResult
 } from '@/api/client'
 // 过 contextBridge 前必须把 Vue 的响应式 Proxy 剥成纯值，否则 structured clone 抛
 // `An object could not be cloned.`（症状：点保存没反应，只弹一句英文）。见 plain.ts 注释。
@@ -35,11 +37,61 @@ export const useLibraryStore = defineStore('library', () => {
   const languageOf = ref<Record<string, GameLanguage>>({})
   /** M2.5-C：每个游戏同组的**其他**语言版本（用于「也有 zh 版」标记）。 */
   const alternatesOf = ref<Record<string, Array<{ id: string; lang: GameLanguage }>>>({})
+  /**
+   * M3.5：正在运行的游戏（键 = gameId）。
+   *
+   * 唯一来源是主进程的进程表（D50：状态只在内存），这里只是**它的投影**。
+   * 所以本 store 绝不自己往里写"猜测"——点启动成功不等于进程活着
+   * （正规来源是 `gameStarted` 事件 + snapshot.running）。
+   */
+  const running = ref<Record<string, RunningGameLite>>({})
 
   /** 用 Snapshot 整体覆盖（唯一的状态来源）。 */
   function applySnapshot(snapshot: Snapshot): void {
     games.value = snapshot.games
     meta.value = snapshot.meta ?? {}
+    running.value = indexRunning(snapshot.running ?? [])
+  }
+
+  /** 列表 → gameId 索引。 */
+  function indexRunning(list: RunningGameLite[]): Record<string, RunningGameLite> {
+    const map: Record<string, RunningGameLite> = {}
+    for (const item of list) map[item.gameId] = item
+    return map
+  }
+
+  /** 某个游戏是否在运行。 */
+  function isRunning(id: string): boolean {
+    return !!running.value[id]
+  }
+
+  /**
+   * 处理进程事件（`gameStarted` / `gameExited`）。
+   *
+   * 为什么要单独处理事件而不是只靠 snapshot：
+   * 游戏是我们**自己**起的，进程退出时没有"下一次 snapshot"会去告诉 UI
+   * （用户可能一直停在详情页不动）。事件是唯一的即时信号。
+   */
+  function handleProcessEvent(event: {
+    event: string
+    gameId?: string
+    pid?: number
+    startedAt?: string
+  }): void {
+    const id = event.gameId
+    if (!id) return
+    if (event.event === 'gameStarted') {
+      running.value = {
+        ...running.value,
+        [id]: { gameId: id, pid: event.pid ?? 0, startedAt: event.startedAt ?? new Date().toISOString() }
+      }
+      return
+    }
+    if (event.event === 'gameExited') {
+      const next = { ...running.value }
+      delete next[id]
+      running.value = next
+    }
   }
 
   const tags = computed(() => {
@@ -113,6 +165,26 @@ export const useLibraryStore = defineStore('library', () => {
   /** M3：跑一次启动前诊断（纯本地、只读、绕队列）。 */
   async function diagnose(id: string): Promise<Diagnosis[]> {
     return api.diagnoseGame(id)
+  }
+
+  /**
+   * M3.5：关闭游戏（主进程 SIGTERM → 5s → SIGKILL）。
+   *
+   * 成功后**不在这里**更新 `running`：进程真正退出时主进程会发 `gameExited`，
+   * 那是唯一可信的信号（D50 的精神）。这里如果抢先删除，就会出现
+   * 「UI 说已关闭、但进程其实还在强杀等待中」的不一致。
+   */
+  async function stopGame(id: string): Promise<StopGameResult> {
+    return api.stopGame(id)
+  }
+
+  /** M3.5：从主进程拉一次运行态（详情页定时刷新 / 探针用）。 */
+  async function refreshRunning(): Promise<void> {
+    try {
+      running.value = indexRunning(await api.runningGames())
+    } catch {
+      // 拉不到不影响页面使用（它只是状态标记）
+    }
   }
 
   /** M3：执行一键修复；返回修复后的重诊断结果（UI 用它刷新对话框）。 */
@@ -210,6 +282,7 @@ export const useLibraryStore = defineStore('library', () => {
   return {
     games,
     meta,
+    running,
     loading,
     search,
     tagFilter,
@@ -218,10 +291,14 @@ export const useLibraryStore = defineStore('library', () => {
     filtered,
     byId,
     metaFor,
+    isRunning,
+    handleProcessEvent,
+    refreshRunning,
     load,
     saveGame,
     removeGame,
     launch,
+    stopGame,
     diagnose,
     repair,
     detectFolder,

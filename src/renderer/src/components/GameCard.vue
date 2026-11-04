@@ -29,6 +29,11 @@ const props = defineProps<{
   language?: GameLanguage
   /** M2.5-C：同组的其他语言版本（用于「也有 zh 版」提示）。 */
   alternates?: Array<{ lang: GameLanguage }>
+  /**
+   * M3.5：该游戏是否正在运行（画一个绿点，**不给关闭按钮**）。
+   * 卡片空间有限，且 D41 的精神是「卡片是浏览入口不是操作面」。
+   */
+  running?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -151,6 +156,11 @@ function onMenuCommand(command: string): void {
 
       <!-- M2.6：三点菜单（右上角浮层）。@click.stop 必须留在这一层，
            否则点它等于点卡片，会被带进详情页（R4）。 -->
+      <!-- M3.5 §7.2：运行中的卡片加一个绿点（**不放关闭按钮**，D41 的精神）。 -->
+      <div v-if="running" class="game-card-running" :title="t('library.runningBadge')">
+        <span class="game-card-running-dot" aria-hidden="true" />
+      </div>
+
       <div class="game-card-menu" @click.stop>
         <el-dropdown trigger="click" placement="bottom-end" @command="onMenuCommand">
           <span class="game-card-menu-trigger" :title="t('library.moreActions')">

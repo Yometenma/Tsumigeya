@@ -20,7 +20,10 @@ describe('OFF_QUEUE_METHODS', () => {
       'languageGroups',
       // M3：启动前诊断——纯本地文件扫描（读 8 字节魔数 / 读 Game.ini / 查目录），
       // 只读不写盘；用户点「启动」就在等它
-      'diagnoseGame'
+      'diagnoseGame',
+      // M3.5：进程表只在内存里（D50），读它是内存遍历，毫秒级；
+      // 详情页一进去就要知道「在不在跑」
+      'runningGames'
     ]) {
       expect(OFF_QUEUE_METHODS.has(method)).toBe(true)
     }
@@ -39,7 +42,9 @@ describe('OFF_QUEUE_METHODS', () => {
       'refreshGameMeta',
       'clearGameMeta',
       // M3：一键修复可能触发 244MB 的 RTP 下载 → 必须排队
-      'repairGame'
+      'repairGame',
+      // M3.5：关闭游戏要**等**进程退出（SIGTERM→5s→SIGKILL，D52），必须排队
+      'stopGame'
     ]) {
       expect(OFF_QUEUE_METHODS.has(method)).toBe(false)
     }
@@ -54,7 +59,7 @@ describe('OFF_QUEUE_METHODS', () => {
 
   test('名单不会意外膨胀（数量与已知命令对齐）', () => {
     // 这条断言的作用：有人偷偷加了命令却没更新这里 → 测试红了，逼他重新想一遍准入标准。
-    // 8（M2/M2.5）→ 9（M3 的 diagnoseGame）
-    expect(OFF_QUEUE_METHODS.size).toBe(9)
+    // 8（M2/M2.5）→ 9（M3 的 diagnoseGame）→ 10（M3.5 的 runningGames）
+    expect(OFF_QUEUE_METHODS.size).toBe(10)
   })
 })

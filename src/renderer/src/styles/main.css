@@ -765,6 +765,68 @@ a {
   width: 100%;
 }
 
+/* ===== M3.5：运行状态（详情页运行条 + 卡片绿点）===== */
+
+/* 详情页：绿点 + 「正在运行（已 12 分钟）」 */
+.detail-running {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid rgba(103, 194, 58, 0.35);
+  border-radius: 6px;
+  background: rgba(103, 194, 58, 0.08);
+  font-size: 13px;
+}
+
+.detail-running-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #67c23a;
+  /* 呼吸效果：让「活着」一眼看出来，静止圆点容易被当成装饰 */
+  animation: tsmg-running-pulse 1.6s ease-in-out infinite;
+}
+
+.detail-running-text {
+  color: var(--tsmg-text);
+}
+
+@keyframes tsmg-running-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.82);
+  }
+}
+
+/* 卡片封面右上角的绿点（**没有关闭按钮**，D41 的精神） */
+.game-card-running {
+  position: absolute;
+  top: 6px;
+  right: 30px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.game-card-running-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #67c23a;
+  animation: tsmg-running-pulse 1.6s ease-in-out infinite;
+}
+
 .detail-lang {
   display: flex;
   gap: 4px;

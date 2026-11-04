@@ -8,12 +8,13 @@ import os from 'node:os'
 import path from 'node:path'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { randomUUID } from 'node:crypto'
-import { createRequire } from 'node:module'
+import { Module, createRequire } from 'node:module'
 import { pathToFileURL } from 'node:url'
 import { createGameStore, component, failure, type GameStore } from './games-store'
 import { extractArchive } from './extract'
 import { createDlsiteService, type DlsiteService } from './dlsite'
 import { createLibraryMetaStore, type LibraryMetaStore } from './library-meta'
+import { createPatchedChildProcess, isChildProcessRequest, type ExecInterceptor } from './exec-inject'
 
 // ===== 类型 =====
 
@@ -48,7 +49,7 @@ export interface DialogBridge {
 }
 
 export interface CoreEvent {
-  event: 'progress' | 'log' | 'dialog' | 'ready'
+  event: 'progress' | 'log' | 'dialog' | 'ready' | 'gameStarted' | 'gameExited'
   requestID?: string
   name?: string
   key?: string
@@ -59,6 +60,13 @@ export interface CoreEvent {
   kind?: 'alert' | 'confirm'
   title?: string
   nodeVersion?: string
+  /** M3.5：进程事件带的字段（gameStarted / gameExited）。 */
+  gameId?: string
+  pid?: number
+  engine?: string
+  startedAt?: string
+  exitCode?: number | null
+  signal?: NodeJS.Signals | null
 }
 
 /** core 的公开 API（只声明本项目用到的部分，其余按需 as any）。 */
@@ -149,7 +157,7 @@ export interface CoreHost {
   modulesDir(): string
   modulePath(folder: string): string
   scriptPath(root: string, relative: string): string
-  loadScript(folder: string, relative: string): Record<string, unknown>
+  loadScript(folder: string, relative: string, hooks?: LoadScriptHooks): Record<string, unknown>
   /** 修正 multi-version 参数，使其与 deps 下真实安装目录一致（见函数注释）。 */
   reconcileVersionArgs(folder: string, gameArgs: Record<string, unknown>): Record<string, unknown>
   progress(): ProgressBridge
@@ -326,6 +334,47 @@ export function loadCoreFactory(corePath: string): (services: Record<string, unk
   ) => void
   run(mod, mod.exports, nodeRequire, corePath, path.dirname(corePath))
   return mod.exports as (services: Record<string, unknown>) => CoreApi
+}
+
+// ===== loadScript 的 exec 注入（M3.5 S2，D48/D49）=====
+
+export interface LoadScriptHooks {
+  /** 只对这一条脚本劫持 `require('child_process')` 的 exec（见 exec-inject.ts）。 */
+  execInterceptor?: ExecInterceptor
+}
+
+/**
+ * 手工编译一个模块，并在它的 `require` 作用域里只替换 `child_process`。
+ *
+ * 为什么不用全局 `Module._load` 劫持：那会影响**整个进程**（core、ipc、别的库），
+ * 一旦有 bug 是全局性的。实测方案 §3.2 的「作用域劫持」只影响这一个模块，
+ * 别的代码 `require('child_process')` 拿到的仍是原版。
+ *
+ * 为什么手工编译而不是 `createRequire`：
+ *   `createRequire` 返回的 require 是共享的、不可改写的；只有 `Module` 实例才允许
+ *   我们覆盖 `m.require`。代价是绕过 require 缓存，但 `loadScript` 本来就在清缓存
+ *   （它每次启动都要拿到最新模块代码）。**无 hook 时仍走原来的 createRequire 路径**（R1）。
+ */
+export function loadScriptWithInjection(file: string, interceptor: ExecInterceptor): Record<string, unknown> {
+  /** Node 的 `Module` 类型声明不含这些内部成员（运行时都有）。集中在这里断言一次。 */
+  type InternalModule = Module & {
+    filename: string | null
+    paths: string[]
+    require: NodeRequire
+    _compile(source: string, filename: string): void
+  }
+  type InternalModuleCtor = typeof Module & { _nodeModulePaths(from: string): string[] }
+
+  const instance = new Module(file) as InternalModule
+  instance.filename = file
+  instance.paths = (Module as InternalModuleCtor)._nodeModulePaths(path.dirname(file))
+  const originalRequire = instance.require.bind(instance)
+  const patched = createPatchedChildProcess(interceptor)
+
+  instance.require = ((id: string) => (isChildProcessRequest(id) ? patched : originalRequire(id))) as NodeRequire
+
+  instance._compile(fs.readFileSync(file, 'utf8'), file)
+  return instance.exports as Record<string, unknown>
 }
 
 // ===== detectFolder 的候选扫描（纯函数，可单测）=====
@@ -654,7 +703,7 @@ export function createCoreHost(options: CoreHostOptions): CoreHost {
   }
 
   /** 清 require 缓存后加载模块脚本（launcher.js / version-script）。 */
-  function loadScript(folder: string, relative: string): Record<string, unknown> {
+  function loadScript(folder: string, relative: string, hooks?: LoadScriptHooks): Record<string, unknown> {
     const root = modulePath(folder)
     if (!fs.existsSync(root)) {
       throw failure('error.moduleMissing', `Module "${folder}" is not installed. Install it in Game Engines first.`, {
@@ -666,6 +715,8 @@ export function createCoreHost(options: CoreHostOptions): CoreHost {
     for (const key of Object.keys(cache)) {
       if (key.startsWith(root + path.sep)) delete cache[key]
     }
+    // 有 exec 拦截器时走手工编译（为了只对这个模块劫持 child_process，D48/D49）。
+    if (hooks?.execInterceptor) return loadScriptWithInjection(file, hooks.execInterceptor)
     return createRequire(pathToFileURL(file))(file) as Record<string, unknown>
   }
 

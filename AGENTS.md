@@ -20,8 +20,9 @@
 
 ## 当前项目状态（每次收尾必须更新）
 
-- **阶段**：**M1 / M2 / M2.5 / M3 / M2.6 / M2.7 已完成**（v0.3.1 已发布）；**M3.5（进程管理）方案已冻结待实施**
+- **阶段**：**M1 / M2 / M2.5 / M3 / M2.6 / M2.7 / M3.5 已完成**（v0.3.2 已发布）
   - M3.5 = 「好用」地基：启动后进程追踪 + 关闭游戏 + 游玩记录（见 `docs/M3.5-实施方案.md`，D48–D52）
+    ——**已实施完毕**（详见下方「M3.5 全套」）
   - M2.7 = 编辑页重构（见 `docs/M2.7-实施方案.md`）：保存 bug 修复 + 封面与标签合并 + 标题来源提示
   - M2.6 = 海报墙与详情页重构（见 `docs/M2.6-实施方案.md`，**D39–D43**）——**已实施完毕**（详见下方「M2.6 全套」）
   - ⚠️ 注意编号：M2.6 方案初稿写的是 D36–D38，但那三个号已被 **M3 实际占用**，
@@ -106,8 +107,51 @@
       · `mergeWork` 原来 `{...incoming}` 直接覆盖，而 `author`/`salesCount`/`rating`
         **只有搜索结果页才有**（详情页重拉拿不到）→ 一次「重新获取」会把用户已存的作者/销量抹掉。
         已改为「incoming 缺这三项时沿用旧值」（D42）
-- **测试 439 个全绿 / 17 个文件**（M1 的 76 + M2 的 89 + R18 打码 7 + M2.5 的 108 + M3 的 76 +
-  M2.6 的 67：S1 数据层 18 + 卡片降级纯函数 40 + 落盘白名单与 mergeWork 回归 8 + GameCard 信息 1）
+- **测试 507 个全绿 / 20 个文件**（M1 的 76 + M2 的 89 + R18 打码 7 + M2.5 的 108 + M3 的 76 +
+  M2.6 的 67：S1 数据层 18 + 卡片降级纯函数 40 + 落盘白名单与 mergeWork 回归 8 + GameCard 信息 1 +
+  **M3.5 的 68**：S1 游玩记录 25 + S2 exec 注入 28 + S3/S4 进程表与关闭 15）
+- **M3.5 全套**（一个提交，S1–S6 按方案 §8 顺序做完）：
+  - **§S1 游玩记录**：`src/main/play-stats.ts`（旁挂 `play-stats.json`，原子写 + `.bak`，D51）
+    · `record(gameId)` → `playCount+1` / `lastPlayedAt`；`finish(gameId, seconds)` → 累加 `totalSeconds`
+    · `sessionSeconds()`、`normalizePlayStat()`：时钟回拨 / NaN / 手改脏值全部夹回 0 或丢弃
+    · 文件整体损坏 → **抛错不覆盖**（用户数据）；单条脏值 → 归一化，不废掉整份统计
+  - **§S2 exec 注入**：`src/main/exec-inject.ts` + `core-host.ts` 的 `loadScript(folder, rel, {execInterceptor})`
+    · `createPatchedChildProcess()`：**只换 `exec`**，`spawn`/`execFile`/`spawnSync`/`fork` **同一个引用透传**（D49）
+    · 支持 `exec(cmd,cb)` / `exec(cmd,opts,cb)` / `exec(cmd)` 三种形态；**上游不传回调也照样能感知退出**
+      （另挂 `child.once('exit')` + `child.once('error')` 兜底 —— 这是方案里没写、实施中必须补的）
+    · `loadScriptWithInjection()`：`Module` 实例的 `require` 作用域劫持 + `_compile`，
+      **只影响这一个模块**；`require('child_process')` 与 `node:child_process` 两种写法都拦
+    · `extractExecPath()`：从命令串抠可执行路径（PID 复用复核用）；抠不出返回 null，**不猜**
+    · **无 hook 时仍走原来的 `createRequire` 路径**（R1：不改变既有行为）
+  - **§S3 进程表 + IPC**：`src/main/process-registry.ts`（**只在内存**，D50）
+    · `runningGames`（**绕队列**）/ `stopGame`（**进队列**，要等进程退出）
+    · `stopGame` 两段式 SIGTERM → 5s → SIGKILL（D52），返回 `{ok, action, messageKey}`
+    · `launch` 时带 `makeInterceptor(gameId, engine)` 调 `loadScript`：拿到 PID → 登记 → 记游玩 → 发 `gameStarted`
+    · 退出 → `registry.remove(gameId, pid)`（**带 pid 复核**，迟到的旧回调删不掉新记录）→ 累加时长 → 发 `gameExited`
+    · **同一个游戏已在跑 → 抛 `error.gameAlreadyRunning`**（双份进程会让 PID 记录打架）
+    · **PID 复用防护**：`ps -p` 复核「这个号现在跑的是不是当初那个程序」；明确不像 → 拒绝且**不发任何信号**
+  - **§S4 Snapshot + 事件**：`Snapshot.running`（只带 `gameId/pid/startedAt`，**不带 command/execPath**，最小暴露面）；
+    `CoreEvent` 扩 `gameStarted`/`gameExited`（三处同步：core-host / preload / client.ts）
+  - **§S5 UI**：详情页运行条（绿点 + 呼吸动效 +「正在运行（已 N 分钟）」）+「关闭游戏」按钮；
+    卡片右上角绿点（**不给关闭按钮**，D41 的精神）；1 秒 ticker 只在本页跑、卸载即清
+  - **§S6**：i18n（`library.runningSince/stopGame/stopGraceful/stopKilled` 等 + `error.gameNotRunning/gameAlreadyRunning`）、
+    样式、`scripts/probe-m35.cjs`、本文档、发版
+- **M3.5 端到端实测（本机 `node scripts/probe-m35.cjs`）**：探针造一个**假 mkxpz 模块**，
+  launcher.js 照上游真实形态写（`exec(cmd, cb)` 且**丢弃返回值**）—— 正是 M3.5 要修的那个形态：
+  - `runningCount=1` / **`runningPid=21616`** / `hasRealPid=true` → **真的拿到 PID 了**（D48/D49 生效）
+  - `execPathParsed="ping"` → 命令串正确解析（PID 复用复核的原料）
+  - `playStatsExists=true` / `playCount=1` → `play-stats.json` 真落盘（D51）
+  - `snapshotHasRunning=true` / `snapshotRunningHasNoCommand=true` → S4 字段如约下发
+  - **详情页**：`hasRunningBar=true` / `runningText="正在运行（已 0 秒）"` / `hasCloseButton=true` / `hasLaunchButton=false`
+  - **卡片**：`cardCount=1` / `runningDots=1` / `cardHasStopButton=false`
+  - **重复启动**：`relaunchRejected=true`，key 解回 `error.gameAlreadyRunning`，`playCountStillOne=true`
+  - **关闭**：`action="terminated"` + **`processReallyGone=true`**（用系统层 `kill(pid,0)` 复核，不只信自己的表）
+  - **关闭后**：`runningCountAfterStop=0`、详情页回到「启动游戏」按钮
+  - **停一个没在跑的**：`stopIdleRejected=true` + key 解回 `error.gameNotRunning`
+  - `consoleErrors=[]` / `finalHtmlLen=2982` → 没白屏
+  - 探针自身踩到的三个坑（已写进方案 §8.2）：①验收 UI **必须走 Pinia store**（直接 invoke 只改主进程的表，
+    页面读的是 store 的 `running` 投影，DOM 会一动不动）；②假「游戏」不能用 `process.execPath -e`（那是 Electron 的
+    execPath，立刻退出），要用系统自带 `ping -n 120`（win）/ `sleep 120`；③`executeJavaScript` 里不能写顶层 `await`，要包 `(async () => {...})()`
 - **M2.5 端到端实测（Windows 本机，`node scripts/probe-m25.cjs`）**：
   - 搜索：搜「傭兵」返回 **20 条真作品**（约 2.2s），第二次调用 828ms → 确实绕开了队列
   - 候选点选：关键词默认「傭兵の冒険」（目录名剥 `_CHN` 得来）→ 出 1 条 → 点选填 `RJ306254` →
@@ -127,11 +171,12 @@
   - `snapshot.games[0]` 的键只有 `gameEngine/gamePath/gameTitle/id` → **D18（GameRecord 零改动）实测验证**
 - **验证基线（Windows 本机实测）**：
   - `npm run typecheck` ✅ exit 0
-  - `npm test` ✅ **439 passed / 17 files**
+  - `npm test` ✅ **507 passed / 20 files**
   - `npm run build` ✅ exit 0
   - `node scripts/probe-m3.cjs` ✅ S3/S4 全链路通过（见下）
   - `node scripts/probe-m25.cjs` ✅ M2.5 全链路通过（见上）
   - `node scripts/probe-m26.cjs` ✅ M2.6 S2/S3/S4 全链路通过（见下）
+  - `node scripts/probe-m35.cjs` ✅ M3.5 全链路通过（见上，含真 PID 与真杀进程）
 - **M3 端到端实测（本机 `node scripts/probe-m3.cjs`，真实样本 `傭兵の冒険_CHN`）**：
   - `diagnoseGame` **3–4ms** 返回 3 条诊断（`encryptedArchive:fatal` / `moduleMissing:fatal` / `fontsPresent:info`）
     → 确实是毫秒级、确实绕开了队列
@@ -226,7 +271,7 @@ npm run build:mac    # 出 mac 包（Windows 上只能出 zip/dir，签名需 Ma
 │   ├── 竞品功能对照表.md    ← MTool / RPGMakerUtils 功能面调研（判断哪些值得加）
 │   ├── 需求-游戏内文本汉化.md ← 汉化需求记录（**暂不实现**，只沉淀格式与坑）
 │   ├── M2.7-实施方案.md    ← ★ M2.7 交接稿（编辑页重构 + 保存 bug）
-│   ├── M3.5-实施方案.md    ← ★ M3.5 交接稿（进程管理：追踪/关闭/游玩记录）——**待实施**
+│   ├── M3.5-实施方案.md    ← ★ M3.5 交接稿（进程管理：追踪/关闭/游玩记录）——**已实施完毕**
 │   ├── 调研-去掉上游launcher的可行性.md ← 上游 launcher 能否自实现（**已调研，待 M3.5 后实施**）
 │   └── 技术选型-三方案对比.md
 ├── _xeno_probe/            # 上游 Xenolauncher clone，只读参考，gitignore
@@ -242,6 +287,9 @@ npm run build:mac    # 出 mac 包（Windows 上只能出 zip/dir，签名需 Ma
 │   │   ├── dlsite.ts       #   M2：RJ 识别 + var contents 解析 + TTL 缓存（不 import electron）
 │   │   ├── library-meta.ts #   M2：DLsite 元数据旁挂存储（library-meta.json）
 │   │   ├── diagnose.ts    #   ★ M3：启动前诊断（五个检测器 + 汇总排序，不 import electron）
+│   │   ├── exec-inject.ts #   ★ M3.5：launcher 加载时的 child_process 注入（只换 exec，D48/D49）
+│   │   ├── process-registry.ts # ★ M3.5：进程表（只在内存，D50）+ 存活/复用/等待工具
+│   │   ├── play-stats.ts  #   ★ M3.5：游玩记录旁挂存储（play-stats.json，D51）
 │   │   └── ipc.ts          #   IPC 命令表 + 串行队列 + 取消 + 对话框桥 + OFF_QUEUE_METHODS
 │   ├── shared/            #   零依赖纯函数（主进程 / 渲染层 / vitest 三处共用）
 │   │   ├── bridge-error.ts#   ★ 跨 contextBridge 的 error.key 编解码（preload 与渲染层共享）
@@ -265,12 +313,13 @@ npm run build:mac    # 出 mac 包（Windows 上只能出 zip/dir，签名需 Ma
 │   ├── probe-m3.cjs        #   M3 端到端验收探针（+ probe-m3-inner.cjs）
 │   ├── probe-m26.cjs       #   M2.6 端到端验收探针（+ probe-m26-inner.cjs）
 │   ├── probe-m27.cjs       #   M2.7 编辑页重构验收探针
+│   ├── probe-m35.cjs       #   M3.5 进程管理验收探针（+ probe-m35-inner.cjs）
 │   └── probe-save-fix.cjs  #   M2.7 保存 bug 修复验收探针（两阶段）
 └── test/
     ├── fixtures/           # 假游戏目录（MV/VX Ace/2000/Ren'Py）+ dlsite/RJ294126.html
     │                       #   + dlsite/search-mercenary.html（M2.5 真搜索页裁切）
     │                       #   + encrypted-rgss3a/（M3：0x03 魔数 + GBK Game.ini，.gitattributes 锁住字节）
-    └── *.test.ts           # vitest 单测（439 个，17 个文件，不依赖网络与 GUI）
+    └── *.test.ts           # vitest 单测（507 个，20 个文件，不依赖网络与 GUI）
 ```
 
 ## 架构与数据流（30 秒版）
@@ -433,10 +482,13 @@ Vue 组件 → Pinia store → api/client → preload(window.tsumi.invoke)
   - 数据层新增 `summary`/`author`/`salesCount`/`rating`（**只有搜索结果页有后三项**，见 D42）
   - 端到端验收：`node scripts/probe-m26.cjs`
   - **视觉观感仍未人眼验收**（卡片悬停、简介截断、窄窗口塌陷、R18 模糊强度）
-- **M3.5（方案已冻结，待实施）**：进程管理 —— 见 [`docs/M3.5-实施方案.md`](./docs/M3.5-实施方案.md)（D48–D52）
+- **M3.5（已完成，v0.3.2）**：进程管理 —— 见 [`docs/M3.5-实施方案.md`](./docs/M3.5-实施方案.md)（D48–D52）
   - 三项：①启动后**进程追踪**（`Snapshot.running`）②**关闭游戏**（SIGTERM→5s→SIGKILL）③**游玩记录**（`play-stats.json`）
-  - 为什么先做：用户要的「好用」缺口里，①② 严重度最高，且是「最近游玩/排序/收藏」的地基
-  - **关键实现**：加载 launcher 时**注入 `child_process`**（不改上游 modules 仓库），已验证可行
+  - **关键实现**：加载 launcher 时**注入 `child_process`**（不改上游 modules 仓库）——劫持的是
+    `Module` 实例的 `require` 作用域，**只影响这一个模块**；`spawn`/`spawnSync` 等原样透传（D49）
+  - 端到端验收：`node scripts/probe-m35.cjs`（假引擎 + 真进程 + 真 kill）
+  - **未验证**：mac 上真引擎（nwjs/mkxpz/easyrpg/renpy）的 exec 命令串形态、NW.js 的子进程树
+    （若一个 PID 杀不干净，后续要 `pkill -P <pid>` 整棵树，方案 §9 R4）
 - **M4**：存档管理（集中查看/备份/导出）+ 增强（Cheat 注入/变速）
 - **M5**：手柄、无边框全屏、像素缩放、dmg 公证分发
 - **排期待定：去掉上游 launcher（自实现启动）** —— 见 [`docs/调研-去掉上游launcher的可行性.md`](./docs/调研-去掉上游launcher的可行性.md)

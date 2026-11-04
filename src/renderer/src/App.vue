@@ -33,7 +33,9 @@ const platform = computed(() => window.tsumi?.platform ?? '')
 
 onMounted(async () => {
   // 事件订阅先装（core 可能在 snapshot 之前就发 dialog）
-  task.install()
+  // M3.5：进程事件（gameStarted / gameExited）转给 library store —— 它是运行态的唯一投影。
+  // 事件订阅仍然只装一次（task.install 内部判重）。
+  task.install((event) => library.handleProcessEvent(event))
   coreDialogs.install()
   settings.initMeta(window.tsumi?.appVersion ?? '', '', window.tsumi?.platform ?? '')
   // system 外观要跟随系统变化
