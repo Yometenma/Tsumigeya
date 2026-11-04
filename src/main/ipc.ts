@@ -482,6 +482,122 @@ export function createDispatcher(deps: IpcDeps): Dispatcher {
     return { message: '已发送启动请求' }
   }
 
+  /**
+   * 只安装模块里**指定的若干依赖**（M3 的「一键补装 RTP」用它）。
+   *
+   * 为什么不能直接用 core 的 `installDependency`：
+   *   上游有参数错位 bug —— `installDependency(folder, depName, builds)` 内部调用
+   *   `installOneDependency(depName, builds, depsRoot, opts)`（**4 个参数**）时只传了 3 个，
+   *   于是 folder 被当成 depName、depName 被当成 builds、builds 被当成 depsRoot。
+   *   项目决策 D6 就是「不暴露 installDependency」，原因正是这条。
+   *
+   * 为什么不能直接用 `updateDependenciesTaskWithProgress`：
+   *   它走 `getDependencyUpdates`（模块自己的 updates provider），**只更新已安装的依赖**；
+   *   我们在的场景恰恰是「RTP 从来没装过」——实测它在 entries 为空时只打一句
+   *   "No dependency updates found." 就返回，**什么都不下载**。
+   *   用户点「一键补装」会看到「完成」但 RTP 仍然缺失，这比不修更糟。
+   *
+   * 为什么不能直接用 `installModuleWithProgress`：
+   *   那会把整个模块（含引擎二进制与其它依赖）全部重下一遍，只为了补一个 RTP，代价太大。
+   *
+   * 所以这里按 manifest 的 `dependencies` 自己走一遍：只下需要的那些，并复用现有的
+   * 下载+解压通路（`extractArchive`）与事务回滚（`moduleTransaction`）。
+   */
+  async function installDependencies(
+    folder: string,
+    wanted: readonly string[],
+    signal: AbortSignal
+  ): Promise<string[]> {
+    const root = host.modulePath(folder)
+    const target = path.join(root, 'manifest.json')
+    if (!fs.existsSync(target)) {
+      throw failure('error.moduleMissing', 'Module manifest not found', { module: folder })
+    }
+    let manifest: { dependencies?: Record<string, unknown>; deps?: Record<string, unknown> }
+    try {
+      manifest = JSON.parse(fs.readFileSync(target, 'utf8')) as typeof manifest
+    } catch (error) {
+      throw failure('error.invalidObject', `Invalid manifest: ${folder}`, {
+        file: `${folder}/manifest.json`,
+        reason: (error as Error).message
+      })
+    }
+    const deps = (manifest.dependencies ?? manifest.deps ?? {}) as Record<
+      string,
+      Record<string, unknown>
+    >
+
+    const arch = os.arch() === 'x64' ? 'x86_64' : os.arch()
+    const installed: string[] = []
+    for (const name of wanted) {
+      abortCheck(signal)
+      const builds = deps[name]
+      if (!builds || typeof builds !== 'object') {
+        // manifest 里没有这个依赖：不猜、不静默成功，直接告诉用户
+        throw failure('error.dependencyMissing', `Manifest has no dependency "${name}"`, {
+          dependency: name,
+          module: folder
+        })
+      }
+      const spec = (builds.universal ?? builds[arch]) as { link?: string; unzip?: boolean } | undefined
+      if (!spec?.link) {
+        throw failure('error.buildMissing', `No ${arch} build for dependency "${name}"`, { arch })
+      }
+
+      const depDir = path.join(root, 'deps', component(name, 'dependency'))
+      fs.mkdirSync(depDir, { recursive: true })
+      const archiveName = component(path.basename(new URL(spec.link).pathname), 'archive')
+      const archivePath = path.join(depDir, archiveName)
+
+      const response = await host.fetch(spec.link, { signal })
+      if (!response.ok || !response.body) {
+        throw failure('error.download', `Download failed: HTTP ${response.status}`, {
+          status: response.status,
+          url: spec.link
+        })
+      }
+      const totalBytes = Number(response.headers.get('content-length')) || 0
+      const file = fs.openSync(archivePath, 'w')
+      let downloadedBytes = 0
+      try {
+        for await (const chunk of response.body as unknown as AsyncIterable<Uint8Array>) {
+          abortCheck(signal)
+          fs.writeSync(file, chunk)
+          downloadedBytes += chunk.length
+          host.emit({
+            event: 'progress',
+            requestID: host.currentContext()?.id,
+            name: 'onDownloadProgress',
+            key: 'progress.download',
+            detail: { label: name, downloadedBytes, totalBytes }
+          })
+        }
+      } finally {
+        fs.closeSync(file)
+      }
+
+      if (spec.unzip) {
+        const extracted = path.join(depDir, '.extract')
+        await extractArchive(archivePath, extracted, { signal })
+        // 归档内部可能还带一层**同名**顶层目录（§2.3 实测：RTP.zip 内部顶层是 `RTP/…`，
+        // 所以真实结构是 deps/RTP/**RTP**/<版本>/——注意 depDir 本身就叫 deps/RTP）。
+        // 只有当那层与依赖名同名时才拍平它，其它结构原样保留：
+        // 盲目「拍平任意单层目录」会把 `deps/RTP/RPGVXace` 这种结构也当成包裹层，
+        // 结果版本目录被吞掉，诊断查 deps/RTP/RTP/<版本> 就会永远判缺失。
+        const entries = fs.readdirSync(extracted, { withFileTypes: true })
+        const wrap = entries.length === 1 && entries[0].isDirectory() && entries[0].name === name
+        const source = wrap ? path.join(extracted, name) : extracted
+        for (const entry of fs.readdirSync(source)) {
+          fs.renameSync(path.join(source, entry), path.join(depDir, entry))
+        }
+        fs.rmSync(extracted, { recursive: true, force: true })
+        fs.rmSync(archivePath, { force: true })
+      }
+      installed.push(name)
+    }
+    return installed
+  }
+
   // ===== M3：启动前诊断（§3 / §4.1）=====
 
   /**
@@ -539,7 +655,19 @@ export function createDispatcher(deps: IpcDeps): Dispatcher {
     switch (fix.kind) {
       case 'installRtp': {
         const folder = component(fix.engine, 'module')
-        await runModuleTask(folder, 'dependencies', signal)
+        // RTP 在 mkxpz 的 manifest 里就叫 "RTP"（§2.3 实测的依赖名）。
+        // 必须走「按名字装指定依赖」而不是 updateDependencies：后者只更新已装的，
+        // 而我们的场景恰恰是「从来没装过」→ 实测它什么都不下（见 installDependencies 注释）。
+        await moduleTransaction(host, folder, async () => {
+          const installed = await installDependencies(folder, ['RTP'], signal)
+          if (!installed.includes('RTP')) {
+            throw failure('error.dependencyMissing', 'RTP dependency was not installed', {
+              dependency: 'RTP',
+              module: folder
+            })
+          }
+        })
+        host.core.invalidateDepUpdatesCache()
         message = 'RTP 补装完成'
         break
       }

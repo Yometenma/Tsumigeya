@@ -365,6 +365,7 @@
     "dlsiteSearchEmpty": "没有搜到「{keyword}」相关的作品，可换个关键词或直接填 RJ 号",
     "languagePreference": "语言偏好设置不合法：{value}",
     "repairFixMissing": "缺少修复动作，请刷新诊断后重试",
-    "repairUnknownFix": "不认识的修复动作：{action}"
+    "repairUnknownFix": "不认识的修复动作：{action}",
+    "dependencyMissing": "引擎「{module}」的清单里没有依赖「{dependency}」，无法补装"
   }
 }
