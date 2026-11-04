@@ -20,39 +20,35 @@
 
 ## 当前项目状态（每次收尾必须更新）
 
-- **阶段**：M1（中文游戏库 + 自动识别 + 一键启动）— **S2–S8 已完成并提交**（S1 由上一会话完成）
+- **阶段**：**M2（DLsite 元数据）S1–S5 已完成**；M1 全绿保留
 - **已完成**：
-  - 仓库初始化（`git init`，首个基线提交）+ 脚手架配置（electron-vite / tsconfig / electron-builder / vitest）
-  - `resources/core/module.js`（上游 fork，唯一补丁 = `services.fetch` 注入，详见 `resources/core/FORK-NOTES.md`）
-  - 文档：`README.md`、`docs/技术选型-三方案对比.md`、**`docs/M1-实施方案.md`（契约冻结稿）**、`LICENSE`(GPL-3.0)
-  - 本机环境：依赖已装、Electron 45.2.1 二进制已下载
-  - **`src/main/` 五件套全部落地**：`index.ts`（窗口 / `tsmg://` / CSP / 生命周期）、`core-host.ts`（数据目录 + core 装载 + 对话框桥 + detectFolder）、`games-store.ts`（原子写 + `.bak` + 校验）、`extract.ts`（系统 bsdtar + 安全校验）、`ipc.ts`（18 条命令全表 + 串行队列 + 取消）
-  - **`src/preload/index.ts`**：`window.tsumi` 全量桥（invoke / startTask / cancel / dialogReply / pickPath / pathForFile / onEvent）
-  - **`src/renderer/`**：i18n + hash 路由 + App 布局 + 4 个 store（library / engines / settings / task / coreDialogs）+ 9 个组件 + 4 个页面 + `locales/zh-CN.json`（含 §3.9 全部 `error.*` 键）
-  - **`test/`**：4 个 fixtures + 4 个测试文件，**76 个测试全绿**（不依赖网络、不依赖 GUI）
+  - M1 全套（游戏库 / 自动识别 / 一键安装引擎 / 启动），v0.1.4 已在 Mac 上实测可启动 NW.js 游戏
+  - **M2 全套**：`src/main/dlsite.ts`（RJ 识别 + `var contents` 解析 + TTL 缓存 + 4 类错误）、
+    `src/main/library-meta.ts`（旁挂存储）、5 条 IPC 命令（`dlsiteDetectRJ` / `dlsiteLookup` /
+    `saveGameMeta` / `refreshGameMeta` / `clearGameMeta`）、`OFF_QUEUE_METHODS` 常量、
+    CSP `img-src` 白名单、session `adultchecked` cookie、编辑页 DLsite 面板、GameCard 封面三级降级
+  - `src/shared/bridge-error.ts`：修掉「contextBridge 跨边界丢 `error.key`」导致中文文案退化成英文的老 bug
+  - **测试 165 个全绿 / 9 个文件**（M1 的 76 个 + M2 新增 89 个）
+- **M2 端到端实测（Windows 本机，`node scripts/probe-m2.cjs`）**：
+  - `dlsiteLookup` 走系统代理**真拿到数据**：`純愛おま○こ当番【アップデート版】` / `青春×フェティシズム` /
+    `2020/08/30`，**约 260ms**
+  - 封面 `<img>` 真的加载成功：`naturalWidth = 560, complete = true`
+    → **方案 §11 的 R3（防盗链）与 R4（R18 二次拦截）实测解除，不需要「主进程下载封面」的备选**
+  - `snapshot.games[0]` 的键只有 `gameEngine/gamePath/gameTitle/id` → **D18（GameRecord 零改动）实测验证**
+  - 编辑页 `htmlLen = 6411`、`consoleErrors = []` → 组件没白屏
 - **验证基线（Windows 本机实测）**：
   - `npm run typecheck` ✅ exit 0
-  - `npm test` ✅ 76 passed / 4 files，~3.4 s
-  - `npm run build` ✅ exit 0，产出 `out/{main,preload,renderer}`
-  - **`npm run dev` ✅ 已在本机跑通**：窗口真实渲染出来（标题 `Tsumigeya`、路由 `#/library`、
-    游戏库中文界面与空状态、`window.tsumi` 为 object、数据目录生成 `cache/`）。
-    启动入口由 `scripts/dev.cjs` 包装，原因见「已知坑」第一条。
-  - **添加游戏向导 ✅ 端到端实测通过**：手输路径框填真实 fixture 路径 → 点「识别此路径」
-    → **1 秒内**显示「识别到引擎：wine（尚未安装）」+ 候选列表 + 安装按钮，组件无崩溃。
-    四个路由（/library、/library/new、/engines、/settings）渲染均正常（htmlLen 3522–5307）。
+  - `npm test` ✅ 165 passed / 9 files
+  - `npm run build` ✅ exit 0
+  - `node scripts/probe-m2.cjs` ✅ 全链路通过（见上）
 - **仍未验证（必须在有桌面会话的机器上做）**：
-  - 五个页面的**视觉观感**：DOM 结构与文本已验证，但暗色主题配色、间距、进度浮层动效需人眼验收。
-  - **系统文件对话框的返回值**：`tsumi:pick` handler 已确认注册且被调用（实测调用后挂起＝正在等对话框），
-    但「对话框真的弹出并把路径交回」需真实桌面会话确认。已加**手输路径**兜底。
-  - **安装引擎**：需 mac（引擎二进制是 mac 版）。Windows 上到这一步会失败，属预期。
-  - **真实启动游戏（部分已验证）**：用户在自己的 Mac 上实测——
-    NW.js 游戏（Karryn's Prison 等 4 个）在 v0.1.4 修掉版本号 bug 后**能正常启动**；
-    纯 `.rgss3a` 加密游戏（傭兵の冒険）报 `No script file`，属已知限制（见 M3）。
-    **仍需继续验证**：引擎安装全流程、其他引擎类型（mkxp-z 普通未加密游戏、EasyRPG）。
-- **已知网络现实（本机）**：`api.github.com` 通，`raw.githubusercontent.com` 直连 DNS 失败，**走系统代理（127.0.0.1:7897）返回 200**。
-  Node 原生 `fetch` 不读 WinINET 系统代理，因此纯 Node 下的验收看不到远程 manifest；
-  产品侧靠注入的 `net.fetch` + `session.setProxy({ mode: 'system' })` 走系统代理（D9）。
-  **注意这条是踩过坑才补上的**：只注入 net.fetch 不设 setProxy 时，macOS 上系统代理不生效。
+  - **视觉观感**：暗色主题配色、封面卡片裁切比例、进度浮层动效需人眼验收
+  - **系统文件对话框的返回值**（M1 遗留，已加手输路径兜底）
+  - **安装引擎 / 其他引擎类型**（需 mac）
+  - **M2 编辑页交互手感**：RJ 候选多选、预览保存按钮的可见性
+- **已知网络现实（本机）**：DLsite 与 `raw.githubusercontent.com` **都依赖系统代理**。
+  产品侧靠 `net.fetch` + `session.setProxy({ mode: 'system' })` 走代理（D9）；
+  纯 Node / vitest / curl 验收必须显式设代理，否则一律超时。
 - **打包与分发（已就绪，待 CI 首次实跑验证）**：GitHub Actions 出 mac dmg（arm64/x64）+ win 安装包，
   打 `v*` tag 自动挂 draft Release。配置见 `.github/workflows/build.yml` 与 `electron-builder.yml`，
   使用说明见 `docs/打包与分发.md`。**无需证书**（ad-hoc 签名，首次打开需右键→打开）。
@@ -96,11 +92,15 @@ npm run build:mac    # 出 mac 包（Windows 上只能出 zip/dir，签名需 Ma
 │   └── FORK-NOTES.md       # 与上游的差异记录（改它之前必读）
 ├── src/
 │   ├── main/               # Electron 主进程
-│   │   ├── index.ts        #   窗口 / tsmg:// 协议 / 生命周期
+│   │   ├── index.ts        #   窗口 / tsmg:// 协议 / CSP / 生命周期
 │   │   ├── core-host.ts    #   core 单例（new Function 装载）+ 数据目录策略 + detectFolder
 │   │   ├── games-store.ts  #   games.json / global-settings.json（原子写+.bak，不依赖 electron）
 │   │   ├── extract.ts      #   解压服务（系统 bsdtar + 安全校验）
-│   │   └── ipc.ts          #   IPC 命令表 + 串行队列 + 取消 + 对话框桥
+│   │   ├── dlsite.ts       #   M2：RJ 识别 + var contents 解析 + TTL 缓存（不 import electron）
+│   │   ├── library-meta.ts #   M2：DLsite 元数据旁挂存储（library-meta.json）
+│   │   └── ipc.ts          #   IPC 命令表 + 串行队列 + 取消 + 对话框桥 + OFF_QUEUE_METHODS
+│   ├── shared/
+│   │   └── bridge-error.ts #   ★ 跨 contextBridge 的 error.key 编解码（preload 与渲染层共享）
 │   ├── preload/index.ts    # contextBridge 白名单桥（window.tsumi）
 │   └── renderer/src/       # Vue3 前端
 │       ├── pages/          #   Library / GameEdit / Engines / Settings
@@ -108,9 +108,12 @@ npm run build:mac    # 出 mac 包（Windows 上只能出 zip/dir，签名需 Ma
 │       ├── stores/         #   Pinia: library / engines / settings / task / coreDialogs
 │       ├── api/client.ts   #   IPC 调用封装（全部类型定义，唯一类型来源）
 │       └── locales/        #   zh-CN.json（所有 UI 文案集中在此）
+├── scripts/
+│   ├── dev.cjs             #   开发启动包装（文件入口 + 清环境变量 + NO_SANDBOX）
+│   └── probe-m2.cjs        #   M2 端到端验收探针（+ probe-m2-inner.cjs）
 └── test/
-    ├── fixtures/           # 假游戏目录（MV/VX Ace/2000/Ren'Py）
-    └── *.test.ts           # vitest 单测（games-store / detect / extract）
+    ├── fixtures/           # 假游戏目录（MV/VX Ace/2000/Ren'Py）+ dlsite/RJ294126.html
+    └── *.test.ts           # vitest 单测（165 个，9 个文件，不依赖网络与 GUI）
 ```
 
 ## 架构与数据流（30 秒版）
@@ -150,6 +153,11 @@ Vue 组件 → Pinia store → api/client → preload(window.tsumi.invoke)
 | D15 | `defaultFetch` 保留 `net.fetch` 优先，但要**兜底到全局 `fetch`**（无 electron 的 `net` 时） | 纯 Node / vitest 里 `require('electron')` 返回的是可执行文件路径字符串，没有 `net`；不兜底会直接崩在 fetch 调用上 |
 | D16 | 拖拽取路径用 **`webUtils.getPathForFile`**（preload 暴露 `pathForFile`），**不用 `File.path`** | Electron 32+ 已移除 `File.path`，在 Electron 45 上它恒为 `undefined`，拖拽会静默失败 |
 | D17 | **不给纯 Node 侧加代理回退**（用户 2026-11-04 决定） | 代理交给主进程的 `session.setProxy({ mode: 'system' })`（D9）处理，纯 Node 测试按 §6 必须不依赖网络。**修正**：原写"生产注入的 net.fetch 天然继承系统代理"是错的，详见「已知坑」 |
+| D18 | DLsite 元数据**旁挂** `library-meta.json` + `dlsite/<RJ>.json`，`GameRecord` 零改动（`Snapshot` 只**新增** `meta` 字段） | 守 D10；删掉 `library-meta.json` 游戏照样能启动，上游读 games.json 完全无感。**实测已验证**：`snapshot.games[0]` 的键只有 `gameEngine/gamePath/gameTitle/id` |
+| D19 | 只解析页面末尾 `var contents` 的 JSON，**不解析 HTML 表格**；**标签/genre 不做** | 调研实测：`product/info/ajax` 返回 `[]`、`api/product` 404、JSON-LD 无 Product。多请求方案不可行，不承诺 |
+| D20 | 元数据抓取**只在主进程**做（渲染层不发网络请求），CSP 只加 `img-src https://img.dlsite.jp` | 最小攻击面；`<img>` 不受 `connect-src` 约束，所以不动 `connect-src`/`script-src` |
+| D21 | `dlsiteLookup` / `dlsiteDetectRJ` 进 `OFF_QUEUE_METHODS`（绕串行队列） | 只写自己独立的 `<dataDir>/dlsite/` 缓存目录，与队列内写操作无共享资源；防重演"更新检查堵死队列"。**名单用测试锁死**（`test/ipc-offqueue.test.ts`） |
+| D22 | 封面 URL 必须 host ∈ `img.dlsite.jp`，否则丢弃 | 外部数据不可信，禁止任意远程图进渲染层 |
 
 ## 已知坑
 
@@ -178,6 +186,10 @@ Vue 组件 → Pinia store → api/client → preload(window.tsumi.invoke)
 | **i18n 文案里写 ICU 语法会让整个组件白屏**（本项目最隐蔽的坑） | 项目只装了 `vue-i18n`、**没有** `@intlify/unplugin-vue-i18n` 编译器，所以 `{count, plural, =0 {} other {…}}` 会在运行时抛 `SyntaxError: 2`，而**报错只在 console，界面表现为整块组件消失**（只剩侧边栏）。**文案里只允许 `{simpleIdentifier}` 形式占位符**，复数/格式化请改用普通拼接或 computed |
 | **Vue 模板表达式里不能写 TS 类型断言** | `@click="step = (step - 1) as Step"` 同样导致组件渲染失败白屏。模板里只写运行时代码，类型断言放进 `<script setup>` 的具名函数 |
 | 排查「组件突然消失」的姿势 | 在页面里挂 `window.addEventListener('error')` + 包装 `console.error` 收 `stack`；再对比 `document.querySelector('#app').innerHTML.length` 在操作前后的变化（本例：4198 → 544 即组件被卸载） |
+| **contextBridge 跨边界 throw 会丢 `error.key`**（M2 端到端探针实测踩到） | Electron 跨隔离边界抛错时**只保留 message/stack**，自定义属性（`error.key`/`arguments`）被静默丢弃 → `translateError()` 永远查不到 key，**所有中文错误文案退化成英文原文，且不报任何错**，看起来只是「提示语没翻译」。已修：preload 把 key 编进 message 尾部的 `\u0000tsumi-key:` 标记，渲染层 `decodeBridgeError()` 解回来。实现在 `src/shared/bridge-error.ts`（preload 与渲染层共享一份，标记常量只有一处定义） |
+| **`.vue` 里 `watch(..., { immediate: true })` 会立刻调用 fill()** | 被调用的函数若引用了**后面才声明**的 ref，会撞 TDZ：`ReferenceError: Cannot access 'rjInput' before initialization`，**组件整块白屏**。实测在 `GameEditPage` 踩到。规矩：所有 ref/computed 声明必须在任何 `immediate: true` 的 watch 之前 |
+| **Vite 打包后 `out/main` 的 stdout 在 Windows 会丢** | Electron 是 GUI 子系统，`console.log` 常常什么都不打印（表现为「脚本像没跑」）。验收脚本必须**同时写结果文件**；而且 `%TEMP%` 在受限会话下整体 EPERM（见上一条），结果文件要写到**项目目录内** |
+| 跑 Electron 验收脚本必须带 `--no-sandbox` | 受限桌面会话下裸跑 `electron script.cjs` 直接 **exit 3 且零输出**。`scripts/dev.cjs` 与 `scripts/probe-m2.cjs` 都处理了这条；手动跑时记得加 `--no-sandbox` + `env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS` |
 
 > **验收 `npm run dev` 的正确姿势**（本机无画面可看时）：启动后用 `BrowserWindow.getAllWindows()` +
 > `webContents.executeJavaScript('document.body.innerText')` 抓 DOM 文本，确认标题/路由/`typeof window.tsumi`。
@@ -197,9 +209,11 @@ Vue 组件 → Pinia store → api/client → preload(window.tsumi.invoke)
 
 ## 里程碑路线图
 
-- **M1（进行中）**：中文游戏库 + 自动识别 + 一键安装引擎 + 启动 ← 当前
-- **M2**：DLsite 元数据（RJ 号→标题/社团/封面/标签，封面墙）
-- **M3**：故障自愈（RTP 缺失、字体/乱码修复、一键修复启动）
+- **M1（已完成）**：中文游戏库 + 自动识别 + 一键安装引擎 + 启动
+- **M2（已完成）**：DLsite 元数据（RJ 号 → 标题 / 社团 / 封面 / 发售日 / 价格，封面墙）
+  - 方案与决策见 [`docs/M2-实施方案.md`](./docs/M2-实施方案.md)（D18–D22）
+  - **标签（genre）明确不做** —— 调研实测接口不可用，不承诺（D19）
+- **M3（下一个）**：故障自愈（RTP 缺失、字体/乱码修复、一键修复启动）
   - 【新增】**加密发行检测与引导**（用户 2026-11-04 拍板）：识别「只有 `Game.rgss3a`/`Game.rgssad`、
     没有 `Data/Scripts.rvdata2`」的游戏，给出可操作的中文提示。
     **只做检测 + 提示 + 引导，不实现解包算法**（理由见下）。

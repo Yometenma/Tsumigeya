@@ -1,6 +1,7 @@
 // contextBridge 白名单桥：只暴露 window.tsumi（§3.5）。
 // 这里不 import 任何 Node 内置模块——窗口用 sandbox: true，preload 只能要求 electron。
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
+import { encodeBridgeError } from '../shared/bridge-error'
 
 /** 主进程事件形态（与 api/client.ts 的 CoreEvent 保持一致）。 */
 export interface CoreEvent {
@@ -39,15 +40,12 @@ export interface TsumiBridge {
   readonly appVersion: string
 }
 
-/** 错误对象带上 key / arguments，渲染层据此查 locales（§3.9）。 */
-function decorateError(payload: InvokeResponse<unknown>['error']): Error {
-  const error = new Error(payload?.message ?? 'IPC failed') as Error & {
-    key?: string
-    arguments?: Record<string, unknown>
-  }
-  if (payload?.key) error.key = payload.key
-  if (payload?.arguments) error.arguments = payload.arguments
-  return error
+/**
+ * 把 key / arguments 编进 message 一起过 contextBridge。
+ * 实现见 src/shared/bridge-error.ts（preload 与渲染层共享，标记常量只有一处定义）。
+ */
+function decorateErrorForBridge(payload: InvokeResponse<unknown>['error']): Error {
+  return encodeBridgeError(payload)
 }
 
 function requestId(): string {
@@ -60,7 +58,9 @@ async function invokeWithId<T>(id: string, method: string, params?: unknown): Pr
     params,
     requestId: id
   })) as InvokeResponse<T>
-  if (!response?.ok) throw decorateError(response?.error)
+  // 注意：**不要**在这里 throw 带自定义属性的 Error（contextBridge 会丢掉 key，
+  // 见 decorateErrorForBridge 的注释）。渲染层用 decodeBridgeError 解回来。
+  if (!response?.ok) throw decorateErrorForBridge(response?.error)
   return response.result as T
 }
 

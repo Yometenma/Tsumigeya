@@ -1,0 +1,43 @@
+// 绕队列名单的「锁死」测试（M2 §9 / AGENTS.md 已知坑倒数第 5 条）。
+//
+// 为什么值得单独一个文件：只读命令进了队列会重演「启动更新检查堵死队列、界面永远卡住」的老坑。
+// 名单是手写的字符串集合，最容易在不经意间被改坏，所以用测试把它钉住。
+import { describe, expect, test } from 'vitest'
+import { OFF_QUEUE_METHODS } from '../src/main/ipc'
+
+describe('OFF_QUEUE_METHODS', () => {
+  test('包含所有已知的只读 / 独立目录写入命令', () => {
+    for (const method of ['detect', 'detectFolder', 'snapshot', 'versions', 'dlsiteDetectRJ', 'dlsiteLookup']) {
+      expect(OFF_QUEUE_METHODS.has(method)).toBe(true)
+    }
+  })
+
+  test('写 games.json / library-meta.json 的命令**必须**进队列', () => {
+    for (const method of [
+      'saveGame',
+      'saveSettings',
+      'deleteGame',
+      'launch',
+      'moduleTask',
+      'installVersion',
+      'removeVersion',
+      'saveGameMeta',
+      'refreshGameMeta',
+      'clearGameMeta'
+    ]) {
+      expect(OFF_QUEUE_METHODS.has(method)).toBe(false)
+    }
+  })
+
+  test('长任务（更新检查 / 全量更新）不进「绕队列」名单（它们本来就要排队）', () => {
+    // 注意：checkEngineUpdates 是那个「会堵住队列」的元凶，把它加进旁路 = 让它去堵别人，
+    // 所以它必须留在队列里，与只读命令排队。
+    expect(OFF_QUEUE_METHODS.has('checkEngineUpdates')).toBe(false)
+    expect(OFF_QUEUE_METHODS.has('updateAllEngines')).toBe(false)
+  })
+
+  test('名单不会意外膨胀（数量与已知命令对齐）', () => {
+    // 这条断言的作用：有人偷偷加了命令却没更新这里 → 测试红了，逼他重新想一遍准入标准。
+    expect(OFF_QUEUE_METHODS.size).toBe(6)
+  })
+})

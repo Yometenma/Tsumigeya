@@ -92,7 +92,11 @@ function applyContentSecurityPolicy(): void {
         "default-src 'self'",
         "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
         "style-src 'self' 'unsafe-inline'",
-        "img-src 'self' data: tsmg:",
+        // M2：DLsite 封面来自 img.dlsite.jp，必须进 img-src 白名单（方案 §6.5）。
+        // **只加 img-src，不动 connect-src / script-src / default-src**：
+        // 抓取全在主进程（D20），渲染层不需要向 DLsite 发任何 XHR。
+        // 两处分支都必须改——只改一处会出现「dev 能看见封面、打包后全灰」的怪象。
+        "img-src 'self' data: tsmg: https://img.dlsite.jp",
         "font-src 'self' data:",
         `connect-src 'self' ${devServer} ws://localhost:* http://localhost:*`
       ]
@@ -100,7 +104,7 @@ function applyContentSecurityPolicy(): void {
         "default-src 'self'",
         "script-src 'self'",
         "style-src 'self' 'unsafe-inline'",
-        "img-src 'self' data: tsmg:",
+        "img-src 'self' data: tsmg: https://img.dlsite.jp",
         "font-src 'self' data:",
         "connect-src 'self'"
       ]
@@ -111,6 +115,26 @@ function applyContentSecurityPolicy(): void {
         'Content-Security-Policy': [policy.join('; ')]
       }
     })
+  })
+}
+
+/**
+ * 写 DLsite 需要的 `adultchecked=1` cookie（方案 §4.2）。
+ *
+ * 为什么不直接发 `Cookie:` 请求头：Chromium 网络栈会剥掉手工设置的 Cookie 头，
+ * 而走 session cookie 是浏览器原生行为。失败只 warn 不阻塞——最多抓到年龄确认页，
+ * 那会被 parse 判成 error.dlsiteParse（明示「可能已改版/需要登录」），不会静默错数据。
+ */
+async function setAdultCookie(): Promise<void> {
+  const expires = Math.floor(Date.now() / 1000) + 365 * 24 * 60 * 60
+  await session.defaultSession.cookies.set({
+    url: 'https://www.dlsite.com',
+    name: 'adultchecked',
+    value: '1',
+    domain: '.dlsite.com',
+    path: '/',
+    secure: true,
+    expirationDate: expires
   })
 }
 
@@ -148,6 +172,8 @@ void app.whenReady().then(async () => {
     // 会出现「浏览器能上网、引擎下载却失败」的割裂现象，且很难排查。
     // net.fetch + session.setProxy({ mode: 'system' }) 才能让下载走用户的代理。
     fetchImpl: (input, init) => net.fetch(input, init as never),
+    // M2：DLsite 的作品页要 `adultchecked=1` cookie 才能过年龄闸门（方案 §4.2）。
+    setAdultCookie,
     onEvent: (event) => {
       for (const window of BrowserWindow.getAllWindows()) {
         if (!window.isDestroyed()) window.webContents.send('tsumi:event', event)

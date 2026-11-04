@@ -46,6 +46,8 @@ export interface Snapshot {
   dataDirWarning: { requested: string; switchedTo: string; code: string } | null
   nodeVersion: string
   engineUpdates: unknown
+  /** M2：DLsite 旁挂元数据（键 = gameId）。GameRecord 不动，这是新增字段（D18）。 */
+  meta: Record<string, unknown>
 }
 
 /** 带翻译键的错误：主进程只给 key，渲染层查 locales（§3.9）。 */
@@ -140,12 +142,13 @@ export interface GameStore {
   saveSettings(partial: Record<string, unknown>): Settings
   saveGame(input: { id?: string; game: GameDraft }): GameMap
   removeGame(id: string): GameMap
-  /** 组装 Snapshot；modules / engineUpdates / dataDirWarning 由 core-host / ipc 传进来。 */
+  /** 组装 Snapshot；modules / engineUpdates / dataDirWarning / meta 由 core-host / ipc 传进来。 */
   snapshot(extra?: {
     modules?: unknown[]
     nodeVersion?: string
     engineUpdates?: unknown
     dataDirWarning?: Snapshot['dataDirWarning']
+    meta?: Record<string, unknown>
   }): Snapshot
 }
 
@@ -224,6 +227,7 @@ export function createGameStore(dataDir: string): GameStore {
     nodeVersion?: string
     engineUpdates?: unknown
     dataDirWarning?: Snapshot['dataDirWarning']
+    meta?: Record<string, unknown>
   } = {}): Snapshot {
     return {
       games: Object.entries(loadGames()).map(([id, value]) => ({ ...value, id })),
@@ -232,7 +236,8 @@ export function createGameStore(dataDir: string): GameStore {
       dataPath: dataDir,
       dataDirWarning: extra.dataDirWarning ?? null,
       nodeVersion: extra.nodeVersion ?? process.version,
-      engineUpdates: extra.engineUpdates ?? null
+      engineUpdates: extra.engineUpdates ?? null,
+      meta: extra.meta ?? {}
     }
   }
 

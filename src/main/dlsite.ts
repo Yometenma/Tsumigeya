@@ -1,0 +1,578 @@
+// DLsite 元数据：RJ 号识别 + 页面解析 + TTL 缓存（M2-A）。
+// 契约：docs/M2-实施方案.md §4（网络层）、§3.2/§3.3（存储）。
+// 数据源：页面末尾 `var contents = {...}` 的 JSON（调研 §2.2），**不解析 HTML 表格**。
+// ⚠️ 本文件不 import electron：解析与缓存逻辑要能在 vitest 里直接跑（fetch / cookie 由外部注入）。
+import fs from 'node:fs'
+import path from 'node:path'
+import { failure, readJSON, writeJSON } from './games-store'
+
+/** 缓存有效期：7 天（§3.3）。 */
+const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000
+/** 单次页面请求超时（§4.1）。 */
+const DEFAULT_TIMEOUT_MS = 15_000
+/** 全局最小请求间隔（§4.1，防未来批量误用打爆 DLsite）。 */
+const DEFAULT_MIN_INTERVAL_MS = 800
+/** 简介截断长度：避免把 library-meta.json 塞爆。 */
+const DESCRIPTION_LIMIT = 400
+/** 自动识别时最多读几个 readme、每个读多少字节。 */
+const MAX_README_FILES = 8
+const MAX_README_BYTES = 64 * 1024
+
+/**
+ * 作品所在 section 的尝试顺序（§4.1）。
+ * 同一个作品可能落在 maniax / homepro / books，404 才试下一个；
+ * **网络超时 / 连接失败不重试**——那不是分类问题，重试只会让用户多等。
+ */
+const PAGE_CATEGORIES = ['maniax', 'homepro', 'books'] as const
+
+/** 封面只允许来自这个主机（D22：外部数据不可信，禁止任意远程图进渲染层）。 */
+const ALLOWED_COVER_HOSTS = new Set(['img.dlsite.jp'])
+
+export interface DlsiteWork {
+  /** 规范化大写，如 RJ294126。 */
+  rj: string
+  /** contents.detail[0].name；缺省回退 og:title 的名字部分。 */
+  title: string
+  /** og:title 去掉社团与「 | DLsite」后缀。 */
+  titleFull?: string
+  /** 社团名：优先 og:title 的 [方括号]，回退面包屑。 */
+  circle?: string
+  /** contents.detail[0].brand（= RG 号）。 */
+  circleId?: string
+  seriesName?: string
+  category?: string
+  /** 作品类型（SOU 等）。只作展示，**不是** genre（N1：标签不做）。 */
+  workType?: string
+  registDate?: string
+  /** discount 后的价格。 */
+  price?: number
+  priceWithTax?: number
+  officialPrice?: number
+  discount?: number
+  /** 已归一化为 https 绝对地址，且 host 必须 ∈ img.dlsite.jp。 */
+  coverUrl?: string
+  description?: string
+  fetchedAt: string
+}
+
+// ===== RJ 号 =====
+
+/**
+ * 校验并规范化 RJ 号：接受 `RJ294126` / `rj294126` / `RJ-294126` / `294126`。
+ * 非法返回 null（调用方决定抛什么错）。
+ */
+export function normalizeRj(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const match = /^[Rr]?[Jj]?[\s\-_]*(\d{6,8})$/.exec(value.trim())
+  if (!match) return null
+  return `RJ${match[1]}`
+}
+
+/**
+ * 从任意文本里提取 RJ 号候选（按出现顺序去重）。
+ * 不加词边界前缀：`RJ294126` 常紧跟中文或下划线，加 \b 反而漏掉；
+ * 尾部负向断言 `(?!\d)` 防止把 `RJ29412699` 截成 `RJ2941269`。
+ */
+export function extractRjCandidates(value: unknown): string[] {
+  if (typeof value !== 'string' || !value) return []
+  const found: string[] = []
+  for (const match of value.matchAll(/[Rr][Jj][\s\-_]*(\d{6,8})(?!\d)/g)) {
+    const rj = `RJ${match[1]}`
+    if (!found.includes(rj)) found.push(rj)
+  }
+  return found
+}
+
+/** 只读文件头部若干字节（readme 可能很大，别整份读进内存）。 */
+function readHead(file: string, limit = MAX_README_BYTES): string {
+  try {
+    const fd = fs.openSync(file, 'r')
+    try {
+      const buffer = Buffer.alloc(limit)
+      const read = fs.readSync(fd, buffer, 0, limit, 0)
+      return buffer.subarray(0, read).toString('utf8')
+    } finally {
+      fs.closeSync(fd)
+    }
+  } catch {
+    return ''
+  }
+}
+
+function readmeFiles(dir: string): string[] {
+  try {
+    return fs
+      .readdirSync(dir, { withFileTypes: true })
+      .filter((entry) => entry.isFile() && /^readme/i.test(entry.name))
+      .slice(0, MAX_README_FILES)
+      .map((entry) => path.join(dir, entry.name))
+  } catch {
+    return []
+  }
+}
+
+/**
+ * 从游戏路径猜 RJ 号（§4.6 优先级：目录名 → 路径各段 → readme）。
+ * 返回**按优先级排序**的候选列表：UI 默认取 `[0]`，多个不同 RJ 时让用户选（不瞎猜）。
+ */
+export function detectRjFromPath(gamePath: string): string[] {
+  if (typeof gamePath !== 'string' || !gamePath.trim()) return []
+  const resolved = path.resolve(gamePath)
+  let dir = resolved
+  try {
+    if (!fs.statSync(resolved).isDirectory()) dir = path.dirname(resolved)
+  } catch {
+    // 路径还不存在：仍按字面路径猜（用户可能先填了未安装的目录）
+  }
+
+  const found: string[] = []
+  const consider = (text: string): void => {
+    for (const rj of extractRjCandidates(text)) if (!found.includes(rj)) found.push(rj)
+  }
+
+  // 目录名优先级最高（用户多半把游戏解到 `RJ294126 作品名/`）
+  consider(path.basename(dir))
+  for (const segment of dir.split(path.sep).reverse()) consider(segment)
+  for (const file of readmeFiles(dir)) consider(readHead(file))
+  return found
+}
+
+// ===== 页面解析 =====
+
+/** 极简 HTML 实体解码（og content 里常见 &amp; / &#xXXXX;）。 */
+export function decodeHtmlEntities(value: string): string {
+  const named: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' }
+  return value.replace(/&(#x?[0-9a-fA-F]+|[a-zA-Z]+);/g, (whole, body: string) => {
+    if (body[0] === '#') {
+      const hex = body[1] === 'x' || body[1] === 'X'
+      const code = hex ? Number.parseInt(body.slice(2), 16) : Number.parseInt(body.slice(1), 10)
+      if (!Number.isFinite(code) || code < 0 || code > 0x10ffff) return whole
+      return String.fromCodePoint(code)
+    }
+    return named[body.toLowerCase()] ?? whole
+  })
+}
+
+/**
+ * 从 `start` 处的 `{` 做**字符串感知**的括号配对扫描，返回匹配 `}` 的下标；失败返回 -1。
+ *
+ * 为什么不用调研里那个 `/var\s+contents\s*=(\{[\s\S]*?\})\;/` 正则：
+ * 非贪婪 `*?` 遇到字符串内部出现的 `};` 会**提前截断**，而作品简介里什么字符都可能出现。
+ * 本扫描只在字符串之外计数括号，能正确跨过 `"note":"…};…"` 这类内容。
+ */
+export function scanBalancedObject(text: string, start: number): number {
+  let depth = 0
+  let inString = false
+  let escaped = false
+  for (let index = start; index < text.length; index += 1) {
+    const char = text[index]
+    if (inString) {
+      if (escaped) {
+        escaped = false
+        continue
+      }
+      if (char === '\\') {
+        escaped = true
+        continue
+      }
+      if (char === '"') inString = false
+      continue
+    }
+    if (char === '"') {
+      inString = true
+      continue
+    }
+    if (char === '{') depth += 1
+    else if (char === '}') {
+      depth -= 1
+      if (depth === 0) return index
+    }
+  }
+  return -1
+}
+
+/**
+ * 提取页面末尾 `var contents = {...}` 的 JSON（调研 §2.2）。
+ * 取**最后一次**出现的位置——页面别处偶尔也有同名变量，末尾那个才是作品数据。
+ */
+export function extractContentsJson(html: unknown): unknown | null {
+  if (typeof html !== 'string' || !html) return null
+  const lower = html.toLowerCase()
+  let anchor = -1
+  let from = 0
+  while (true) {
+    const hit = lower.indexOf('var contents', from)
+    if (hit === -1) break
+    anchor = hit
+    from = hit + 1
+  }
+  if (anchor === -1) return null
+  const braceStart = html.indexOf('{', anchor)
+  if (braceStart === -1) return null
+  const braceEnd = scanBalancedObject(html, braceStart)
+  if (braceEnd === -1) return null
+  try {
+    return JSON.parse(html.slice(braceStart, braceEnd + 1)) as unknown
+  } catch {
+    return null
+  }
+}
+
+/** 读 `<meta property="..." content="...">`；两种属性顺序都支持。 */
+export function extractMetaContent(html: string, property: string): string | undefined {
+  if (typeof html !== 'string' || !html) return undefined
+  const escaped = property.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const patterns = [
+    new RegExp(`<meta[^>]+property=["']${escaped}["'][^>]*?content=["']([^"']*)["']`, 'i'),
+    new RegExp(`<meta[^>]+content=["']([^"']*)["'][^>]*?property=["']${escaped}["']`, 'i')
+  ]
+  for (const pattern of patterns) {
+    const match = pattern.exec(html)
+    if (match) return decodeHtmlEntities(match[1]).trim() || undefined
+  }
+  return undefined
+}
+
+/**
+ * 从 og:title 拆出「名字部分」与「社团名」（§4.4）。
+ * 形如：`純愛おま○こ当番【アップデート版】 [青春×フェティシズム] | DLsite`
+ *
+ * 为什么优先用 og:title 而不是面包屑：面包屑 DOM 结构最易随改版而变，
+ * 而 og 标签是给社交平台预览用的，改动频率低得多。
+ */
+export function extractTitleAndCircle(ogTitle?: string): { titleFull?: string; circle?: string } {
+  if (typeof ogTitle !== 'string' || !ogTitle) return {}
+  // 去掉尾部「 | DLsite」（含全角变体）
+  const base = ogTitle.replace(/\s*[|｜]\s*DLsite\s*$/i, '').trim()
+  if (!base) return {}
+  // 社团：[社团名] 必须紧贴名字结尾
+  const bracket = /\s*\[([^\]]{1,120})\]\s*$/.exec(base)
+  if (bracket) {
+    const titleFull = base.slice(0, bracket.index).trim()
+    return { titleFull: titleFull || undefined, circle: bracket[1].trim() || undefined }
+  }
+  return { titleFull: base }
+}
+
+/** 面包屑里拿社团（§4.4 的回退路径）：`maker_id/(RG\d+)` + 其后第一个 `<span>`。 */
+export function extractCircleFromBreadcrumb(html: string): { circle?: string; circleId?: string } {
+  if (typeof html !== 'string' || !html) return {}
+  const match = /maker_id\/(RG\d+)/.exec(html)
+  if (!match) return {}
+  const circleId = match[1]
+  const chunk = html.slice(match.index, match.index + 800)
+  const span = /<span[^>]*>([^<]{1,120})<\/span>/.exec(chunk)
+  const circle = span ? decodeHtmlEntities(span[1]).trim() || undefined : undefined
+  return { circle, circleId }
+}
+
+/**
+ * 封面 URL 归一化（§4.5 + D22）：
+ * 协议相对 `//img.dlsite.jp/...` → `https:`，并**强制校验 host 白名单**，其余一律丢弃。
+ */
+export function normalizeCoverUrl(value: unknown): string | undefined {
+  if (typeof value !== 'string' || !value.trim()) return undefined
+  let raw = value.trim()
+  if (raw.startsWith('//')) raw = `https:${raw}`
+  else if (raw.startsWith('http://')) raw = `https:${raw.slice('http://'.length)}`
+  try {
+    const url = new URL(raw)
+    if (url.protocol !== 'https:') return undefined
+    if (!ALLOWED_COVER_HOSTS.has(url.hostname.toLowerCase())) return undefined
+    return url.toString()
+  } catch {
+    return undefined
+  }
+}
+
+function asText(value: unknown): string | undefined {
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    return trimmed || undefined
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value)
+  return undefined
+}
+
+function asNumber(value: unknown): number | undefined {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : undefined
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : undefined
+  }
+  return undefined
+}
+
+function readDetail(contents: unknown): Record<string, unknown> | null {
+  const detail = (contents as { detail?: unknown } | null)?.detail
+  if (!Array.isArray(detail) || detail.length === 0) return null
+  const first: unknown = detail[0]
+  if (!first || typeof first !== 'object' || Array.isArray(first)) return null
+  return first as Record<string, unknown>
+}
+
+/**
+ * 解析一个作品页 → `DlsiteWork`。
+ * 拿不到 `detail[0]`（例如抓到年龄确认页、或 DLsite 改版拿掉 var contents）→ `error.dlsiteParse`，
+ * **明示原因，不静默兜底**（§11 R5）。
+ */
+export function parseDlsiteWork(html: string, rj: string, fetchedAt = new Date().toISOString()): DlsiteWork {
+  const normalized = normalizeRj(rj)
+  if (!normalized) {
+    throw failure('error.dlsiteInvalidRj', `Invalid RJ number: ${String(rj)}`, { rj: String(rj) })
+  }
+
+  const detail = readDetail(extractContentsJson(html))
+  if (!detail) {
+    throw failure('error.dlsiteParse', `Cannot parse DLsite page data for ${normalized}`, { rj: normalized })
+  }
+
+  const ogTitle = extractMetaContent(html, 'og:title')
+  const fromOg = extractTitleAndCircle(ogTitle)
+  const fromBreadcrumb = extractCircleFromBreadcrumb(html)
+
+  const title = asText(detail.name) ?? fromOg.titleFull
+  if (!title) {
+    throw failure('error.dlsiteParse', `DLsite page for ${normalized} has no work name`, { rj: normalized })
+  }
+
+  const description = extractMetaContent(html, 'og:description')
+
+  return {
+    rj: normalized,
+    title,
+    titleFull: fromOg.titleFull,
+    circle: fromOg.circle ?? fromBreadcrumb.circle,
+    circleId: asText(detail.brand) ?? fromBreadcrumb.circleId,
+    seriesName: asText(detail.series_name),
+    category: asText(detail.category),
+    workType: asText(detail.work_type),
+    registDate: asText(detail.regist_date),
+    price: asNumber(detail.price),
+    priceWithTax: asNumber(detail.price_with_tax),
+    officialPrice: asNumber(detail.official_price),
+    discount: asNumber(detail.discount),
+    // 优先用 og:image（绝对地址），回退 contents.image_main（协议相对）
+    coverUrl: normalizeCoverUrl(extractMetaContent(html, 'og:image') ?? detail.image_main),
+    description: description ? description.slice(0, DESCRIPTION_LIMIT) : undefined,
+    fetchedAt
+  }
+}
+
+// ===== 服务：抓取 + 缓存 =====
+
+export interface DlsiteServiceOptions {
+  dataDir: string
+  /** 生产是 net.fetch（走系统代理，D9）；测试注入假实现。 */
+  fetch: (input: string, init?: unknown) => Promise<Response>
+  /** 写 `adultchecked=1` 到 session cookie（§4.2）；纯 Node 下不传。 */
+  setAdultCookie?: () => Promise<void>
+  /** 时间源（测试可注入）。 */
+  now?: () => number
+  /** 最小请求间隔，默认 800ms；测试传 0。 */
+  minIntervalMs?: number
+  /** 单次请求超时，默认 15s。 */
+  timeoutMs?: number
+}
+
+export interface DlsiteLookupInput {
+  rj: string
+  /** 强制重新抓取（忽略 TTL）。 */
+  refresh?: boolean
+  signal?: AbortSignal
+}
+
+export interface DlsiteService {
+  fetchWork(input: DlsiteLookupInput): Promise<DlsiteWork>
+  /** `<dataDir>/dlsite/<RJ>.json`。 */
+  cachePath(rj: string): string
+}
+
+function pageUrl(category: string, rj: string): string {
+  return `https://www.dlsite.com/${category}/work/=/product_id/${rj}.html`
+}
+
+/** 让返回的 promise 也跟着 signal 走（不依赖 fetch 实现对 signal 的支持程度）。 */
+function raceAbort<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    if (signal.aborted) {
+      reject(signal.reason)
+      return
+    }
+    const onAbort = (): void => reject(signal.reason)
+    signal.addEventListener('abort', onAbort, { once: true })
+    promise.then(
+      (value) => {
+        signal.removeEventListener('abort', onAbort)
+        resolve(value)
+      },
+      (error) => {
+        signal.removeEventListener('abort', onAbort)
+        reject(error)
+      }
+    )
+  })
+}
+
+export function createDlsiteService(options: DlsiteServiceOptions): DlsiteService {
+  const cacheDir = path.join(options.dataDir, 'dlsite')
+  const now = options.now ?? Date.now
+  const minIntervalMs = options.minIntervalMs ?? DEFAULT_MIN_INTERVAL_MS
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS
+
+  /** 同一 RJ 的并发请求合并：连点两下只发一次（§4.1）。 */
+  const inFlight = new Map<string, Promise<DlsiteWork>>()
+  let lastRequestAt = 0
+  let cookieOnce: Promise<void> | null = null
+
+  const cachePath = (rj: string): string => path.join(cacheDir, `${rj}.json`)
+
+  /**
+   * 读缓存。**任何异常一律视为未命中**——缓存是可再生的，不像 library-meta.json 是用户数据；
+   * TTL 过期同样算未命中。
+   */
+  function readCache(rj: string): DlsiteWork | null {
+    const file = cachePath(rj)
+    if (!fs.existsSync(file)) return null
+    try {
+      const raw = readJSON<Record<string, unknown>>(file)
+      const work = raw.work as DlsiteWork | undefined
+      if (!work || typeof work !== 'object' || Array.isArray(work)) return null
+      const stamp = typeof raw.fetchedAt === 'string' ? Date.parse(raw.fetchedAt) : Number.NaN
+      if (!Number.isFinite(stamp)) return null
+      if (now() - stamp >= CACHE_TTL_MS) return null
+      return work
+    } catch {
+      return null
+    }
+  }
+
+  /**
+   * 写缓存。旧缓存损坏时 `writeJSON` 会抛 `error.invalidObject`——缓存可重建，
+   * 所以这里删掉重写（与 library-meta.json「绝不静默覆盖」的策略刻意相反）。
+   */
+  function writeCache(work: DlsiteWork): void {
+    const file = cachePath(work.rj)
+    const payload = { rj: work.rj, work, fetchedAt: work.fetchedAt }
+    try {
+      writeJSON(file, payload)
+    } catch {
+      fs.rmSync(file, { force: true })
+      writeJSON(file, payload)
+    }
+  }
+
+  function ensureCookie(): Promise<void> {
+    const setter = options.setAdultCookie
+    if (!setter) return Promise.resolve()
+    if (!cookieOnce) {
+      cookieOnce = Promise.resolve()
+        .then(() => setter())
+        .then(
+          () => undefined,
+          // 拿不到 cookie 最多是抓到年龄确认页，交给 parse 报错，不在这里炸
+          () => undefined
+        )
+    }
+    return cookieOnce
+  }
+
+  async function throttle(): Promise<void> {
+    const wait = minIntervalMs - (now() - lastRequestAt)
+    if (wait > 0) await new Promise<void>((resolve) => setTimeout(resolve, wait))
+    lastRequestAt = now()
+  }
+
+  async function fetchPage(
+    category: string,
+    rj: string,
+    signal?: AbortSignal
+  ): Promise<{ ok: boolean; status: number; html: string }> {
+    const url = pageUrl(category, rj)
+    const timeout = AbortSignal.timeout(timeoutMs)
+    const combined = signal ? AbortSignal.any([signal, timeout]) : timeout
+    try {
+      const response = await raceAbort(
+        options.fetch(url, { headers: { accept: 'text/html,application/xhtml+xml' }, signal: combined }),
+        combined
+      )
+      const html = response.ok ? await response.text() : ''
+      return { ok: response.ok, status: response.status, html }
+    } catch (error) {
+      // 调用方主动取消 → 交给 IPC 层的 error.cancelled
+      if (signal?.aborted) signal.throwIfAborted()
+      const name = (error as { name?: string } | undefined)?.name
+      if (name === 'TimeoutError' || name === 'AbortError') {
+        throw failure('error.dlsiteTimeout', `DLsite request timed out: ${url}`, { rj })
+      }
+      const reason = String((error as { message?: string } | undefined)?.message ?? error)
+      throw failure('error.dlsiteNetwork', `DLsite request failed: ${reason}`, { reason })
+    }
+  }
+
+  /**
+   * 依次尝试各 section：404 换下一个；200 就解析。
+   * 全 404 → NotFound；有 200 但一个都解析不出来 → Parse（多为年龄确认页或已改版）。
+   */
+  async function runLookup(rj: string, signal?: AbortSignal): Promise<DlsiteWork> {
+    await ensureCookie()
+    let sawOk = false
+    let lastStatus = 0
+    let lastParseError: Error | null = null
+
+    for (const category of PAGE_CATEGORIES) {
+      signal?.throwIfAborted()
+      await throttle()
+      const page = await fetchPage(category, rj, signal)
+      if (!page.ok) {
+        lastStatus = page.status
+        continue
+      }
+      sawOk = true
+      try {
+        const work = parseDlsiteWork(page.html, rj)
+        writeCache(work)
+        return work
+      } catch (error) {
+        lastParseError = error as Error
+        // RJ 格式错只可能来自 normalizeRj，那是调用方的错，直接抛出
+        if ((error as { translationKey?: string }).translationKey === 'error.dlsiteInvalidRj') throw error
+      }
+    }
+
+    if (sawOk) {
+      throw lastParseError ?? failure('error.dlsiteParse', `Cannot parse DLsite page data for ${rj}`, { rj })
+    }
+    throw failure('error.dlsiteNotFound', `DLsite has no work ${rj} (last status ${lastStatus})`, {
+      rj,
+      status: lastStatus
+    })
+  }
+
+  async function fetchWork(input: DlsiteLookupInput): Promise<DlsiteWork> {
+    const rj = normalizeRj(input?.rj)
+    if (!rj) {
+      throw failure('error.dlsiteInvalidRj', `Invalid RJ number: ${String(input?.rj ?? '')}`, {
+        rj: String(input?.rj ?? '')
+      })
+    }
+
+    if (!input.refresh) {
+      const cached = readCache(rj)
+      if (cached) return cached
+    }
+
+    const existing = inFlight.get(rj)
+    if (existing) return await existing
+
+    const task = runLookup(rj, input.signal)
+    inFlight.set(rj, task)
+    try {
+      return await task
+    } finally {
+      inFlight.delete(rj)
+    }
+  }
+
+  return { fetchWork, cachePath }
+}

@@ -10,6 +10,10 @@ dist/
 _xeno_probe/
 # 本机调试数据目录
 .dev-data/
+# M2 端到端探针的产物（数据目录 + 结果文件 + boot 痕迹）
+.dev-data-m2probe/
+.dev-data-m2probe.json
+.dev-data-m2boot.txt
 # 上一会话遗留的计划副本（方案已落到 docs/M1-实施方案.md）
 .zcode/
 # 打包产物与日志

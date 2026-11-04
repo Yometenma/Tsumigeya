@@ -12,6 +12,8 @@ import { createRequire } from 'node:module'
 import { pathToFileURL } from 'node:url'
 import { createGameStore, component, failure, type GameStore } from './games-store'
 import { extractArchive } from './extract'
+import { createDlsiteService, type DlsiteService } from './dlsite'
+import { createLibraryMetaStore, type LibraryMetaStore } from './library-meta'
 
 // ===== 类型 =====
 
@@ -131,6 +133,10 @@ export interface CoreHost {
   /** 数据目录被降级时非 null（透传到 snapshot，设置页展示）。 */
   readonly dataDirWarning: { requested: string; switchedTo: string; code: string } | null
   readonly store: GameStore
+  /** DLsite 元数据的旁挂存储（M2 §3.2；删掉它不影响启动）。 */
+  readonly meta: LibraryMetaStore
+  /** DLsite 抓取服务（M2 §4；复用注入的 fetch，即 net.fetch + 系统代理）。 */
+  readonly dlsite: DlsiteService
   readonly core: CoreApi
   /** 注入的 fetch（生产是 net.fetch，走系统代理；D9）。 */
   readonly fetch: (input: string, init?: unknown) => Promise<Response>
@@ -157,6 +163,13 @@ export interface CoreHostOptions {
   dataDirWarning?: { requested: string; switchedTo: string; code: string }
   /** 注入 fetch（Electron 里传 net.fetch，测试里传全局 fetch），默认懒加载 electron 的 net.fetch。 */
   fetchImpl?: (input: string, init?: unknown) => Promise<Response>
+  /**
+   * 写 DLsite 需要的 `adultchecked=1` cookie（§4.2）。生产走 session.defaultSession.cookies.set；
+   * 纯 Node / vitest 不传（不传就跳过，拿不到 cookie 最多是抓到年龄确认页，报 dlsiteParse）。
+   */
+  setAdultCookie?: () => Promise<void>
+  /** DLsite 抓取的时间源 / 节流 / 超时（测试用，生产不传即默认值）。 */
+  dlsiteOptions?: { now?: () => number; minIntervalMs?: number; timeoutMs?: number }
   /** 事件出口；默认什么都不做（测试用）。 */
   onEvent?: (event: CoreEvent) => void
 }
@@ -554,6 +567,15 @@ export function createCoreHost(options: CoreHostOptions): CoreHost {
 
   const fetchImpl = options.fetchImpl ?? defaultFetch
 
+  // M2：DLsite 旁挂存储 + 抓取服务。两者都不碰 games.json，删掉 library-meta.json 只是丢封面。
+  const meta = createLibraryMetaStore(dataDir)
+  const dlsite = createDlsiteService({
+    dataDir,
+    fetch: fetchImpl,
+    setAdultCookie: options.setAdultCookie,
+    ...(options.dlsiteOptions ?? {})
+  })
+
   const factory = loadCoreFactory(options.corePath)
   const core = factory({
     getAppSupportDir: () => dataDir,
@@ -723,6 +745,8 @@ export function createCoreHost(options: CoreHostOptions): CoreHost {
     corePath: options.corePath,
     dataDirWarning: options.dataDirWarning ?? null,
     store,
+    meta,
+    dlsite,
     core,
     fetch: fetchImpl,
     emit,

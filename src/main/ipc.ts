@@ -16,12 +16,33 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { component, failure, type GameDraft } from './games-store'
 import { extractArchive } from './extract'
+import { detectRjFromPath } from './dlsite'
 import type { CoreHost, CoreEvent, ProgressBridge, RemoteManifest } from './core-host'
 
 const runFile = promisify(execFile)
 
 /** 更新检查的整体超时（§3.3 #9 → error.updateCheckTimeout）。 */
 const UPDATE_CHECK_TIMEOUT_MS = 60_000
+
+/**
+ * **绕开串行队列**的命令名单（D12 之外的正常旁路）。
+ *
+ * 准入标准只有两条，缺一不可：
+ *   1. 只读，或只写自己的独立目录（不碰 games.json / library-meta.json / modules/）；
+ *   2. 用户点一下就在等反馈——排在 60 秒的更新检查后面会表现为「界面卡死」。
+ *
+ * 导出的目的不是复用，是**让测试能锁死它**（test/ipc-offqueue.test.ts）。
+ * 加新命令前先问自己：它写的东西和第 1 条冲突吗？冲突就老老实实进队列。
+ */
+export const OFF_QUEUE_METHODS: ReadonlySet<string> = new Set([
+  'detect',
+  'detectFolder',
+  'snapshot',
+  'versions',
+  // M2：RJ 识别只读本地文件；DLsite 查询只写 <dataDir>/dlsite/ 自己的缓存目录（D21）。
+  'dlsiteDetectRJ',
+  'dlsiteLookup'
+])
 
 export interface EngineUpdate {
   id: string
@@ -131,8 +152,20 @@ export function createDispatcher(deps: IpcDeps): Dispatcher {
       modules: Object.entries(manifests).map(([id, value]) => ({ ...value, id })),
       nodeVersion: process.version,
       engineUpdates: report,
-      dataDirWarning: host.dataDirWarning
+      dataDirWarning: host.dataDirWarning,
+      // M2：旁挂元数据随 snapshot 一起下发（只增字段，GameRecord 不动，D18）。
+      // 读失败不能让整页崩——meta 是附属品，读不出来就当没有。
+      meta: readMetaSafely()
     })
+  }
+
+  function readMetaSafely(): Record<string, unknown> {
+    try {
+      return host.meta.load()
+    } catch (error) {
+      console.warn(`[tsumigeya] 读取 library-meta.json 失败（已按空处理）：${(error as Error).message}`)
+      return {}
+    }
   }
 
   // ===== 引擎更新检查（照 worker.cjs:112-152）=====
@@ -424,6 +457,13 @@ export function createDispatcher(deps: IpcDeps): Dispatcher {
           throw failure('error.cleanup', 'Module cleanup failed; game was retained.', { id })
         }
         host.store.removeGame(id)
+        // M2 §3.2：删游戏时同步清旁挂元数据（`dlsite/<RJ>.json` 缓存保留，可跨游戏共享）。
+        // 清理失败不能让删游戏失败：games.json 才是用户数据，meta 只是附属品。
+        try {
+          host.meta.remove(id)
+        } catch (error) {
+          console.warn(`[tsumigeya] 清理 DLsite 元数据失败（已忽略）：${(error as Error).message}`)
+        }
         return snapshot()
       }
 
@@ -551,6 +591,61 @@ export function createDispatcher(deps: IpcDeps): Dispatcher {
         return await pick(params.kind === 'folder' ? 'folder' : 'file')
       }
 
+      // ===== M2：DLsite 元数据（契约 docs/M2-实施方案.md §5）=====
+
+      case 'dlsiteDetectRJ':
+        return { candidates: detectRjFromPath(String(params.path ?? '')) }
+
+      /**
+       * 只查不存：查失败绝不污染库（§5.1）。调用方拿到 work 后自己再调 saveGameMeta。
+       * 这个命令写 `dlsite/<RJ>.json` 缓存，但那是**独立目录**，与队列内的写操作无共享资源（D21）。
+       */
+      case 'dlsiteLookup':
+        return await host.dlsite.fetchWork({
+          rj: String(params.rj ?? ''),
+          refresh: params.refresh === true,
+          signal
+        })
+
+      case 'saveGameMeta': {
+        const gameId = String(params.gameId ?? '')
+        if (!Object.hasOwn(host.store.loadGames(), gameId)) {
+          throw failure('error.gameNotFound', 'Game not found', { id: gameId })
+        }
+        const work = params.work
+        // 没传 work 但给了 rj：只存 RJ（用户先认了号、还没拉详情）
+        if (work == null) {
+          const rj = String(params.rj ?? '')
+          if (!rj) throw failure('error.dlsiteGameRequired', 'Missing RJ number')
+          const fetched = await host.dlsite.fetchWork({ rj, signal })
+          host.meta.save(gameId, fetched)
+        } else {
+          host.meta.save(gameId, work as never)
+        }
+        return snapshot()
+      }
+
+      case 'refreshGameMeta': {
+        const gameId = String(params.gameId ?? '')
+        if (!Object.hasOwn(host.store.loadGames(), gameId)) {
+          throw failure('error.gameNotFound', 'Game not found', { id: gameId })
+        }
+        const current = host.meta.load()[gameId]
+        if (!current?.rj) throw failure('error.dlsiteGameRequired', 'No RJ number saved for this game')
+        const work = await host.dlsite.fetchWork({
+          rj: current.rj,
+          refresh: params.refresh !== false,
+          signal
+        })
+        host.meta.save(gameId, work)
+        return snapshot()
+      }
+
+      case 'clearGameMeta': {
+        host.meta.remove(String(params.gameId ?? ''))
+        return snapshot()
+      }
+
       default:
         throw failure('error.unknownMethod', `Unknown method: ${method}`, { method })
     }
@@ -648,11 +743,13 @@ export function registerIpc(deps: IpcDeps & QueueOptions): () => void {
     // **只读且用户正在等反馈**的命令不进队列：它们不写磁盘，不会与队列里的写操作冲突，
     // 但排在一个可能跑 60 秒的 checkEngineUpdates 后面，界面就表现为「永远卡住」
     // （用户实测：拖入游戏后一直停在「正在识别引擎…」，根因就是启动自动检查更新占着队列）。
-    const TASK = method === 'detect' || method === 'detectFolder' || method === 'snapshot' || method === 'versions'
-    const task = TASK ? runRequest() : queue.then(runRequest)
+    //
+    // 抽成导出常量而不是内联比较，是为了让 test/ipc-offqueue.test.ts 能**锁死名单**：
+    // 以后谁手滑把网络命令塞回队列，测试会先红。
+    const task = OFF_QUEUE_METHODS.has(method) ? runRequest() : queue.then(runRequest)
 
     // 队列不能因为某个请求失败而断掉
-    if (!TASK) {
+    if (!OFF_QUEUE_METHODS.has(method)) {
       queue = task.then(
         () => undefined,
         () => undefined

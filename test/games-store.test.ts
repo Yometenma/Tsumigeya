@@ -235,6 +235,21 @@ describe('snapshot 与 removeGame', () => {
     expect(snapshot.engineUpdates).toEqual({ checkedAt: 'x' })
   })
 
+  test('snapshot 默认带空的 meta（M2：GameRecord 不动，这是新增的旁挂字段）', () => {
+    store.saveGame({ game: draft() })
+    const snapshot = store.snapshot()
+    expect(snapshot.meta).toEqual({})
+    // 关键：games 里绝不能出现 DLsite 字段（D18 / D10）
+    expect(snapshot.games[0]).not.toHaveProperty('rj')
+    expect(snapshot.games[0]).not.toHaveProperty('coverUrl')
+    expect(snapshot.games[0]).not.toHaveProperty('circle')
+  })
+
+  test('snapshot 接受注入的 meta', () => {
+    const snapshot = store.snapshot({ meta: { '1': { rj: 'RJ294126', title: 'x' } } })
+    expect(snapshot.meta['1']).toEqual({ rj: 'RJ294126', title: 'x' })
+  })
+
   test('removeGame 删除并落盘；不存在 → error.gameNotFound', () => {
     store.saveGame({ game: draft() })
     store.removeGame('1')

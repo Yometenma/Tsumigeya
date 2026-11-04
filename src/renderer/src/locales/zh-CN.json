@@ -223,6 +223,31 @@
     "checking": "正在检查引擎更新…",
     "updatingEngine": "正在更新引擎：{module}"
   },
+  "dlsite": {
+    "sectionTitle": "DLsite 信息",
+    "sectionHint": "填入 RJ 号后可从 DLsite 获取封面与作品信息。需要系统代理可用。",
+    "rjLabel": "RJ 号",
+    "rjPlaceholder": "例如 RJ294126",
+    "detect": "从游戏目录识别",
+    "detected": "识别到 {count} 个候选 RJ 号",
+    "notDetected": "没能从目录里识别出 RJ 号，可以手动填写",
+    "lookup": "获取信息",
+    "refresh": "重新获取",
+    "looking": "正在获取 DLsite 信息…",
+    "clear": "清除信息",
+    "cleared": "已清除 DLsite 信息",
+    "saved": "已保存 DLsite 信息",
+    "openOnDlsite": "在 DLsite 打开",
+    "fieldCircle": "社团",
+    "fieldSeries": "系列",
+    "fieldReleased": "发售日",
+    "fieldPrice": "价格",
+    "fieldType": "作品类型",
+    "priceYen": "{price} 日元",
+    "noMeta": "尚未获取 DLsite 信息",
+    "coverMissing": "封面加载失败",
+    "onlyWithMeta": "只看有封面的游戏"
+  },
   "error": {
     "invalidObject": "数据文件格式不正确：{file}",
     "invalidComponent": "名称不合法：{label}",
@@ -257,6 +282,12 @@
     "pathMissing": "路径不存在：{path}",
     "pathNotAllowed": "不允许打开该路径：{path}",
     "unsupportedProtocol": "只支持 https 链接：{url}",
-    "dataDirPermission": "没有权限创建数据目录 {path}（{code}）。请设置环境变量 TSUMIGEYA_DATA_DIR 指向可写目录后重启。"
+    "dataDirPermission": "没有权限创建数据目录 {path}（{code}）。请设置环境变量 TSUMIGEYA_DATA_DIR 指向可写目录后重启。",
+    "dlsiteInvalidRj": "RJ 号格式不正确：{rj}（应为 RJ 加 6–8 位数字）",
+    "dlsiteNotFound": "DLsite 上找不到作品 {rj}，请确认 RJ 号",
+    "dlsiteTimeout": "访问 DLsite 超时，请确认系统代理已开启后重试",
+    "dlsiteNetwork": "网络请求失败：{reason}。DLsite 需要系统代理",
+    "dlsiteParse": "无法解析 {rj} 的页面数据（DLsite 可能已改版）",
+    "dlsiteGameRequired": "请先保存游戏，再保存 DLsite 信息"
   }
 }

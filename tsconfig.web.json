@@ -19,5 +19,10 @@
     },
     "noEmit": true
   },
-  "include": ["src/renderer/src/**/*.ts", "src/renderer/src/**/*.vue", "src/renderer/*.ts"]
+  "include": [
+    "src/renderer/src/**/*.ts",
+    "src/renderer/src/**/*.vue",
+    "src/renderer/*.ts",
+    "src/shared/**/*.ts"
+  ]
 }

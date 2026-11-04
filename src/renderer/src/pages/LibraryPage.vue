@@ -92,9 +92,11 @@ async function toggleView(next: boolean): Promise<void> {
       <el-option v-for="tag in library.tags" :key="tag" :label="tag" :value="tag" />
     </el-select>
 
-    <el-button v-if="library.search || library.tagFilter" text @click="library.clearFilters()">
+    <el-button v-if="library.search || library.tagFilter || library.onlyWithMeta" text @click="library.clearFilters()">
       {{ t('library.clearFilter') }}
     </el-button>
+
+    <el-checkbox v-model="library.onlyWithMeta" :label="t('dlsite.onlyWithMeta')" />
 
     <div class="toolbar-spacer" />
 
@@ -121,6 +123,7 @@ async function toggleView(next: boolean): Promise<void> {
       v-for="game in library.filtered"
       :key="game.id"
       :game="game"
+      :meta="library.meta[game.id]"
       variant="row"
       @launch="launch"
       @edit="edit"
@@ -133,6 +136,7 @@ async function toggleView(next: boolean): Promise<void> {
       v-for="game in library.filtered"
       :key="game.id"
       :game="game"
+      :meta="library.meta[game.id]"
       variant="card"
       @launch="launch"
       @edit="edit"

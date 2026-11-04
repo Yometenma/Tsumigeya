@@ -98,7 +98,40 @@ export interface Snapshot {
   dataDirWarning: { requested: string; switchedTo: string; code: string } | null
   nodeVersion: string
   engineUpdates: EngineUpdateReport | null
+  /** M2：DLsite 旁挂元数据（键 = gameId）。没有元数据的游戏不会出现在这里。 */
+  meta: Record<string, GameMeta>
 }
+
+// ===== M2：DLsite 元数据（docs/M2-实施方案.md §3.4）=====
+
+/**
+ * 一个作品的 DLsite 元数据。字段来源是页面末尾 `var contents` 的 JSON + og 标签。
+ * **注意：没有 genre / 标签**——调研实测拿不到，M2 不承诺（方案 §1.3 N1）。
+ */
+export interface DlsiteWork {
+  /** 规范化大写，如 RJ294126。 */
+  rj: string
+  title: string
+  titleFull?: string
+  circle?: string
+  circleId?: string
+  seriesName?: string
+  category?: string
+  /** 作品类型（SOU 等），只是展示用，不是标签。 */
+  workType?: string
+  registDate?: string
+  price?: number
+  priceWithTax?: number
+  officialPrice?: number
+  discount?: number
+  /** 已校验主机 ∈ img.dlsite.jp 的 https 绝对地址。 */
+  coverUrl?: string
+  description?: string
+  fetchedAt: string
+}
+
+/** 落盘的元数据条目（= DlsiteWork，单独起名方便 UI 读）。 */
+export type GameMeta = DlsiteWork
 
 export interface DetectCandidate {
   path: string
@@ -147,6 +180,12 @@ export interface TsumiError extends Error {
   key?: string
   arguments?: Record<string, unknown>
 }
+
+// key 的跨桥编解码实现放在 src/shared/bridge-error.ts（preload 与这里共享同一份），
+// 原因：contextBridge 跨边界 throw 时会丢弃自定义属性，key 必须编进 message 才能活下来。
+import { decodeBridgeError } from '../../../shared/bridge-error'
+
+export { decodeBridgeError }
 
 export function bridge(): TsumiBridge {
   const value = (globalThis as unknown as { tsumi?: TsumiBridge }).tsumi
@@ -209,7 +248,27 @@ export const api = {
 
   openExternal: (url: string): Promise<{ ok: true }> => bridge().invoke('openExternal', { url }),
 
-  pickPath: (kind: 'file' | 'folder'): Promise<string | null> => bridge().pickPath(kind)
+  pickPath: (kind: 'file' | 'folder'): Promise<string | null> => bridge().pickPath(kind),
+
+  // ===== M2：DLsite 元数据（全部走既有 tsumi:invoke，无新 preload channel）=====
+
+  /** 从游戏路径猜 RJ 号（只读本地文件、绕队列，毫秒级）。可能返回多个候选，让用户选。 */
+  dlsiteDetectRJ: (path: string): Promise<{ candidates: string[] }> =>
+    bridge().invoke<{ candidates: string[] }>('dlsiteDetectRJ', { path }),
+
+  /** 只查不存：查失败不会污染游戏库（方案 §5.1）。成功后由调用方决定是否 saveGameMeta。 */
+  dlsiteLookup: (rj: string, refresh?: boolean): Promise<DlsiteWork> =>
+    bridge().invoke<DlsiteWork>('dlsiteLookup', { rj, refresh }),
+
+  /** 落盘元数据。传 work 直接存；只传 rj 则由主进程拉一次再存。 */
+  saveGameMeta: (gameId: string, input: { rj?: string; work?: DlsiteWork }): Promise<Snapshot> =>
+    bridge().invoke<Snapshot>('saveGameMeta', { gameId, ...input }),
+
+  /** 按已存的 RJ 重新拉取并落盘。 */
+  refreshGameMeta: (gameId: string, refresh?: boolean): Promise<Snapshot> =>
+    bridge().invoke<Snapshot>('refreshGameMeta', { gameId, refresh }),
+
+  clearGameMeta: (gameId: string): Promise<Snapshot> => bridge().invoke<Snapshot>('clearGameMeta', { gameId })
 }
 
 // ===== 图片 URL（§3.7）=====
@@ -229,7 +288,9 @@ type Translate = (key: string, args?: Record<string, unknown>) => string
  * 查不到（或没有 key）时退回 message 原文。
  */
 export function translateError(error: unknown, t: Translate): string {
-  const candidate = error as TsumiError | undefined
+  // preload 的 key 走 message 编码过来的，先解回来（否则中文文案永远出不来）
+  const decoded = decodeBridgeError(error)
+  const candidate = decoded as TsumiError | undefined
   if (candidate?.key) {
     const translated = t(candidate.key, candidate.arguments)
     // vue-i18n 查不到时会原样返回 key，此时退回 message
