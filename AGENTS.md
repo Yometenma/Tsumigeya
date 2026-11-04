@@ -20,13 +20,15 @@
 
 ## 当前项目状态（每次收尾必须更新）
 
-- **阶段**：**M1 / M2 / M2.5 / M3 已完成**（v0.2.0 已发布）；**M2.6（UI 重构）现在可以开工**
-  - M2.6 = 海报墙与详情页重构（见 `docs/M2.6-实施方案.md`，D36–D38）——**M3 已落地，冲突窗口关闭**
-  - M3 = 故障自愈（见 `docs/M3-实施方案.md`，D32–D35）——**已实施完毕**（详见下方「M3 全套」）
+- **阶段**：**M1 / M2 / M2.5 / M3 / M2.6 已完成**（v0.2.0 已发布）
+  - M2.6 = 海报墙与详情页重构（见 `docs/M2.6-实施方案.md`，**D39–D43**）——**已实施完毕**（详见下方「M2.6 全套」）
+  - ⚠️ 注意编号：M2.6 方案初稿写的是 D36–D38，但那三个号已被 **M3 实际占用**，
+    所以 M2.6 落在 **D39–D41**，实施中又新增 **D42–D43**（见方案 §10）
+  - M3 = 故障自愈（见 `docs/M3-实施方案.md`，D32–D38）——**已实施完毕**（详见下方「M3 全套」）
   - M2.5 = 用户 2026-11-04 提的三项改进：按名字搜索 DLsite + 候选列表 / 可编辑元数据 / 多语言版本偏好
   - **技术前提已实测完毕**（M3 的归档魔数 / RTP 结构 / `fontSub` 语义 / `Game.ini` 是 GBK；
-    M2.5 的搜索 URL 格式 / 结果解析 / 噪音过滤 / 无法靠 lang_options 判断多语言版），
-    写在各自文档的「已实测」一节，**新会话不要重复验证**
+    M2.5 的搜索 URL 格式 / 结果解析 / 噪音过滤 / 无法靠 lang_options 判断多语言版；
+    M2.6 的可获取字段盘点 / `og:description` 清洗规则），写在各自文档的「已实测」一节，**新会话不要重复验证**
 - **已完成**：
   - M1 全套（游戏库 / 自动识别 / 一键安装引擎 / 启动），v0.1.4 已在 Mac 上实测可启动 NW.js 游戏
   - **M2 全套**：`src/main/dlsite.ts`（RJ 识别 + `var contents` 解析 + TTL 缓存 + 4 类错误）、
@@ -75,7 +77,35 @@
       （它只更新已装依赖，RTP 从没装过时什么都不下却报成功），改走新增的
       `installDependencies(folder, wanted, signal)`（按 manifest 只下指定依赖，
       复用 `extractArchive` + `moduleTransaction` 事务回滚，**FORK-NOTES 零改动**）
-- **测试 356 个全绿 / 15 个文件**（M1 的 76 + M2 的 89 + R18 打码 7 + M2.5 的 108 + M3 的 76）
+  - **M2.6 全套**（一个提交，S1–S5 按方案 §8 顺序做完）：
+    - **§S1 数据层**：套上 `docs/M2.6-S1-参考补丁.patch`（上一会话已验证的成果）——
+      `cleanupDescription()` 剥 `og:description` 的站点广告尾巴（实测 RJ294126：260 字 → 122 字）、
+      `DlsiteWork`/`DlsiteSearchHit` 新增 `summary`/`author`/`salesCount`/`rating`、
+      三个解析器 `readHitAuthor`/`readHitSalesCount`/`readHitRating`。
+      **补丁不含测试，本次补齐 18 条**（cleanupDescription 七条边界 + summary 产出 + 三个解析器）
+    - **§S2 卡片重写**（`GameCard.vue`）：封面 4:3 保留（D39）、标题 2 行、简介 2 行、作品类型 + 语言标签、
+      右上角三点菜单（编辑 / 重新获取元数据 / 删除，**@click.stop**）；
+      **移除启动按钮**（D41）；空数据**整行不画**（不在卡片上显示「暂无」）。
+      点击卡片任意位置 → 进详情页。列表行（row 变体）同样只剩三点菜单
+    - **§S3 详情页**（新增 `GameDetailPage.vue` + 路由拆分）：
+      `/game/:id` = 详情页（**唯一启动入口**）、`/game/:id/edit` = 编辑页；
+      大封面 + 启动按钮 + 完整元数据 + 简介可展开（>288 字折叠，§11-②）；
+      标签/制作人员**明说「DLsite 不提供」**（D40）；「作品信息」表 9 个字段顺序固定，
+      拿不到的项显示「暂无」；R18 打码沿用；启动链路（M2.5-C 语言确认 + M3 诊断拦截 +
+      「还是启动试试」）从库页整体搬来
+    - **§S4 路由/返回调整**：库页 `edit` → `/game/:id/edit`；详情页编辑按钮 → 编辑页；
+      编辑页「返回」→ **详情页**（不是库页），新建保存后也回详情页
+    - **§S5 收尾**：i18n 键表（library/common/detail，含 25 个作品类型中文名）、卡片与详情页样式、
+      AGENTS.md 状态与决策、`probe-m26.cjs` 端到端探针
+    - **⚠️ 顺带修掉两个结构性缺陷**（都是本层新增字段暴露出来的）：
+      · `library-meta.ts` 的 `sanitize()` 是落盘的**字段白名单**，S1 新增的四个字段不写进去就被
+        **静默丢弃**（探针实测：`saveGameMeta` 回执的 keys 缺 `summary/author/salesCount/rating`，
+        表现为「解析到了但详情页全是暂无」）。已补上 + 8 条回归测试
+      · `mergeWork` 原来 `{...incoming}` 直接覆盖，而 `author`/`salesCount`/`rating`
+        **只有搜索结果页才有**（详情页重拉拿不到）→ 一次「重新获取」会把用户已存的作者/销量抹掉。
+        已改为「incoming 缺这三项时沿用旧值」（D42）
+- **测试 423 个全绿 / 16 个文件**（M1 的 76 + M2 的 89 + R18 打码 7 + M2.5 的 108 + M3 的 76 +
+  M2.6 的 67：S1 数据层 18 + 卡片降级纯函数 40 + 落盘白名单与 mergeWork 回归 8 + GameCard 信息 1）
 - **M2.5 端到端实测（Windows 本机，`node scripts/probe-m25.cjs`）**：
   - 搜索：搜「傭兵」返回 **20 条真作品**（约 2.2s），第二次调用 828ms → 确实绕开了队列
   - 候选点选：关键词默认「傭兵の冒険」（目录名剥 `_CHN` 得来）→ 出 1 条 → 点选填 `RJ306254` →
@@ -95,10 +125,11 @@
   - `snapshot.games[0]` 的键只有 `gameEngine/gamePath/gameTitle/id` → **D18（GameRecord 零改动）实测验证**
 - **验证基线（Windows 本机实测）**：
   - `npm run typecheck` ✅ exit 0
-  - `npm test` ✅ 356 passed / 15 files
+  - `npm test` ✅ **423 passed / 16 files**
   - `npm run build` ✅ exit 0
   - `node scripts/probe-m3.cjs` ✅ S3/S4 全链路通过（见下）
   - `node scripts/probe-m25.cjs` ✅ M2.5 全链路通过（见上）
+  - `node scripts/probe-m26.cjs` ✅ M2.6 S2/S3/S4 全链路通过（见下）
 - **M3 端到端实测（本机 `node scripts/probe-m3.cjs`，真实样本 `傭兵の冒険_CHN`）**：
   - `diagnoseGame` **3–4ms** 返回 3 条诊断（`encryptedArchive:fatal` / `moduleMissing:fatal` / `fontsPresent:info`）
     → 确实是毫秒级、确实绕开了队列
@@ -109,6 +140,31 @@
   - 探针**抓到并已修**的一个排序缺陷：`moduleMissing` / `encryptedArchive` 都是 fatal，
     按检测顺序前者排第一 → 诊断框第一个按钮是「安装引擎」，但用户装完**问题依旧**
     （这游戏是被加密的）。已加 `CODE_WEIGHT` 按「越根本越靠前」排序
+- **M2.6 端到端实测（本机 `node scripts/probe-m26.cjs`，S2/S3/S4 全链路）**：
+  - **S2 卡片**：`cardCount=2` / `menuTriggers=2` / **`hasLaunchButton=false`（卡片与列表行都没有启动按钮）** /
+    `summaryCount=1`（有简介的那条画了 2 行简介）/ `tagTexts=["漫画"]`（作品类型 MNG → 「漫画」）/
+    `coverRatio=1.33`（**4:3 实测，D39 生效**）/ `htmlLen=5893`（不塌陷）
+  - **S2 空数据**：没元数据的那条卡片 `hasSummaryRow=false`、`hasNoSummary=false`、`hasNoTags=false`
+    → **卡片上不显示任何「暂无」**（§5.1「不在卡片上显示暂无标签」实测生效）
+  - **S2 三点菜单**：真点触发器 → `menuVisible=true`，三项「编辑 / 重新获取元数据 / 删除」全部 `disabled=false`；
+    点「编辑」→ `#/game/1/edit`（S4 判据通过）
+  - **S4 点卡片进详情**：点封面 → `hash=#/game/1`、`isDetailRoute=true`、`hasDetailLayout=true`
+    （**不是编辑页**，路由拆分生效）
+  - **S3 详情页**：`hasLaunchButton=true`（启动只在这里）/ `hasNoTags=true` / `hasNoCredits=true` /
+    `summaryShown=true`（简介真实渲染）/ `hasAuthor=true`（Tonda）/ `hasSales=true`（739）/
+    `hasRating=true`（4.5）/ `missingCount=0`（有值的字段没有误显示「暂无」）/ `coverRatio=1.33`
+  - **S3 无元数据的详情页**：`hasMetaMissing=true`（「尚未获取 DLsite 信息」）/ `hasNoSummary=true`（「暂无简介」）/
+    `missingValueCount=0`（整块换成提示，不铺 9 个「暂无」）/ `refreshDisabled=true`（没有 RJ 时刷新按钮禁用）
+  - **S3 启动真的接上了**：点「启动游戏」→ `hasDiagnosisDialog=true` + `hasChineseError=true`
+    （因为测试里的假路径不存在 → 走 M3 诊断拦截，**不是静默无反应**）
+  - **S4 编辑页返回**：编辑页点「返回」→ `hash=#/game/1`（详情页），`isLibrary=false`
+  - **S2 列表行**：切到列表视图 → `rowCount=2` / `hasLaunchButton=false` / `menuTriggers=2`
+  - `consoleErrors=[]` → 全程没有组件白屏
+  - 探针**抓到并已修**的两个缺陷（详见上面「M2.6 全套」的 ⚠️ 段）：
+    `sanitize()` 字段白名单漏掉四个新字段（`saveGameMeta` 的 keys 里根本没有它们）、
+    `mergeWork` 会冲掉搜索页专有字段
+  - 探针自身的一个坑：`el-dropdown-item` 的 `aria-disabled` 是**字符串** `"false"`，
+    `!!getAttribute()` 会误判成 true（第一版报「三项全 disabled」，其实是误报）。改成 `=== 'true'`
 - **仍未验证（必须在有桌面会话的机器上做）**：
   - **视觉观感**：暗色主题配色、封面卡片裁切比例、进度浮层动效需人眼验收
   - **M2.5 的新 UI 手感**：搜索候选列表的滚动与点击、字段编辑框的弹出位置、
@@ -117,6 +173,11 @@
     但**真 244MB 包的耗时、进度条观感、取消是否及时**只能在 Mac 上用户量级验证（§9 R2）
   - **系统文件对话框的返回值**（M1 遗留，已加手输路径兜底）
   - **安装引擎 / 其他引擎类型**（需 mac）
+  - **M2.6 的视觉验收**：卡片的 hover 抬升、三点菜单的浮出动画、简介 2 行截断的实际观感、
+    详情页两栏在窄窗口下的塌陷（`@media (max-width: 860px)` 折成单栏，只做过 DOM 断言，
+    没在真窗口里量过）、R18 详情页大图的模糊强度（`blur(22px)`）——**这些只能在有画面的机器上看**
+  - **M2.6 的详情页启动全链路**：探针验到「点启动 → 弹 M3 诊断框」（假路径所以必然被拦），
+    但「诊断通过后真的把 mac 引擎拉起来」仍属 M1 的待验证项
 - **已知网络现实（本机）**：DLsite 与 `raw.githubusercontent.com` **都依赖系统代理**。
   产品侧靠 `net.fetch` + `session.setProxy({ mode: 'system' })` 走代理（D9）；
   纯 Node / vitest / curl 验收必须显式设代理，否则一律超时。
@@ -182,10 +243,11 @@ npm run build:mac    # 出 mac 包（Windows 上只能出 zip/dir，签名需 Ma
 │   │   ├── age-rating.ts  #   R18 判定（只影响渲染）
 │   │   ├── game-language.ts#  M2.5：语言标记剥离 + 标题归一化
 │   │   ├── language-group.ts# M2.5：多语言版本分组（相似度 + 前缀防线 + 父目录推断）
-│   │   └── launch-language.ts# M2.5：启动时的语言切换决策
+│   │   ├── launch-language.ts# M2.5：启动时的语言切换决策
+│   │   └── gamecard-info.ts#  ★ M2.6：卡片/详情页取值降级（无值不画 vs 明说「暂无」）+ 作品类型代码表
 │   ├── preload/index.ts    # contextBridge 白名单桥（window.tsumi）
 │   └── renderer/src/       # Vue3 前端
-│       ├── pages/          #   Library / GameEdit / Engines / Settings
+│       ├── pages/          #   Library / GameDetail（新） / GameEdit / Engines / Settings
 │       ├── components/     #   AddGameWizard / DynamicArgsForm / GameCard / VersionManagerDialog / DiagnosisDialog / ...
 │       ├── stores/         #   Pinia: library / engines / settings / task / coreDialogs
 │       ├── api/client.ts   #   IPC 调用封装（全部类型定义，唯一类型来源）
@@ -194,12 +256,13 @@ npm run build:mac    # 出 mac 包（Windows 上只能出 zip/dir，签名需 Ma
 │   ├── dev.cjs             #   开发启动包装（文件入口 + 清环境变量 + NO_SANDBOX）
 │   ├── probe-m2.cjs        #   M2 端到端验收探针（+ probe-m2-inner.cjs）
 │   ├── probe-m25.cjs       #   M2.5 端到端验收探针（+ probe-m25-inner.cjs）
-│   └── probe-m3.cjs        #   M3 端到端验收探针（+ probe-m3-inner.cjs）
+│   ├── probe-m3.cjs        #   M3 端到端验收探针（+ probe-m3-inner.cjs）
+│   └── probe-m26.cjs       #   M2.6 端到端验收探针（+ probe-m26-inner.cjs）
 └── test/
     ├── fixtures/           # 假游戏目录（MV/VX Ace/2000/Ren'Py）+ dlsite/RJ294126.html
     │                       #   + dlsite/search-mercenary.html（M2.5 真搜索页裁切）
     │                       #   + encrypted-rgss3a/（M3：0x03 魔数 + GBK Game.ini，.gitattributes 锁住字节）
-    └── *.test.ts           # vitest 单测（356 个，15 个文件，不依赖网络与 GUI）
+    └── *.test.ts           # vitest 单测（423 个，16 个文件，不依赖网络与 GUI）
 ```
 
 ## 架构与数据流（30 秒版）
@@ -260,6 +323,11 @@ Vue 组件 → Pinia store → api/client → preload(window.tsumi.invoke)
 | D36 | `launch` 的返回类型扩成联合类型 `{message} \| {blocked, diagnoses}`，**有 fatal 诊断时返回结构化结果而不抛错** | 抛错会走 `translateError` 通用路径，而诊断框需要「多条 + 每条带 level/fix」的结构化数据；也躲开 contextBridge 跨边界丢属性的老坑 |
 | D37 | 「还是启动试试」只对**非 fatal**可见，且点它时 `launch` 带 `diagnose:false` 重走一次 | fatal 绕过只会让用户多撞一次英文报错（§9 R5）；而不传 `diagnose:false` 会被同一个诊断框再拦一次，绕过按钮等于摆设 |
 | D38 | `missingRtp` 是 **warning 不是 fatal**；补装 RTP **不走 core 的 `updateDependenciesTaskWithProgress`** | 缺 RTP 的游戏常常仍能跑（只缺素材），拦死它会把能玩的游戏变成不能玩；而那个 core API **只更新已安装的依赖**——RTP 从没装过时实测它一个字节都不下却报「完成」。改走自实现的 `installDependencies(folder, wanted, signal)`（按 manifest 只下指定依赖，**core 零改动**） |
+| D39 | 卡片封面**保持 4:3 横版**（`aspect-ratio: 4/3`），不套 Jellyfin 的 2:3 竖版 | DLsite 源图实测是横向（560×420）；2:3 + `object-fit: cover` 会左右各裁约 40%，常切掉人物或标题文字。形状跟随源图，信息密度靠简介/类型标签补（用户拍板） |
+| D40 | 标签与制作人员**不建空字段**（不加 `genres: []` / `credits: {}`），UI **明说「DLsite 不提供」** | 加空字段会让下个会话误以为「实现了但没数据」；实测 `work_genre` 区块在详情页与搜索页都是空的、作品情報表格不在返回的 HTML 里（D19 已判死）。卡片空间有限所以**整行不画**，详情页是信息页所以**必须交代** |
+| D41 | **启动按钮只在详情页**，卡片与列表行只有三点菜单 | 用户明确要求，且「点卡片 = 查看详情」才能避免误点启动（卡片是浏览入口，不是操作面） |
+| D42 | `mergeWork` 刷新时，**只在搜索结果页才有的字段**（`author` / `salesCount` / `rating`）在 `incoming` 缺失时**沿用旧值** | 这三项从详情页重拉天然拿不到（§3.1 `contents` JSON 不含）。原来 `{...incoming}` 直接覆盖，实测会让用户已经搜到并存下的作者/销量在一次「重新获取」后**凭空消失**。`summary` 不在此列（详情页拿得到，该被新值覆盖） |
+| D43 | 卡片/详情页的取值降级抽成 `src/shared/gamecard-info.ts`（零依赖纯函数），**不写在 .vue 里** | 全是「有就显示、没有就不画」的判断，画错了不报错、只是界面缺一块，端到端探针很难发现；抽出来能用单测钉死（40 条）。同一份逻辑同时服务卡片（无值不画）与详情页（无值明说「暂无」）两种取向 |
 
 ## 已知坑
 
@@ -298,6 +366,9 @@ Vue 组件 → Pinia store → api/client → preload(window.tsumi.invoke)
 | **core 的 `installDependency` 参数错位（D6 的老 bug仍在）** | `installDependency(folder, depName, builds)` 内部调 `installOneDependency(depName, builds, depsRoot, opts)`（**4 个参数**）时只传了 3 个 → folder 被当成 depName、depName 被当成 builds、builds 被当成 depsRoot。**永远不要用它**，也不要「修一修 core」——那是 GPL fork，改动要最小化（FORK-NOTES） |
 | **解压依赖时的「拍平」不要盲目剥单层目录** | M3 单测抓到：只判断「解压结果是否为唯一单层目录」就剥掉，会把 `deps/RTP/RPGVXace` 里的版本目录也当成包裹层吞掉，导致诊断查 `deps/RTP/RTP/<版本>` **永远判缺失**。正确做法：**只剥与依赖名同名**的那一层（`RTP.zip` 内部顶层就叫 `RTP/`） |
 | **PATH 上的 `tar` 在 Windows 是 GNU tar，不是 bsdtar** | 单测里造压缩包时 `execFileSync('tar', ...)` 拿到的是 `/usr/bin/tar`（GNU 版），它把 `C:\...` 当成远程主机名报 `tar: Cannot connect to C: resolve failed`（exit 128）。用 **`C:\Windows\System32\tar.exe`**（bsdtar，也是 `src/main/extract.ts` 生产环境用的那个） |
+| **给 `GameMeta` 加字段时必须同步改 `library-meta.ts` 的 `sanitize()`**（M2.6 S1 端到端探针实测踩到） | `sanitize()` 是**落盘的字段白名单**：它只挑自己认识的字段重建对象，所以 `DlsiteWork` 里新加了 `summary`/`author`/`salesCount`/`rating` 之后，`saveGameMeta` **回执的 keys 里根本没有它们**——不报错、不警告，界面表现是「解析到了但详情页全是暂无」。判定方法：改完解析层后先看 `saveGameMeta` 的返回键集。回归测试 `test/library-meta.test.ts` 的「M2.6 新增字段必须能落盘」8 条锁住这条 |
+| **`el-dropdown-item` 的 `aria-disabled` 是字符串 `"false"`**（M2.6 探针自己踩到） | `!!el.getAttribute(...)` 恒为 true（非空字符串都是真值），会把「三项菜单全 disabled」当成真实现象去查。判据写成 `el.getAttribute("aria-disabled") === "true"` 或 `el.classList.contains("is-disabled")` |
+| **模板里别写复杂表达式**（M2.6 顺手确认的边界） | 卡片「也有 xx 版」用 `[...new Set(langs)].sort(...)` 在 **computed 里**完成，模板只读一个字符串——模板里写复杂表达式既容易白屏也难断言（AGENTS.md 的「模板禁 TS 断言」是同一条精神） |
 
 > **验收 `npm run dev` 的正确姿势**（本机无画面可看时）：启动后用 `BrowserWindow.getAllWindows()` +
 > `webContents.executeJavaScript('document.body.innerText')` 抓 DOM 文本，确认标题/路由/`typeof window.tsumi`。
@@ -334,7 +405,13 @@ Vue 组件 → Pinia store → api/client → preload(window.tsumi.invoke)
     `RGSSAD` + 第 8 字节 0x01/0x02/0x03 = XP/VX/VX Ace；RTP 包 244MB；
     `fontSub` 是字体替换映射不是目录加载器；**`Game.ini` 是 GBK 非 UTF-8，只按 latin1 读 ASCII 结构行**
   - 端到端验收：`node scripts/probe-m3.cjs`（真实样本 傭兵の冒険_CHN）
-- **M2.6（待开工）**：海报墙与详情页重构 —— 见 [`docs/M2.6-实施方案.md`](./docs/M2.6-实施方案.md)
+- **M2.6（已完成）**：海报墙与详情页重构 —— 见 [`docs/M2.6-实施方案.md`](./docs/M2.6-实施方案.md)（D39–D43）
+  - 卡片重写（4:3 封面 + 简介 2 行 + 类型标签 + 三点菜单，**无启动按钮**）
+  - **新增详情页** `GameDetailPage.vue`（唯一启动入口 + 完整元数据 + 明说「DLsite 不提供」）
+  - **路由拆分**：`/game/:id` = 详情页、`/game/:id/edit` = 编辑页
+  - 数据层新增 `summary`/`author`/`salesCount`/`rating`（**只有搜索结果页有后三项**，见 D42）
+  - 端到端验收：`node scripts/probe-m26.cjs`
+  - **视觉观感仍未人眼验收**（卡片悬停、简介截断、窄窗口塌陷、R18 模糊强度）
 - **M4**：存档管理（集中查看/备份/导出）+ 增强（Cheat 注入/变速）
 - **M5**：手柄、无边框全屏、像素缩放、dmg 公证分发
 

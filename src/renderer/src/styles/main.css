@@ -201,11 +201,13 @@ a {
   word-break: break-all;
 }
 
-/* ===== 游戏卡片 ===== */
+/* ===== 游戏卡片（M2.6 §5.1 重写） ===== */
 
 .game-grid {
+  /* M2.6：宽了一点（168→200），因为卡片现在要承载 2 行简介 + 类型标签；
+     封面仍按 4:3（D36），加宽后海报观感更接近 Jellyfin，但比例不动。 */
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: var(--tsmg-gap);
 }
 
@@ -217,6 +219,7 @@ a {
   border: 1px solid var(--tsmg-border);
   border-radius: var(--tsmg-radius);
   overflow: hidden;
+  cursor: pointer;
   transition:
     transform 0.14s ease,
     box-shadow 0.14s ease;
@@ -227,9 +230,9 @@ a {
   box-shadow: 0 8px 22px rgb(0 0 0 / 12%);
 }
 
-.game-card-icon {
-  /* DLsite 封面实际是 4:3 横向（实测 naturalWidth=560，宽高比约 560×420）。
-     之前写 1/1 会把两侧切掉一大块，看起来像竖版。 */
+/* 封面区：4:3 横版（D36）。DLsite 源图实测 560×420，套 2:3 会左右各裁约 40%。 */
+.game-card-cover {
+  position: relative;
   aspect-ratio: 4 / 3;
   display: flex;
   align-items: center;
@@ -238,22 +241,78 @@ a {
   overflow: hidden;
 }
 
-.game-card-icon img {
+.game-card-cover img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+.game-card-placeholder {
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--tsmg-text-dim);
+  opacity: 0.55;
+}
+
+.game-card-cover-hint {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 3px 6px;
+  font-size: 10px;
+  text-align: center;
+  color: var(--tsmg-text-dim);
+  background: rgb(0 0 0 / 42%);
+}
+
+/* 三点菜单：右上角浮层，悬停卡片才显现（不遮挡封面观感）。
+   position + z-index 必须高于封面，否则点不到。 */
+.game-card-menu {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 2;
+  opacity: 0;
+  transition: opacity 0.14s ease;
+}
+
+.game-card:hover .game-card-menu,
+.game-card-menu:focus-within {
+  opacity: 1;
+}
+
+.game-card-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  color: var(--tsmg-text);
+  background: rgb(0 0 0 / 46%);
+  cursor: pointer;
+}
+
+.game-card-menu-trigger:hover {
+  background: var(--tsmg-accent);
+  color: #fff;
 }
 
 .game-card-body {
   padding: 10px 12px 12px;
 }
 
+/* 标题 2 行截断（§5.1 图示）。 */
 .game-card-title {
   font-weight: 600;
   font-size: 13px;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .game-card-meta {
@@ -265,6 +324,33 @@ a {
   white-space: nowrap;
 }
 
+/* 副标题退化成引擎名（没有社团）时更暗一点，让「这是引擎不是社团」看得出来。 */
+.game-card-meta.is-engine {
+  opacity: 0.72;
+  font-style: italic;
+}
+
+/* 简介 2 行（§5.1）。没有简介时整个元素不渲染，不会留空白。 */
+.game-card-summary {
+  margin-top: 6px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--tsmg-text-dim);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.game-card-tags {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+/* 列表行：同样是「点哪儿都进详情」，所以给 cursor: pointer。 */
 .game-row {
   display: flex;
   align-items: center;
@@ -273,6 +359,12 @@ a {
   background: var(--tsmg-panel);
   border: 1px solid var(--tsmg-border);
   border-radius: var(--tsmg-radius);
+  cursor: pointer;
+  transition: border-color 0.14s ease;
+}
+
+.game-row:hover {
+  border-color: var(--tsmg-accent);
 }
 
 .game-row + .game-row {
@@ -322,6 +414,18 @@ a {
   display: flex;
   gap: 6px;
   flex: 0 0 auto;
+  align-items: center;
+}
+
+/* 列表行里的三点菜单触发器：常态可见（列表行没有「封面悬停区」可用）。 */
+.game-row-actions .game-card-menu-trigger {
+  background: transparent;
+  width: 24px;
+  height: 24px;
+}
+
+.game-row-actions .game-card-menu-trigger:hover {
+  background: var(--tsmg-accent);
 }
 
 .toolbar {
@@ -493,7 +597,7 @@ a {
 
 /* ===== M2.5-C：语言标记（卡片/列表）===== */
 
-.game-card-lang,
+.game-card-tags,
 .game-row-lang {
   display: flex;
   gap: 4px;
@@ -578,4 +682,169 @@ a {
   display: flex;
   gap: 10px;
   margin-top: 20px;
+}
+
+/* ===== M2.6 §5.2：详情页 ===== */
+
+.detail-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.detail-layout {
+  display: grid;
+  /* 左栏固定偏窄（封面 4:3，D36），右栏吃掉剩余宽度放元数据 */
+  grid-template-columns: minmax(240px, 340px) minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+
+@media (max-width: 860px) {
+  .detail-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.detail-cover-col {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  position: sticky;
+  top: 12px;
+}
+
+.detail-cover {
+  aspect-ratio: 4 / 3;
+  border-radius: var(--tsmg-radius);
+  overflow: hidden;
+  background: color-mix(in srgb, var(--tsmg-accent) 8%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--tsmg-border);
+}
+
+.detail-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.detail-cover-placeholder {
+  font-size: 46px;
+  font-weight: 700;
+  color: var(--tsmg-text-dim);
+  opacity: 0.5;
+}
+
+/* R18 打码：缩略图模糊 + 覆盖提示（与卡片同一判定，见 shared/age-rating.ts） */
+.detail-cover-masked {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.detail-cover-masked img {
+  filter: blur(22px) brightness(0.6);
+}
+
+.detail-cover-masked-label {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  color: var(--tsmg-text);
+}
+
+/* 启动按钮：**详情页唯一的启动入口**（D38），做成明显的主按钮 */
+.detail-launch {
+  width: 100%;
+}
+
+.detail-lang {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.detail-main-col {
+  min-width: 0;
+}
+
+.detail-title {
+  margin: 0;
+  font-size: 22px;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.detail-subline {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--tsmg-text-dim);
+}
+
+.detail-section {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--tsmg-border);
+}
+
+.detail-section-title {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--tsmg-text);
+  letter-spacing: 0.02em;
+}
+
+.detail-summary {
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--tsmg-text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* 折叠态：-webkit-line-clamp 需要 display:-webkit-box，展开时还原 */
+.detail-summary.is-collapsed {
+  display: -webkit-box;
+  -webkit-line-clamp: 6;
+  line-clamp: 6;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* 「暂无」文案：明确交代拿不到，而不是留白（D37） */
+.detail-missing {
+  font-size: 12px;
+  color: var(--tsmg-text-dim);
+  font-style: italic;
+}
+
+.detail-info-row {
+  display: flex;
+  gap: 12px;
+  padding: 4px 0;
+  font-size: 12px;
+}
+
+.detail-info-key {
+  flex: 0 0 92px;
+  color: var(--tsmg-text-dim);
+}
+
+.detail-info-value {
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
+}
+
+.detail-info-value.is-missing {
+  color: var(--tsmg-text-dim);
+  font-style: italic;
 }

@@ -147,7 +147,19 @@ export interface DlsiteWork {
   discount?: number
   /** 已校验主机 ∈ img.dlsite.jp 的 https 绝对地址。 */
   coverUrl?: string
+  /** `og:description` 原值（含站点广告尾巴，**不要直接渲染**）。 */
   description?: string
+  /**
+   * M2.6 §3.3：**清洗过**的简介（已剥掉「国内最大級の二次元…」那段站点自述）。
+   * UI 一律渲染这个，不是 `description`。
+   */
+  summary?: string
+  /** M2.6 §3.1：作者（只在搜索结果页有，详情页 `contents` 不含）。 */
+  author?: string
+  /** M2.6 §3.1：销量。 */
+  salesCount?: number
+  /** M2.6 §3.1：评分 0–5。缺省 = 无评分，**不是 0 分**。 */
+  rating?: number
   fetchedAt: string
   /** M2.5-B：该条目是否被用户手动编辑过（由 editedFields 派生）。 */
   edited?: boolean
@@ -194,6 +206,12 @@ export interface DlsiteSearchHit {
   category?: string
   /** 缩略图（已校验 host ∈ img.dlsite.jp）。 */
   coverUrl?: string
+  /** M2.6 §3.1：作者（`maker_name` 里的 `<span class="author">`，不是社团）。 */
+  author?: string
+  /** M2.6 §3.1：销量。 */
+  salesCount?: number
+  /** M2.6 §3.1：评分 0–5（缺省 = 无评分）。 */
+  rating?: number
 }
 
 export interface DlsiteSearchResult {

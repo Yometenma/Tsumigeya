@@ -19,6 +19,9 @@
 .dev-data-m3probe
 .dev-data-m3probe.json
 .dev-data-m3probe/
+.dev-data-m26boot.txt
+.dev-data-m26probe.json
+.dev-data-m26probe/
 .dev-data/
 .dev-scratch/
 .verify-dist/

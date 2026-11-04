@@ -1,14 +1,19 @@
 <script setup lang="ts">
-// 游戏库：网格/列表（读 settings.listView）、搜索、标签过滤、空状态、启动/编辑/删除（§4 LibraryPage.vue）。
-import { computed, ref } from 'vue'
+// 游戏库：网格/列表（读 settings.listView）、搜索、标签过滤、空状态、编辑/删除（§4 LibraryPage.vue）。
+//
+// M2.6 起本页**不再有启动能力**（D38：启动按钮只在详情页）：
+// - 点卡片 → 进详情页（`/game/:id`）
+// - 三点菜单 → 编辑（`/game/:id/edit`）/ 重新获取元数据 / 删除
+//
+// 启动链路（含 M3 的诊断拦截与 M2.5-C 的语言切换确认）整体搬到了 GameDetailPage：
+// 那套逻辑要弹诊断框、要问用户换不换语言版，属于「详情页才有的上下文」；
+// 库页留一堆只为启动服务的状态，反而会让「点卡片到底会发生什么」变得模糊。
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import GameCard from '@/components/GameCard.vue'
-import DiagnosisDialog from '@/components/DiagnosisDialog.vue'
-import { translateError, type Diagnosis } from '@/api/client'
-import { languageShortName } from '../../../shared/game-language'
-import { decideLaunchTarget } from '../../../shared/launch-language'
+import { translateError } from '@/api/client'
 import { useLibraryStore } from '@/stores/library'
 import { useSettingsStore } from '@/stores/settings'
 
@@ -19,112 +24,29 @@ const settings = useSettingsStore()
 
 const listView = computed(() => settings.settings.listView)
 
-/**
- * 启动游戏（§C.5）。
- *
- * 关键行为：如果当前条目**不是**偏好语言版、而库里还有同组的偏好版本，
- * 就先弹确认问「要不要启动那个？」。用户可勾「不再询问」把 `languageSwitchPrompt` 关掉。
- *
- * 三条不能越界的规矩：
- * 1. **不自动改用户的选择**：用户点的是哪个就启动哪个——除非他明确点了「启动偏好版本」；
- * 2. **绝不删除/隐藏**其他语言版（那是用户数据，§C.5 明令不代删）；
- * 3. 设置里关掉提示（preferred= none 或 languageSwitchPrompt=false）时**直接启动**，不问。
- */
-async function launch(id: string): Promise<void> {
-  await launchTarget(id, true)
+/** 点卡片 → 详情页（M2.6 的新语义：点卡片不是启动，是看详情）。 */
+function openDetail(id: string): void {
+  void router.push(`/game/${id}`)
+}
+
+/** 三点菜单「编辑」→ 编辑页（路由拆成了 `/game/:id/edit`，见 §5.3）。 */
+function edit(id: string): void {
+  void router.push(`/game/${id}/edit`)
 }
 
 /**
- * 启动流程（M3 §4.2 改造后）。
+ * 三点菜单「重新获取元数据」（等同编辑页原来的「刷新」）。
  *
- * `diagnose` 参数的意义：**只有第一次启动**才拦 fatal 诊断。
- * 用户在诊断框里点「还是启动试试」后，`proceed` 事件会带 `false` 再来一次——
- * 那次绝不重复诊断（否则绕过按钮等于没用）。
+ * 为什么放在卡片上：用户看卡片觉得信息旧了，就该能就地刷新，
+ * 不必为了刷新专门进一趟编辑页。没有 RJ 时菜单项是 disabled 的（canRefreshMeta）。
  */
-async function launchTarget(id: string, diagnoseAllowed: boolean): Promise<void> {
-  const game = library.byId(id)
-  const target = await resolveLaunchTarget(id)
+async function refreshMeta(id: string): Promise<void> {
   try {
-    const result = await library.launch(target, diagnoseAllowed)
-    if ('blocked' in result) {
-      // 被 fatal 诊断拦下 → 弹中文诊断框，**不出现英文报错**
-      diagnosisGameId.value = target
-      diagnosisItems.value = result.diagnoses
-      diagnosisOpen.value = true
-      return
-    }
-    const targetGame = library.byId(target)
-    ElMessage.success(t('library.launchSent', { title: targetGame?.gameTitle ?? game?.gameTitle ?? '' }))
+    await library.refreshGameMeta(id, true)
+    ElMessage.success(t('detail.refreshDone'))
   } catch (error) {
     ElMessage.error(translateError(error, t))
   }
-}
-
-/** 诊断框状态（M3 §4.2）。三个 ref 都在任何 immediate watch 之前声明（AGENTS.md：TDZ 白屏）。 */
-const diagnosisOpen = ref(false)
-const diagnosisGameId = ref('')
-const diagnosisItems = ref<Diagnosis[]>([])
-
-/**
- * 用户在诊断框里点了「还是启动试试」。
- * 用 `diagnoseAllowed=false` 重走一次启动：诊断框已经看过了，不能再拦一次（§9 R5）。
- */
-async function launchAnyway(): Promise<void> {
-  const id = diagnosisGameId.value
-  if (!id) return
-  await launchTarget(id, false)
-}
-
-/**
- * 决定最终要启动哪个 id。返回原 id 表示「按用户点的那个启动」。
- *
- * 判定偏好语言：首选 → 次选（§C.4）。两者都 `none` 时整个功能不生效。
- */
-/**
- * 决定最终要启动哪个 id（§C.5）。返回原 id 表示「按用户点的那个启动」。
- *
- * 判定逻辑抽在 lib/launch-language.ts（纯函数、有单测覆盖），这里只负责：
- * 取数据 → 问用户 → 返回结果。这样「会不会启动错游戏」的风险点被单测钉住。
- */
-async function resolveLaunchTarget(id: string): Promise<string> {
-  const prefs = settings.settings
-  const decision = decideLaunchTarget({
-    current: library.languageOf[id],
-    alternates: library.alternatesOf[id] ?? [],
-    preferred: prefs.preferredLanguage,
-    fallback: prefs.fallbackLanguage,
-    prompt: prefs.languageSwitchPrompt
-  })
-  if (decision.action === "launch" || !decision.targetId) return id
-
-  const current = library.languageOf[id]
-  const targetGame = library.byId(decision.targetId)
-  const targetLang = library.languageOf[decision.targetId]
-  try {
-    // 「不再询问」是设置页的开关（§7-⑤ 用户确认的形态）：
-    // 放在设置页用户随时能重新打开，不用靠「当时勾了没」去猜。
-    await ElMessageBox.confirm(
-      t("library.languageSwitchMessage", {
-        current: current ? languageShortName(current) : "",
-        preferred: targetLang ? languageShortName(targetLang) : "",
-        title: targetGame?.gameTitle ?? decision.targetId
-      }),
-      t("library.languageSwitchTitle"),
-      {
-        type: "info",
-        confirmButtonText: t("library.launchPreferred", { lang: targetLang ? languageShortName(targetLang) : "" }),
-        cancelButtonText: t("library.launchCurrent")
-      }
-    )
-    return decision.targetId
-  } catch {
-    // 取消 = 坚持启动当前这个（用户的选择优先，绝不自作主张）
-    return id
-  }
-}
-
-function edit(id: string): void {
-  void router.push(`/game/${id}`)
 }
 
 async function remove(id: string): Promise<void> {
@@ -224,8 +146,9 @@ async function toggleView(next: boolean): Promise<void> {
       :language="library.languageOf[game.id]"
       :alternates="library.alternatesOf[game.id]"
       variant="row"
-      @launch="launch"
+      @open="openDetail"
       @edit="edit"
+      @refresh="refreshMeta"
       @remove="remove"
     />
   </div>
@@ -239,17 +162,10 @@ async function toggleView(next: boolean): Promise<void> {
       :language="library.languageOf[game.id]"
       :alternates="library.alternatesOf[game.id]"
       variant="card"
-      @launch="launch"
+      @open="openDetail"
       @edit="edit"
+      @refresh="refreshMeta"
       @remove="remove"
     />
   </div>
-
-  <!-- M3 §4.2：启动诊断框（被 fatal 拦下时出现；不出现英文报错） -->
-  <DiagnosisDialog
-    v-model="diagnosisOpen"
-    :game-id="diagnosisGameId"
-    :diagnoses="diagnosisItems"
-    @proceed="launchAnyway"
-  />
 </template>

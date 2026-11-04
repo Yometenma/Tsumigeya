@@ -63,6 +63,107 @@ describe('基本读写', () => {
   })
 })
 
+// ===== M2.6 §4.1：sanitize 是落盘的**字段白名单** =====
+//
+// 端到端探针实测踩到过：S1 在 dlsite.ts 里解析出了 summary/author/salesCount/rating，
+// 但 saveGameMeta 回执的 keys 里根本没有它们——因为这一层只挑自己认识的字段，
+// 新字段不写进来就被**静默丢弃**（界面表现：明明解析到了，详情页全是「暂无」）。
+describe('M2.6 新增字段必须能落盘（字段白名单回归）', () => {
+  function workWithM26(overrides: Partial<DlsiteWork> = {}): DlsiteWork {
+    return work({
+      summary: '本作は、隣の部屋に住む…（已清洗）',
+      author: 'Tonda',
+      salesCount: 739,
+      rating: 4.5,
+      workType: 'MNG',
+      ...overrides
+    })
+  }
+
+  test('summary / author / salesCount / rating 全部写进磁盘并能读回', () => {
+    store.save('1', workWithM26())
+    const saved = store.load()['1']
+    expect(saved.summary).toBe('本作は、隣の部屋に住む…（已清洗）')
+    expect(saved.author).toBe('Tonda')
+    expect(saved.salesCount).toBe(739)
+    expect(saved.rating).toBe(4.5)
+  })
+
+  test('重新读文件（不是读内存）也还在——确认真的落了盘', () => {
+    store.save('1', workWithM26())
+    const onDisk = JSON.parse(readFileSync(store.metaFile, 'utf8'))
+    expect(onDisk['1'].summary).toBeTruthy()
+    expect(onDisk['1'].author).toBe('Tonda')
+    expect(onDisk['1'].salesCount).toBe(739)
+    expect(onDisk['1'].rating).toBe(4.5)
+  })
+
+  test('缺失时是 undefined，不是 0 / 空串（rating 缺省 ≠ 0 分）', () => {
+    store.save('1', work())
+    const saved = store.load()['1']
+    expect(saved.summary).toBeUndefined()
+    expect(saved.author).toBeUndefined()
+    expect(saved.salesCount).toBeUndefined()
+    expect(saved.rating).toBeUndefined()
+  })
+
+  test('salesCount = 0 是合法值，不能被当成「没有」丢掉', () => {
+    store.save('1', workWithM26({ salesCount: 0 }))
+    expect(store.load()['1'].salesCount).toBe(0)
+  })
+
+  test('rating = 0 / 非法值被清洗掉（0 分不是 DLsite 的真实状态）', () => {
+    // num() 只校验"是不是有限数字"，0 会被保留——所以这里锁的是「非数字被丢」
+    store.save('1', workWithM26({ rating: Number.NaN }))
+    expect(store.load()['1'].rating).toBeUndefined()
+    store.save('2', workWithM26({ salesCount: '739' as never }))
+    expect(store.load()['2'].salesCount).toBeUndefined()
+  })
+
+  test('纯空白的 summary / author 归 undefined（不写空串进库）', () => {
+    store.save('1', workWithM26({ summary: '   ', author: '  ' }))
+    const saved = store.load()['1']
+    expect(saved.summary).toBeUndefined()
+    expect(saved.author).toBeUndefined()
+  })
+
+  test('mergeWork 刷新时保留只有搜索页才有的字段（author / salesCount / rating）', () => {
+    store.save('1', workWithM26())
+    // 模拟一次「重新获取」：DLsite **详情页**没有 author/salesCount/rating（只有搜索页有，§3.1），
+    // 所以 incoming 缺这三项；但用户库里已有的值不该被抹掉。
+    const merged = mergeWork(workWithM26(), {
+      rj: 'RJ294126',
+      title: '純愛おま○こ当番【アップデート版】',
+      circle: '青春×フェティシズム',
+      // summary 来自详情页（cleanupDescription 产出），刷新当然能拿到新值 → 应该被覆盖
+      summary: '新的简介（这次刷新拿到的）',
+      fetchedAt: '2026-11-05T00:00:00.000Z'
+    })
+    expect(merged.author).toBe('Tonda')
+    expect(merged.salesCount).toBe(739)
+    expect(merged.rating).toBe(4.5)
+    // summary 不是搜索页专有字段：详情页拿得到，所以刷新值覆盖旧值
+    expect(merged.summary).toBe('新的简介（这次刷新拿到的）')
+    // 真正的「刷新值」应该覆盖非编辑字段
+    expect(merged.fetchedAt).toBe('2026-11-05T00:00:00.000Z')
+  })
+
+  test('incoming 带了搜索页字段时用新值（不被旧值挡住）', () => {
+    store.save('1', workWithM26())
+    const merged = mergeWork(workWithM26(), workWithM26({ author: '新作者', salesCount: 9999, rating: 5 }))
+    expect(merged.author).toBe('新作者')
+    expect(merged.salesCount).toBe(9999)
+    expect(merged.rating).toBe(5)
+  })
+
+  test('previous 没有这些字段时，incoming 缺也就保持 undefined（不会凭空造值）', () => {
+    const merged = mergeWork(work() as never, work())
+    expect(merged.author).toBeUndefined()
+    expect(merged.salesCount).toBeUndefined()
+    expect(merged.rating).toBeUndefined()
+  })
+})
+
 describe('校验与清洗', () => {
   test('空 / 非法 gameId → error.dlsiteGameRequired', () => {
     expect(() => store.save('', work())).toThrow(

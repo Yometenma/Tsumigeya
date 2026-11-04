@@ -42,6 +42,11 @@ const iconPath = ref<string | undefined>(undefined)
 const gameArgs = ref<Record<string, unknown>>({})
 const saving = ref(false)
 const notFound = ref(false)
+/**
+ * M2.6：新建保存成功后拿到的新 id。
+ * 新建时 `gameId` 是 undefined，但保存后应该回**详情页**（§5.3），所以要记下这个 id。
+ */
+const newlySavedId = ref<string | undefined>(undefined)
 
 const versionDialog = ref(false)
 const versionArgKey = ref('')
@@ -562,6 +567,7 @@ async function save(): Promise<void> {
   }
   saving.value = true
   try {
+    const before = new Set(library.games.map((item) => item.id))
     await library.saveGame(gameId.value, {
       gameTitle: title.value.trim(),
       gamePath: path.value.trim(),
@@ -570,13 +576,31 @@ async function save(): Promise<void> {
       tags: tags.value.filter((tag) => tag.trim()),
       gameArgs: gameArgs.value
     })
+    // 新建时会多出一条记录——记下它的 id，好让「保存后回详情页」有页面可回。
+    if (!gameId.value) {
+      const added = library.games.find((item) => !before.has(item.id))
+      newlySavedId.value = added?.id
+    }
     ElMessage.success(t('game.saved'))
-    void router.push('/library')
+    // M2.6 §5.3：保存后回**详情页**（不是库页）——用户改完元数据，最想看到的是改完的样子。
+    // 新建时还没有 id 的变化（saveGame 内部已生成了新 id），所以重新取一次 id。
+    goBack()
   } catch (error) {
     ElMessage.error(translateError(error, t))
   } finally {
     saving.value = false
   }
+}
+
+/**
+ * M2.6 §5.3：编辑页的「返回」回**详情页**而不是库页。
+ *
+ * 新建流程（`/library/new`、或库里没有这个 id）没有详情页可回，仍然回库页。
+ */
+function goBack(): void {
+  const id = gameId.value ?? newlySavedId.value
+  if (id && library.byId(id)) void router.push(`/game/${id}`)
+  else void router.push('/library')
 }
 
 // ===== M3：启动诊断面板的交互 =====
@@ -666,7 +690,7 @@ function diagnosisFixLabel(fix: DiagnosisFix): string {
       <div style="flex: 1">
         <h1 class="page-title">{{ isNew ? t('game.newTitle') : t('game.title') }}</h1>
       </div>
-      <el-button @click="router.push('/library')">{{ t('common.back') }}</el-button>
+      <el-button @click="goBack">{{ t('common.back') }}</el-button>
     </header>
 
     <section class="panel stack" style="margin-bottom: 16px">
@@ -951,7 +975,7 @@ function diagnosisFixLabel(fix: DiagnosisFix): string {
 
     <div class="form-actions">
       <el-button type="primary" :loading="saving" @click="save">{{ t('common.save') }}</el-button>
-      <el-button @click="router.push('/library')">{{ t('common.cancel') }}</el-button>
+      <el-button @click="goBack">{{ t('common.cancel') }}</el-button>
     </div>
 
     <VersionManagerDialog

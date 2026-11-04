@@ -64,9 +64,27 @@ export function normalizeEditedFields(value: unknown): EditableField[] {
  *
  * 纯函数：不读写盘，方便单测直接钉住规则。`keep` 为空时等价于「全量覆盖」。
  */
+/**
+ * 合并一次「重新获取」的结果。
+ *
+ * `incoming` 整体覆盖 `previous`，除了两类例外：
+ *
+ * ① **用户编辑过的字段**（`keep`，D26）：用户手改的值不该被一次刷新冲掉。
+ * ② **只在搜索结果页才有的字段**（M2.6 §3.1：author / salesCount / rating）。
+ *    这三项从详情页重拉时**天然拿不到**（`contents` JSON 里没有），
+ *    直接按 `{...incoming}` 覆盖会把之前搜到并保存的值抹成 undefined——
+ *    用户明明有过作者信息，一次「重新获取」就消失了。
+ *
+ *    ⚠️ 只在 `incoming` 缺这个值时才回退到 previous；`incoming` 有新值就用新的
+ *    （例如将来 DLsite 改了页面结构、详情页也能拿到时，这条回退不会挡路）。
+ */
 export function mergeWork(previous: GameMeta, incoming: DlsiteWork, keep?: readonly EditableField[]): GameMeta {
   const kept = normalizeEditedFields(keep ?? previous.editedFields)
   const merged: GameMeta = { ...incoming, fetchedAt: incoming.fetchedAt }
+  // ② M2.6：搜索页专有字段——incoming 没有就沿用上一份
+  if (merged.author === undefined) merged.author = previous.author
+  if (merged.salesCount === undefined) merged.salesCount = previous.salesCount
+  if (merged.rating === undefined) merged.rating = previous.rating
   for (const field of kept) {
     // 只覆盖值；`price` 是数字，`undefined` 也算合法（用户清空过）
     const value = previous[field]
@@ -152,6 +170,12 @@ function sanitize(gameId: string, meta: unknown): GameMeta {
     discount: num('discount'),
     coverUrl,
     description: text('description'),
+    // M2.6 §4.1：四个新字段必须在这层白名单里出现，否则 S1 解析出来的值会被**静默丢掉**
+    // （端到端探针实测踩到：saveGameMeta 回执里的 keys 缺 summary/author/salesCount/rating）。
+    summary: text('summary'),
+    author: text('author'),
+    salesCount: num('salesCount'),
+    rating: num('rating'),
     fetchedAt: text('fetchedAt') ?? new Date().toISOString(),
     edited: editedFields.length > 0,
     editedFields
