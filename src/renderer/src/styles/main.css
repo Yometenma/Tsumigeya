@@ -823,6 +823,48 @@ a {
   }
 }
 
+/* ===== M5.0 N1：详情页游玩时间（放在启动按钮下方）===== */
+
+/*
+ * 刻意做得**轻**：它是补充信息，不该与启动按钮抢注意力。
+ * 启动按钮是这一页唯一的主操作（D41），这里用次要文本色 + 小字号。
+ */
+.detail-playtime {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.detail-playtime-title {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+
+.detail-playtime-empty {
+  color: var(--el-text-color-placeholder);
+}
+
+.detail-playtime-main {
+  color: var(--tsmg-text);
+}
+
+.detail-playtime-duration {
+  font-weight: 600;
+}
+
+.detail-playtime-count {
+  color: var(--el-text-color-secondary);
+}
+
+.detail-playtime-last {
+  margin-top: 2px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+
 /* 卡片封面右上角的绿点（**没有关闭按钮**，D41 的精神） */
 .game-card-running {
   position: absolute;

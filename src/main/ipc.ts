@@ -389,6 +389,13 @@ export function createDispatcher(deps: IpcDeps): Dispatcher {
         pid: item.pid,
         startedAt: item.startedAt
       })),
+      // M5.0 N1：游玩记录随 snapshot 下发（详情页的「游玩时间」块直接读它）。
+      // 与 meta 同理：读失败不能让整页崩 —— 统计是附属品，读不出来就当还没有记录。
+      //
+      // 为什么不单独加一条 IPC 命令：这份数据每次启动/退出才能变，
+      // 而 snapshot 本来就是「所有状态一次给全」的那个入口，另开一条命令只会让
+      // 渲染层多一条要自己记得刷新的路径（D44 那类"新路径没人记得套上"的老毛病）。
+      playStats: readPlayStatsSafely(),
       // M4.0 S6.5（D58）：数据目录切换的一次性说明。
       // 判定在 data-dir-notice.ts（纯函数、有单测）；这里只负责「这次该不该给」。
       dataDirNotice: takeDataDirNotice()
@@ -431,6 +438,25 @@ export function createDispatcher(deps: IpcDeps): Dispatcher {
       return host.meta.load()
     } catch (error) {
       console.warn(`[tsumigeya] 读取 library-meta.json 失败（已按空处理）：${(error as Error).message}`)
+      return {}
+    }
+  }
+
+  /**
+   * M5.0 N1：读游玩记录，失败按「没有记录」处理。
+   *
+   * 为什么要这个 wrapper：`play-stats.json` 损坏时 `readJSON` 会**抛**（它绝不静默覆盖
+   * 用户数据，见 play-stats.ts 的注释）。那是正确行为，但 snapshot 不能因此整个崩掉 ——
+   * 一份统计文件坏了不该让用户连游戏库都看不见。
+   *
+   * 注意这里**不做归一化之外的修补**：单条记录的脏值由 `playStats.load()` 内部
+   * 逐条处理（`normalizePlayStat`），只有「整个文件读不出来」才会走到 catch。
+   */
+  function readPlayStatsSafely(): Record<string, unknown> {
+    try {
+      return playStats.load()
+    } catch (error) {
+      console.warn(`[tsumigeya] 读取 play-stats.json 失败（已按空处理）：${(error as Error).message}`)
       return {}
     }
   }

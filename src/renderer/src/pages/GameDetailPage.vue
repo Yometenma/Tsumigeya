@@ -22,6 +22,7 @@ import { api, iconUrl, translateError, type Diagnosis } from '@/api/client'
 import { isAdultWork } from '../../../shared/age-rating'
 import { languageShortName } from '../../../shared/game-language'
 import { decideLaunchTarget } from '../../../shared/launch-language'
+import { durationShape, hasValidPlayedAt, playTimeView } from '../../../shared/play-time'
 import {
   buildDetailFields,
   canRefreshMeta,
@@ -143,8 +144,54 @@ const runningDurationText = computed(() => {
   const seconds = Math.max(0, Math.floor((runningSince.value - start) / 1000))
   return formatDuration(seconds)
 })
-/** 同组其他语言版本（用于「也有 xx 版」）。 */
-const alternateText = computed(() => {
+// ===== M5.0 N1：游玩时间统计（放在启动按钮下方）=====
+
+/**
+ * 这个游戏的游玩记录（没有就是 undefined → 显示「暂无记录」）。
+ *
+ * 数据来源是 snapshot 里的 playStats（主进程读 play-stats.json，D51）。
+ * 渲染层**绝不自己累加**：关掉应用再开就对不上了（那也是 D50 的同一精神）。
+ */
+const playTime = computed(() => playTimeView(library.playStats[props.id]))
+
+/**
+ * 时长文案。这里把 DurationShape 套上 i18n 键 ——
+ * **结构判断在 shared/play-time.ts（有单测），文案进 locales**（协作规矩 2）。
+ *
+ * 余分为 0 时不显示「X 小时 0 分钟」：那个 "0 分钟" 是噪音。
+ */
+const playDurationText = computed(() => {
+  const view = playTime.value
+  if (view.kind !== 'stats') return ''
+  const shape = view.duration
+  if (shape.unit === 'seconds') return t('library.runningSeconds', { seconds: shape.seconds })
+  if (shape.unit === 'minutes') return t('library.runningMinutes', { minutes: shape.minutes })
+  return shape.minutes > 0
+    ? t('library.runningHoursMinutes', { hours: shape.hours, minutes: shape.minutes })
+    : t('library.runningHours', { hours: shape.hours })
+})
+
+/** 「玩过 N 次」；N 为 0 时返回空串（不画一个「玩过 0 次」出来）。 */
+const playCountText = computed(() => {
+  const view = playTime.value
+  if (view.kind !== 'stats' || view.playCount <= 0) return ''
+  return t('detail.playCount', { count: view.playCount })
+})
+
+/**
+ * 「最后游玩」那一句。
+ *
+ * 用 `toLocaleString()` 而不是自己拼：日期格式跟着系统区域走才是对的。
+ * 但**必须先判它能不能解析**（hasValidPlayedAt）—— 否则坏数据会画出英文
+ * "Invalid Date"（`new Date('').toLocaleString()` 就是这个结果）。
+ */
+const lastPlayedText = computed(() => {
+  const view = playTime.value
+  if (view.kind !== 'stats' || !hasValidPlayedAt(view.lastPlayedAt)) return ''
+  return t('detail.lastPlayed', { at: new Date(view.lastPlayedAt).toLocaleString() })
+})
+
+/** 同组其他语言版本（用于「也有 xx 版」）。 */const alternateText = computed(() => {
   const alternates = (library.alternatesOf[props.id] ?? []).filter((item) => item.lang !== language.value)
   if (alternates.length === 0) return ''
   const langs = [...new Set(alternates.map((item) => item.lang))]
@@ -421,6 +468,23 @@ async function resolveLaunchTarget(id: string): Promise<string> {
         <el-button v-else class="detail-launch" type="primary" size="large" @click="launch">
           {{ t('detail.launch') }}
         </el-button>
+
+        <!-- M5.0 N1：游玩时间统计（用户要求放在启动按钮下方）。
+             没有记录时明说「暂无」而不是显示 0 —— 一个假的「0 分钟」看起来像真统计，
+             用户会以为自己的历史被清空了（D37 的同一精神）。 -->
+        <div class="detail-playtime">
+          <div class="detail-playtime-title">{{ t('detail.playTime') }}</div>
+          <div v-if="playTime.kind === 'none'" class="detail-playtime-empty">
+            {{ t('detail.playTimeEmpty') }}
+          </div>
+          <template v-else>
+            <div class="detail-playtime-main">
+              <span class="detail-playtime-duration">{{ playDurationText }}</span>
+              <span v-if="playCountText" class="detail-playtime-count"> · {{ playCountText }}</span>
+            </div>
+            <div v-if="lastPlayedText" class="detail-playtime-last">{{ lastPlayedText }}</div>
+          </template>
+        </div>
 
         <div v-if="languageLabel || alternateText" class="detail-lang">
           <el-tag v-if="languageLabel" size="small">{{ languageLabel }}</el-tag>

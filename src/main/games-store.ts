@@ -87,6 +87,17 @@ export interface Snapshot {
    * 措辞与判定都在 `data-dir-notice.ts`；这里只负责下发。
    */
   dataDirNotice: string | null
+  /**
+   * M5.0 N1：游玩记录（键 = gameId，没有记录的游戏不出现）。
+   *
+   * 独立的 `play-stats.json`（D51），与 `meta` 同为旁挂数据：
+   * 删了它只是丢掉统计，游戏照常启动。
+   *
+   * 为什么进 snapshot（而不是另开一条 IPC 命令）：这份数据只在启动/退出时变，
+   * 而详情页本来就在读 snapshot —— 另开命令会让渲染层多一条「要记得刷新」的路径，
+   * 那正是 D44 踩过两次的老毛病。
+   */
+  playStats: Record<string, unknown>
 }
 
 /** snapshot 里的运行态条目（比主进程内部的 RunningGame 少几个字段：UI 用不到命令串）。 */
@@ -229,6 +240,8 @@ export interface GameStore {
     running?: RunningGameLite[]
     /** M4.0 S6.5（D58）：数据目录切换的一次性说明（不传 = 不提示）。 */
     dataDirNotice?: string | null
+    /** M5.0 N1：游玩记录（不传 = 没有记录）。 */
+    playStats?: Record<string, unknown>
   }): Snapshot
 }
 
@@ -332,6 +345,8 @@ export function createGameStore(dataDir: string): GameStore {
     running?: RunningGameLite[]
     /** M4.0 S6.5（D58）：由 ipc 层算好传进来（它知道平台与 dataDir）。 */
     dataDirNotice?: string | null
+    /** M5.0 N1：游玩记录（不传 = 没有记录）。由 ipc 层读 play-stats.json 后传入。 */
+    playStats?: Record<string, unknown>
   } = {}): Snapshot {
     return {
       games: Object.entries(loadGames()).map(([id, value]) => ({ ...value, id })),
@@ -344,7 +359,9 @@ export function createGameStore(dataDir: string): GameStore {
       meta: extra.meta ?? {},
       // M3.5：默认空数组（不传 = 没有正在运行的游戏）。**绝不**在这里落盘任何东西（D50）。
       running: extra.running ?? [],
-      dataDirNotice: extra.dataDirNotice ?? null
+      dataDirNotice: extra.dataDirNotice ?? null,
+      // M5.0 N1：默认空对象（不传 = 还没有任何游玩记录）。
+      playStats: extra.playStats ?? {}
     }
   }
 

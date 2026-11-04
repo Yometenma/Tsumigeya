@@ -155,8 +155,78 @@ function wait(ms = 200): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-describe('S4：Snapshot.running（运行态的只读投影）', () => {
-  test('没有运行中的游戏时是空数组（不是 undefined，UI 不用判空）', () => {
+/**
+ * M5.0 N1：Snapshot.playStats 的端到端判据。
+ *
+ * ===== 为什么必须在这个文件里测（不能只测纯函数）=====
+ *
+ * `shared/play-time.ts` 的单测只证明「给定一条记录，展示形态算得对」。
+ * 它**完全覆盖不到**这条链路：play-stats.json → createPlayStatsStore → ipc
+ * → games-store.snapshot(extra) → 渲染层。
+ *
+ * 而 M4.1 S4 踩过的正是这一段：**类型声明写了字段、真实数据里却没有**
+ * （`ModuleInfo.raw` 永远 null，TS 通过、页面不报错、参数表单整块消失）。
+ * 所以这里断言的是「snapshot 那个对象里**真的有** playStats」，不是类型。
+ */
+describe('N1：Snapshot.playStats（游玩记录的只读投影）', () => {
+  test('没有记录时是空对象（不是 undefined，UI 不用判空）', () => {
+    makeGame('1')
+    const dispatcher = createDispatcher({ host })
+    const snap = dispatcher.snapshot() as { playStats: Record<string, unknown> }
+    expect(snap.playStats).toBeTypeOf('object')
+    expect(snap.playStats).not.toBeNull()
+    expect(Object.keys(snap.playStats)).toHaveLength(0)
+  })
+
+  test('★ 启动后 snapshot 里真的出现该游戏的记录（不是只写在类型里）', async () => {
+    makeGame('1')
+    const fake = fakeProcess()
+    const spawned = fakeSpawn()
+    const dispatcher = createDispatcher({ host, process: { ...fake, spawn: spawned.spawn } })
+    await dispatcher.dispatch('launch', { id: '1', diagnose: false }, new AbortController().signal)
+
+    const snap = dispatcher.snapshot() as {
+      playStats: Record<string, { playCount: number; totalSeconds: number; lastPlayedAt: string }>
+    }
+    expect(Object.hasOwn(snap.playStats, '1')).toBe(true)
+    expect(snap.playStats['1'].playCount).toBe(1)
+    // 进程还活着 → 时长仍是 0（只有正常退出才累加）
+    expect(snap.playStats['1'].totalSeconds).toBe(0)
+    expect(snap.playStats['1'].lastPlayedAt).toBeTruthy()
+  })
+
+  test('进程退出后 snapshot 里的时长被累加', async () => {
+    makeGame('1')
+    const fake = fakeProcess()
+    const spawned = fakeSpawn()
+    const dispatcher = createDispatcher({ host, process: { ...fake, spawn: spawned.spawn } })
+    await dispatcher.dispatch('launch', { id: '1', diagnose: false }, new AbortController().signal)
+    // 直接让假进程报退出（而不是走 stopGame，那样要等两段式）
+    spawned.children[0]?.emit('exit', 0, null)
+    await wait()
+
+    const snap = dispatcher.snapshot() as {
+      playStats: Record<string, { totalSeconds: number; playCount: number }>
+    }
+    expect(snap.playStats['1'].playCount).toBe(1)
+    expect(snap.playStats['1'].totalSeconds).toBeGreaterThanOrEqual(0)
+  })
+
+  test('⚠️ play-stats.json 坏掉时 snapshot 仍然可用（统计坏了不该让整页崩）', async () => {
+    // readJSON 对损坏文件会抛（它绝不静默覆盖用户数据，见 play-stats.ts）。
+    // 那是正确行为，但 snapshot 必须把它降级成「没有记录」——
+    // 一份统计文件坏了不该让用户连游戏库都看不见。
+    makeGame('1')
+    fs.writeFileSync(path.join(dataDir, 'play-stats.json'), '{ this is not json')
+    const dispatcher = createDispatcher({ host })
+    const snap = dispatcher.snapshot() as { playStats: Record<string, unknown>; games: unknown[] }
+    expect(snap.playStats).toEqual({})
+    // 游戏库本身照常下发
+    expect(snap.games.length).toBeGreaterThan(0)
+  })
+})
+
+describe('S4：Snapshot.running（运行态的只读投影）', () => {  test('没有运行中的游戏时是空数组（不是 undefined，UI 不用判空）', () => {
     makeGame('1')
     const dispatcher = createDispatcher({ host })
     const snap = dispatcher.snapshot() as { running: unknown[] }

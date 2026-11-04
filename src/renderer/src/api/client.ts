@@ -133,6 +133,13 @@ export interface Snapshot {
   /** M3.5：正在运行的游戏（运行时状态，不落盘）。 */
   running: RunningGameLite[]
   /**
+   * M5.0 N1：游玩记录（键 = gameId；没有记录的游戏不出现）。
+   *
+   * 与 `meta` 同为旁挂数据：`play-stats.json` 是独立文件（D51），
+   * 删了它只是丢掉统计，游戏照常启动。
+   */
+  playStats: Record<string, PlayStat>
+  /**
    * M4.0 S6.5（D58）：数据目录切换的一次性中文说明。
    * 有值 = 这次该给用户看（info，不是错误）；null = 不提示。
    */

@@ -16,6 +16,7 @@ import {
   type GameRecord,
   type LanguageGroup,
   type LaunchResult,
+  type PlayStat,
   type RepairResult,
   type RunningGameLite,
   type Snapshot,
@@ -51,11 +52,20 @@ export const useLibraryStore = defineStore('library', () => {
    * （正规来源是 `gameStarted` 事件 + snapshot.running）。
    */
   const running = ref<Record<string, RunningGameLite>>({})
+  /**
+   * M5.0 N1：游玩记录（键 = gameId）。
+   *
+   * 与 `running` 的区别要说清：`running` 是**现在**在不在跑（内存里的进程表，D50），
+   * 这里是**过去**玩了多少（落盘的 play-stats.json，D51）。两个都来自主进程，
+   * 渲染层一律只做投影，绝不自己累加（否则关掉应用再开就对不上了）。
+   */
+  const playStats = ref<Record<string, PlayStat>>({})
 
   /** 用 Snapshot 整体覆盖（唯一的状态来源）。 */
   function applySnapshot(snapshot: Snapshot): void {
     games.value = snapshot.games
     meta.value = snapshot.meta ?? {}
+    playStats.value = snapshot.playStats ?? {}
     running.value = indexRunning(snapshot.running ?? [])
   }
 
@@ -296,6 +306,7 @@ export const useLibraryStore = defineStore('library', () => {
     byId,
     metaFor,
     isRunning,
+    playStats,
     handleProcessEvent,
     refreshRunning,
     load,
