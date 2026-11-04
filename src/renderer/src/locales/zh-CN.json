@@ -276,6 +276,14 @@
   },
   "settings": {
     "title": "设置",
+    "groupCount": "{count} 项",
+    "group": {
+      "appearance": "外观",
+      "library": "游戏库",
+      "language": "语言",
+      "launch": "启动与引擎",
+      "data": "数据与版本"
+    },
     "appearance": "外观",
     "appearanceLight": "浅色",
     "appearanceDark": "深色",

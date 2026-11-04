@@ -21,7 +21,7 @@
   M3（故障自愈）、M2.6（海报墙与详情页）、M2.7（编辑页重构）、M3.5（进程管理）、M4.0（自实现启动）、
   M4.1（引擎清单自己维护）、**M4.2（彻底零上游）**
 - **已发布**：**v0.5.3**（含 M4.2 + 两个启动修复；GitHub `Yometenma/Tsumigeya`）
-- **测试**：**1106 个 / 48 文件**全绿；`typecheck` / `test` / `build` 三绿
+- **测试**：**1130 个 / 49 文件**全绿；`typecheck` / `test` / `build` 三绿
 - **M5.0 进行中**（`docs/M5.0-实施方案.md`）：12 项体验优化，**逐条提交**（用户拍板）
   - 顺序见方案 §12：B1 版本号 → U3+U4 筛选 → U5 选文件 → U6 去跳过 → N1 游玩时间
     → U1 批量 → U2 分类 → U10 全部安装 → U9 设置页 → U7 抽组件 → U8 编辑页重构
@@ -41,6 +41,8 @@
     （判据抽到 `shared/categories.ts`，46 条单测；**修掉删游戏不清分类归属的真 bug**）
   - ✅ **S8 / U10 已提交**：引擎页「可安装」加「全部安装」（与「全部更新」对称）
     （判据抽到 `shared/install-all.ts`，20 条单测）
+  - ✅ **S9 / U9 已提交**：设置页分组化（5 组可折叠）
+    （分组定义抽到 `shared/settings-groups.ts`，24 条单测含**源码级核对**「每个 Settings 字段恰好归一次」）
 
 ### 各模块在哪（一句话）
 
@@ -63,6 +65,7 @@
 | 批量选择/确认 | `src/shared/bulk-select.ts` | 选中集∩可见集（防误删）；确认弹窗列前 3 + 等 N；三态全选 |
 | 自定义分类 | `src/main/category-store.ts` + `src/shared/categories.ts` | **分离式存储**（顶层 categories/assignments，不改条目形状）；删分类绝不删游戏 |
 | 全部安装编排 | `src/shared/install-all.ts` | **失败不中断**（与 `updateAllEngines` 的 throw 策略刻意不同）；逐个 + 进度 |
+| 设置页分组 | `src/shared/settings-groups.ts` | 分组是**数据**；`SETTINGS_KEYS` + 源码级核对防「搬家漏项」；`BOOL_DEFAULTS` 是主进程镜像（有测试对齐） |
 
 ## 开发命令
 
@@ -153,6 +156,8 @@ Vue → Pinia → api/client → preload(window.tsumi.invoke)
 | 坑 | 对策 |
 |---|---|
 | **给 `GameMeta` 加字段必须同步改 `library-meta.ts` 的 `sanitize()`** | 它是落盘白名单，漏了会**静默丢弃**；改完先看 `saveGameMeta` 的返回键集 |
+| **设置页的分组漏项不报错** | 只看"页面能渲染"永远发现不了；`shared/settings-groups.ts` 的 `missingSettings()` + 一条扫 `client.ts` 的源码级测试会红 |
+| **`DEFAULT_SETTINGS` 不是全部默认值的来源** | `languageSwitchPrompt` / `diagnoseBeforeLaunch` 用的是 `saved.x === false ? false : true`（不在那个常量里）。渲染层的 `BOOL_DEFAULTS` 是镜像，有测试逐项对齐 |
 | **`library-meta.json` 现在有非游戏顶层键**（`categories` / `assignments`） | ① `load()` 必须按「键是纯数字」过滤，否则 `categories` 会被当成一个游戏；② `save()`/`remove()` 是**整体覆写**，写回前必须把非数字键带回去，否则一次改 DLsite 信息就把分类全抹了 |
 | **删游戏要清四处旁挂数据**：`games.json` / `library-meta` / `play-stats` / **`assignments`（分类归属）** | 漏掉后两项会在 id 复用时**把上一个游戏的游玩历史/分类安到新游戏头上**（saveGame 的 `Math.max(...)+1` 容易落回刚删的号）。回归：`test/delete-cleanup.test.ts` / `test/category-ipc.test.ts` |
 

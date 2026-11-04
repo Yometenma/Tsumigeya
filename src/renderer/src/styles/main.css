@@ -1040,6 +1040,84 @@ a {
   font-size: 12px;
 }
 
+/* ===== M5.0 S9（U9）：设置页分组 ===== */
+
+.settings-group {
+  margin-bottom: 12px;
+}
+
+.settings-group-head {
+  /* button 重置：长成一行可点的标题 */
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: var(--tsmg-radius);
+  background: transparent;
+  color: var(--tsmg-text);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  text-align: left;
+  transition: background 0.15s ease;
+}
+
+.settings-group-head:hover {
+  background: color-mix(in srgb, var(--tsmg-accent) 8%, transparent);
+}
+
+.settings-group-title {
+  margin-bottom: 10px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.settings-group-title-flat {
+  margin-bottom: 10px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+/* 折叠箭头：闭合是 ▸，展开转 90° 变 ▾ */
+.settings-group-caret {
+  display: inline-block;
+  transition: transform 0.18s ease;
+  font-size: 12px;
+  color: var(--tsmg-text-dim);
+}
+
+.settings-group-caret.is-open {
+  transform: rotate(90deg);
+}
+
+.settings-group-count {
+  margin-left: auto;
+  color: var(--tsmg-text-dim);
+  font-size: 11px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 收起的组里"被改过"的提示点 */
+.settings-group-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--tsmg-accent);
+}
+
+.settings-group-body {
+  padding-top: 2px;
+}
+
+/* 一套设置行之间留一点间距，免得挤成一片 */
+.settings-group-body .settings-row + .settings-row {
+  margin-top: 4px;
+}
+
 /* 卡片封面右上角的绿点（**没有关闭按钮**，D41 的精神） */
 .game-card-running {
   position: absolute;
