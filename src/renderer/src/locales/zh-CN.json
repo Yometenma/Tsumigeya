@@ -57,7 +57,12 @@
     "deleted": "已删除「{title}」",
     "count": "共 {count} 个游戏",
     "tagFilterActive": "标签：{tag}",
-    "clearFilter": "清除筛选"
+    "clearFilter": "清除筛选",
+    "alsoHas": "也有 {langs} 版",
+    "languageSwitchTitle": "要换成偏好的语言版吗？",
+    "languageSwitchMessage": "你点的是{current}版，库里还有{preferred}版「{title}」。",
+    "launchPreferred": "启动{lang}版",
+    "launchCurrent": "就启动这个"
   },
   "wizard": {
     "title": "添加游戏",
@@ -193,7 +198,17 @@
     "platform": "平台 {platform}",
     "saved": "设置已保存",
     "showAdultCovers": "显示 R18 作品封面",
-    "showAdultCoversHint": "关闭时（默认）会把 R18 作品的封面替换为占位图；作品信息照常获取，打开开关后立即显示。"
+    "showAdultCoversHint": "关闭时（默认）会把 R18 作品的封面替换为占位图；作品信息照常获取，打开开关后立即显示。",
+    "preferredLanguage": "首选游戏语言",
+    "fallbackLanguage": "次选",
+    "languagePreferenceHint": "当库里同一个游戏有多个语言版本时，启动非首选版本会提示你切换。选「不启用」可整体关闭这个功能。",
+    "languageSwitchPrompt": "启动非偏好语言版时提示",
+    "languageSwitchPromptHint": "开着的时候，点启动会先问你要不要换成偏好的语言版；关掉就不再提示，直接启动你点的那一个。",
+    "languageNone": "不启用",
+    "languageZh": "中文",
+    "languageJa": "日文",
+    "languageEn": "英文",
+    "languageKo": "韩文"
   },
   "task": {
     "running": "处理中…",
@@ -318,6 +333,7 @@
     "dlsiteNetwork": "网络请求失败：{reason}。DLsite 需要系统代理",
     "dlsiteParse": "无法解析 {rj} 的页面数据（DLsite 可能已改版）",
     "dlsiteGameRequired": "请先保存游戏，再保存 DLsite 信息",
-    "dlsiteSearchEmpty": "没有搜到「{keyword}」相关的作品，可换个关键词或直接填 RJ 号"
+    "dlsiteSearchEmpty": "没有搜到「{keyword}」相关的作品，可换个关键词或直接填 RJ 号",
+    "languagePreference": "语言偏好设置不合法：{value}"
   }
 }

@@ -19,6 +19,12 @@ export interface GameDraft extends Omit<GameRecord, 'id'> {
 
 export type Appearance = 'light' | 'dark' | 'system'
 
+/** M2.5-C：可识别的语言。 */
+export type GameLanguage = 'zh' | 'ja' | 'en' | 'ko'
+
+/** M2.5-C：语言偏好值（`none` = 不启用）。 */
+export type LanguagePreference = GameLanguage | 'none'
+
 export interface Settings {
   listView: boolean
   deletionConfirmation: boolean
@@ -33,6 +39,12 @@ export interface Settings {
    * 开启后立刻可见，无需重新请求。覆盖面判定见 `isAdultWork()`。
    */
   showAdultCovers: boolean
+  /** M2.5-C：首选语言（默认 zh）。 */
+  preferredLanguage: LanguagePreference
+  /** M2.5-C：次选语言（默认 ja）。 */
+  fallbackLanguage: LanguagePreference
+  /** M2.5-C：启动非偏好语言版时是否弹确认（可「不再询问」关掉）。 */
+  languageSwitchPrompt: boolean
 }
 
 export interface GameArgDef {
@@ -154,6 +166,16 @@ export type GameMeta = DlsiteWork
 export const EDITABLE_FIELDS = ['title', 'circle', 'coverUrl', 'registDate', 'price'] as const
 
 export type EditableField = (typeof EDITABLE_FIELDS)[number]
+
+// ===== M2.5-C：多语言版本偏好（docs/M2.5-实施方案.md §C）=====
+
+/** 一个多语言版本组（算法见 src/shared/language-group.ts）。 */
+export interface LanguageGroup {
+  /** 归一化后的组标题（仅展示/调试用）。 */
+  base: string
+  /** 成员：游戏 id + 该成员识别出的语言。 */
+  members: Array<{ id: string; lang: GameLanguage }>
+}
 
 // ===== M2.5-A：按名字搜索（docs/M2.5-实施方案.md §A.1）=====
 
@@ -324,6 +346,14 @@ export const api = {
    */
   refreshGameMeta: (gameId: string, refresh?: boolean, force?: boolean): Promise<Snapshot> =>
     bridge().invoke<Snapshot>('refreshGameMeta', { gameId, refresh, force }),
+
+  /**
+   * M2.5-C：多语言版本分组（纯本地计算、绕队列、毫秒级）。
+   * 只认「两者都识别出语言且不同 + 标题相似度过阈值」的游戏，
+   * 绝不把没有语言标记的游戏拉进组（§C.2）。
+   */
+  languageGroups: (threshold?: number): Promise<{ groups: LanguageGroup[] }> =>
+    bridge().invoke<{ groups: LanguageGroup[] }>('languageGroups', { threshold }),
 
   clearGameMeta: (gameId: string): Promise<Snapshot> => bridge().invoke<Snapshot>('clearGameMeta', { gameId })
 }

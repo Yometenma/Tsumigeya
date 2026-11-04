@@ -18,6 +18,7 @@ import { component, failure, type GameDraft } from './games-store'
 import { extractArchive } from './extract'
 import { detectRjFromPath } from './dlsite'
 import { mergeWork, normalizeEditedFields } from './library-meta'
+import { groupByLanguage } from '../shared/language-group'
 import type { CoreHost, CoreEvent, ProgressBridge, RemoteManifest } from './core-host'
 
 const runFile = promisify(execFile)
@@ -44,7 +45,9 @@ export const OFF_QUEUE_METHODS: ReadonlySet<string> = new Set([
   'dlsiteDetectRJ',
   'dlsiteLookup',
   // M2.5-A：按名字搜索——纯网络只读，**不写任何盘**，排在 60 秒更新检查后面就是「搜索按钮点了没反应」。
-  'dlsiteSearch'
+  'dlsiteSearch',
+  // M2.5-C：多语言分组——纯本地计算，只读 games.json，毫秒级。
+  'languageGroups'
 ])
 
 export interface EngineUpdate {
@@ -667,6 +670,39 @@ export function createDispatcher(deps: IpcDeps): Dispatcher {
       case 'clearGameMeta': {
         host.meta.remove(String(params.gameId ?? ''))
         return snapshot()
+      }
+
+      /**
+       * M2.5-C：多语言版本分组（§C.2）。
+       *
+       * 纯本地计算：只读 games.json + DLsite 元数据（用于取标题），**不写盘、不发网络**。
+       * 算法在 src/shared/language-group.ts（主进程 / 渲染层 / 测试共用一份）。
+       *
+       * 标题来源优先级：DLsite 元数据的 title（日文原名）→ GameRecord.gameTitle。
+       * 用元数据优先是因为用户在库里存的常是中文译名，而"是不是同一款"最好按原名判断；
+       * 但元数据可能不存在，所以必须有 gameTitle 兜底。
+       */
+      case 'languageGroups': {
+        const games = host.store.loadGames()
+        const metaMap = host.meta.load()
+        const candidates = Object.entries(games).map(([id, record]) => ({
+          id,
+          // 元数据里的 title 是作者写的原名，比用户改过的库标题更适合做相似度比较；
+          // 但若用户手动编辑过标题（editedFields 含 title），那应该以用户意志为准
+          title: (() => {
+            const meta = metaMap[id] as { title?: string; editedFields?: string[] } | undefined
+            if (meta?.title && !(meta.editedFields ?? []).includes('title')) return meta.title
+            return record.gameTitle
+          })(),
+          path: record.gamePath
+        }))
+        const groups = groupByLanguage(candidates, {
+          threshold:
+            typeof params.threshold === 'number' && Number.isFinite(params.threshold)
+              ? params.threshold
+              : undefined
+        })
+        return { groups }
       }
 
       default:

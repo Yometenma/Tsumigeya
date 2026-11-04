@@ -9,8 +9,10 @@ import {
   type DlsiteWork,
   type EditableField,
   type GameDraft,
+  type GameLanguage,
   type GameMeta,
   type GameRecord,
+  type LanguageGroup,
   type Snapshot
 } from '@/api/client'
 
@@ -22,6 +24,10 @@ export const useLibraryStore = defineStore('library', () => {
   const tagFilter = ref<string | null>(null)
   /** 只看有封面的游戏（纯本地筛选，不新增 settings 键，方案 §6.3）。 */
   const onlyWithMeta = ref(false)
+  /** M2.5-C：每个游戏识别出的语言（来自 languageGroups）。 */
+  const languageOf = ref<Record<string, GameLanguage>>({})
+  /** M2.5-C：每个游戏同组的**其他**语言版本（用于「也有 zh 版」标记）。 */
+  const alternatesOf = ref<Record<string, Array<{ id: string; lang: GameLanguage }>>>({})
 
   /** 用 Snapshot 整体覆盖（唯一的状态来源）。 */
   function applySnapshot(snapshot: Snapshot): void {
@@ -137,6 +143,36 @@ export const useLibraryStore = defineStore('library', () => {
     applySnapshot(await api.clearGameMeta(gameId))
   }
 
+  /**
+   * M2.5-C：多语言版本分组（纯本地计算、绕队列）。
+   * 返回 groups 的同时派生两个查询用的 Map：
+   * - `languageOf[id]` = 该游戏识别出的语言
+   * - `alternatesOf[id]` = 同组的**其他**语言版本（用于卡片「也有 zh 版」标记）
+   */
+  async function loadLanguageGroups(threshold?: number): Promise<void> {
+    try {
+      const result = await api.languageGroups(threshold)
+      applyLanguageGroups(result.groups)
+    } catch {
+      // 分组失败不能影响游戏库正常使用（它只是锦上添花的功能）
+      applyLanguageGroups([])
+    }
+  }
+
+  /** 纯本地更新（测试与探针可直接喂数据，不必走 IPC）。 */
+  function applyLanguageGroups(groups: LanguageGroup[]): void {
+    const language: Record<string, GameLanguage> = {}
+    const alternates: Record<string, Array<{ id: string; lang: GameLanguage }>> = {}
+    for (const group of groups) {
+      for (const member of group.members) {
+        language[member.id] = member.lang
+        alternates[member.id] = group.members.filter((other) => other.id !== member.id)
+      }
+    }
+    languageOf.value = language
+    alternatesOf.value = alternates
+  }
+
   function clearFilters(): void {
     search.value = ''
     tagFilter.value = null
@@ -162,6 +198,10 @@ export const useLibraryStore = defineStore('library', () => {
     detectRj,
     lookupRj,
     searchDlsite,
+    languageOf,
+    alternatesOf,
+    loadLanguageGroups,
+    applyLanguageGroups,
     saveGameMeta,
     refreshGameMeta,
     clearGameMeta,

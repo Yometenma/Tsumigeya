@@ -26,6 +26,12 @@ export type GameMap = Record<string, Omit<GameRecord, 'id'>>
 
 export type Appearance = 'light' | 'dark' | 'system'
 
+/** M2.5-C：可识别的语言（与 src/shared/game-language.ts 的 GameLanguage 一致）。 */
+export type LanguagePreference = 'zh' | 'ja' | 'en' | 'ko'
+
+/** M2.5-C：语言偏好值（`none` = 不启用该功能）。 */
+export type LanguagePreferenceOrNone = LanguagePreference | 'none'
+
 export interface Settings {
   listView: boolean
   deletionConfirmation: boolean
@@ -33,6 +39,15 @@ export interface Settings {
   checkModuleUpdatesOnStartup: boolean
   appearance: Appearance
   language: string
+  /**
+   * M2.5-C：首选语言。启动「非首选语言版」时会提示切换到它（§C.4/C.5）。
+   * 默认 zh（用户是中文用户）。
+   */
+  preferredLanguage: LanguagePreferenceOrNone
+  /** M2.5-C：次选语言。没有首选版本时退而求其次。默认 ja（玩日系游戏）。 */
+  fallbackLanguage: LanguagePreferenceOrNone
+  /** M2.5-C：启动非偏好语言版时是否弹确认（用户可勾「不再询问」关掉它）。 */
+  languageSwitchPrompt: boolean
   /** 保留上游 / 未来版本写入的未知键（例如旧的 darkTheme）。 */
   [key: string]: unknown
 }
@@ -107,13 +122,29 @@ export function writeJSON(file: string, value: unknown): void {
   }
 }
 
-const DEFAULT_SETTINGS: Omit<Settings, 'appearance' | 'language'> = {
+const DEFAULT_SETTINGS: Omit<
+  Settings,
+  'appearance' | 'language' | 'preferredLanguage' | 'fallbackLanguage' | 'languageSwitchPrompt'
+> = {
   listView: false,
   deletionConfirmation: true,
   nonInstalledAutodetect: true,
   checkModuleUpdatesOnStartup: true,
   // R18 封面保护默认**开启**（即打码）。只影响渲染，元数据照常抓取与保存。
   showAdultCovers: false
+}
+
+/** M2.5-C：语言偏好默认值（§7-① 用户 2026-11-04 确认：首选 zh、次选 ja）。 */
+const DEFAULT_PREFERRED_LANGUAGE: LanguagePreferenceOrNone = 'zh'
+const DEFAULT_FALLBACK_LANGUAGE: LanguagePreferenceOrNone = 'ja'
+
+/** 校验语言偏好值：非法值一律回落到默认（不信任磁盘上的任意字符串）。 */
+export function validLanguagePreference(value: unknown, fallback: LanguagePreferenceOrNone): LanguagePreferenceOrNone {
+  if (value === 'none') return 'none'
+  if (typeof value === 'string' && (value === 'zh' || value === 'ja' || value === 'en' || value === 'ko')) {
+    return value
+  }
+  return fallback
 }
 
 /** 把磁盘上的原始 settings 归一化（含上游 darkTheme 兼容，照 worker.cjs:173-177）。 */
@@ -129,7 +160,12 @@ export function normalizeSettings(saved: Record<string, unknown> = {}): Settings
     ...DEFAULT_SETTINGS,
     ...saved,
     appearance,
-    language: validLanguage(saved.language) ? saved.language : 'system'
+    language: validLanguage(saved.language) ? saved.language : 'system',
+    // M2.5-C：语言偏好。旧库（M2 时期）没有这三个键 → 落到默认值（首选 zh、次选 ja）。
+    preferredLanguage: validLanguagePreference(saved.preferredLanguage, DEFAULT_PREFERRED_LANGUAGE),
+    fallbackLanguage: validLanguagePreference(saved.fallbackLanguage, DEFAULT_FALLBACK_LANGUAGE),
+    // 默认 true = 弹确认（§7-⑤ 用户确认「弹，可不再询问」）
+    languageSwitchPrompt: saved.languageSwitchPrompt === false ? false : true
   } as Settings
 }
 
@@ -215,6 +251,21 @@ export function createGameStore(dataDir: string): GameStore {
     }
     if (Object.hasOwn(partial, 'language') && !validLanguage(partial.language)) {
       throw failure('error.language', 'Invalid language preference')
+    }
+    // M2.5-C：语言偏好显式校验（非法值报错而不是静默落回默认——
+    // 因为这三个键决定「启动时会不会被提示」，静默改正会让用户以为设置没保存）
+    for (const key of ['preferredLanguage', 'fallbackLanguage'] as const) {
+      if (Object.hasOwn(partial, key)) {
+        const value = partial[key]
+        if (value !== 'none' && !['zh', 'ja', 'en', 'ko'].includes(value as string)) {
+          throw failure('error.languagePreference', 'Invalid language preference', { value: String(value) })
+        }
+      }
+    }
+    if (Object.hasOwn(partial, 'languageSwitchPrompt') && typeof partial.languageSwitchPrompt !== 'boolean') {
+      throw failure('error.languagePreference', 'Invalid language prompt flag', {
+        value: String(partial.languageSwitchPrompt)
+      })
     }
     writeJSON(settingsFile, next)
     return normalizeSettings(next)

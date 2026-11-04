@@ -166,6 +166,101 @@ describe('未知命令', () => {
   })
 })
 
+// ===== M2.5-C：languageGroups（§C.2）=====
+
+describe('languageGroups', () => {
+  test('★ 用户真实样本：傭兵の冒険 + 傭兵の冒険/傭兵の冒険_CHN → 成组（ja + zh）', async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'tsmg-lang-'))
+    const host2 = createCoreHost({
+      dataDir: dir,
+      corePath: resolveCorePath({ isPackaged: false, appPath: process.cwd() }),
+      fetchImpl: (async () => new Response('', { status: 404 })) as never
+    })
+    // 种两条：日文原版在父目录，中文版在内层（用户 E:\Game\RPG 的真实布局）
+    host2.store.saveGame({
+      game: { gameTitle: '傭兵の冒険', gamePath: 'E:/Game/RPG/傭兵の冒険', gameEngine: 'mkxpz' }
+    })
+    host2.store.saveGame({
+      game: {
+        gameTitle: '傭兵の冒険_CHN',
+        gamePath: 'E:/Game/RPG/傭兵の冒険/傭兵の冒険_CHN',
+        gameEngine: 'mkxpz'
+      }
+    })
+    const result = (await createDispatcher({ host: host2 }).dispatch(
+      'languageGroups',
+      {},
+      new AbortController().signal
+    )) as { groups: Array<{ members: Array<{ id: string; lang: string }> }> }
+    expect(result.groups).toHaveLength(1)
+    const langs = result.groups[0].members.map((member) => member.lang).sort()
+    expect(langs).toEqual(['ja', 'zh'])
+    // 成员数 2（就是这两个游戏）
+    expect(result.groups[0].members).toHaveLength(2)
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  test('只有日文原版一个时不成组', async () => {
+    host.store.saveGame({
+      game: { gameTitle: '傭兵の冒険', gamePath: 'E:/Game/RPG/傭兵の冒険', gameEngine: 'mkxpz' }
+    })
+    const result = (await dispatcher().dispatch('languageGroups', {}, new AbortController().signal)) as {
+      groups: unknown[]
+    }
+    expect(result.groups).toEqual([])
+  })
+
+  test('空库 → 空组', async () => {
+    const result = (await dispatcher().dispatch('languageGroups', {}, new AbortController().signal)) as {
+      groups: unknown[]
+    }
+    expect(result.groups).toEqual([])
+  })
+
+  test('元数据里的原文标题优先（未被用户编辑过时）', async () => {
+    host.store.saveGame({
+      game: { gameTitle: '佣兵冒险（中文译名）', gamePath: 'E:/g/傭兵の冒険/傭兵の冒険_CHN', gameEngine: 'mkxpz' }
+    })
+    host.store.saveGame({
+      game: { gameTitle: '傭兵の冒険_EN', gamePath: 'E:/g/傭兵の冒険_EN', gameEngine: 'mkxpz' }
+    })
+    // 给第一条存一个 DLsite 原名（未被编辑）
+    await dispatcher().dispatch(
+      'saveGameMeta',
+      { gameId: '1', work: { rj: 'RJ306254', title: '傭兵の冒険', fetchedAt: 'now' } },
+      new AbortController().signal
+    )
+    const result = (await dispatcher().dispatch('languageGroups', {}, new AbortController().signal)) as {
+      groups: Array<{ members: unknown[] }>
+    }
+    // 用原名「傭兵の冒険」与「傭兵の冒険_EN」比较 → 归一化后一致 → 成组
+    expect(result.groups).toHaveLength(1)
+  })
+
+  test('用户手动改过标题时以用户改的为准（不被原文标题覆盖）', async () => {
+    host.store.saveGame({
+      game: { gameTitle: 'x', gamePath: 'E:/g/Game/Game_CHN', gameEngine: 'mkxpz' }
+    })
+    host.store.saveGame({
+      game: { gameTitle: '完全不相关的另一个游戏_EN', gamePath: 'E:/g/Other_EN', gameEngine: 'mkxpz' }
+    })
+    await dispatcher().dispatch(
+      'saveGameMeta',
+      {
+        gameId: '1',
+        work: { rj: 'RJ1', title: '傭兵の冒険', fetchedAt: 'now' },
+        editedFields: ['title']
+      },
+      new AbortController().signal
+    )
+    const result = (await dispatcher().dispatch('languageGroups', {}, new AbortController().signal)) as {
+      groups: unknown[]
+    }
+    // 用户改过标题 → 不采用 DLsite 原名，两条相似度不够 → 不成组
+    expect(result.groups).toEqual([])
+  })
+})
+
 // ===== M2.5-B：可编辑元数据的 IPC 行为（§B.2）=====
 //
 // 这两条是 S3 的核心验收：**被编辑字段刷新不丢**。

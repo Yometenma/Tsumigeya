@@ -11,7 +11,12 @@ const DEFAULT_SETTINGS: Settings = {
   appearance: 'system',
   language: 'system',
   // 与主进程 games-store.ts 的 DEFAULT_SETTINGS 保持一致：默认打码。
-  showAdultCovers: false
+  showAdultCovers: false,
+  // M2.5-C：§7-① 用户确认 —— 首选中文（中文用户）、次选日文（玩日系游戏）。
+  preferredLanguage: 'zh',
+  fallbackLanguage: 'ja',
+  // §7-⑤ 用户确认：弹确认，但可以「不再询问」。
+  languageSwitchPrompt: true
 }
 
 export const useSettingsStore = defineStore('settings', () => {

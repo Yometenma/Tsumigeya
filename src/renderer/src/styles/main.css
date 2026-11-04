@@ -491,8 +491,17 @@ a {
   white-space: nowrap;
 }
 
-/* ===== M2.5-B：可编辑元数据字段（编辑页）===== */
+/* ===== M2.5-C：语言标记（卡片/列表）===== */
 
+.game-card-lang,
+.game-row-lang {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+/* ===== M2.5-B：可编辑元数据字段（编辑页）===== */
 .meta-field {
   display: flex;
   align-items: center;

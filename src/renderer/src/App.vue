@@ -44,6 +44,8 @@ onMounted(async () => {
     library.applySnapshot(snapshot)
     settings.applySnapshot(snapshot)
     engines.applySnapshot(snapshot)
+    // M2.5-C：多语言分组（纯本地计算、毫秒级）。失败不影响库页使用，故不阻塞也不报错。
+    void library.loadLanguageGroups()
     if (snapshot.settings.checkModuleUpdatesOnStartup) {
       // 启动检查更新：失败静默（引擎页可以看到 warning）
       void task

@@ -4,8 +4,9 @@
 // 三级降级都做成 computed，模板里不写任何类型断言（AGENTS.md 的「模板禁 TS 断言」）。
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { iconUrl, type GameMeta, type GameRecord } from '@/api/client'
+import { iconUrl, type GameLanguage, type GameMeta, type GameRecord } from '@/api/client'
 import { isAdultWork } from '../../../shared/age-rating'
+import { GAME_LANGUAGES, languageShortName } from '../../../shared/game-language'
 import { useSettingsStore } from '@/stores/settings'
 
 const props = defineProps<{
@@ -13,6 +14,10 @@ const props = defineProps<{
   variant: 'card' | 'row'
   /** M2：DLsite 元数据（可选，没有就走原来的本地图标）。 */
   meta?: GameMeta
+  /** M2.5-C：该游戏识别出的语言（没有则不显示语言标记）。 */
+  language?: GameLanguage
+  /** M2.5-C：同组的其他语言版本（用于「也有 zh 版」提示）。 */
+  alternates?: Array<{ lang: GameLanguage }>
 }>()
 
 const emit = defineEmits<{
@@ -45,6 +50,35 @@ const placeholder = computed(() => props.game.gameTitle.trim().slice(0, 1).toUpp
 /** 副标题：有社团名就显示社团，否则退回引擎名（列表里更有信息量）。 */
 const subtitle = computed(() => props.meta?.circle?.trim() || props.game.gameEngine)
 
+/**
+ * M2.5-C：该游戏自身的语言标记（如「中文」）。
+ * 只在识别出语言时显示——没识别出来就什么都不标（绝不瞎猜，§C.2）。
+ */
+const ownLanguageLabel = computed(() => {
+  if (!props.language) return ''
+  return languageShortName(props.language)
+})
+
+/**
+ * M2.5-C：「也有 zh 版」提示。
+ * 组内其他语言版本的语言名（去重、按固定顺序），例如本条目是 ja、组里还有 zh → 「也有 中文 版」。
+ */
+const alternateLanguages = computed(() => {
+  // ⚠️ 只保留**与自身不同**的语言：组里可能有两个中文版（重复安装），
+  // 中文版提示「也有中文版」是废话，属于实测发现的 UI 瑕疵。
+  const langs = (props.alternates ?? [])
+    .map((item) => item.lang)
+    .filter((lang) => lang !== props.language)
+  if (langs.length === 0) return []
+  // 去重 + 按 GAME_LANGUAGES 的固定顺序（避免渲染顺序随数据抖动）
+  return [...new Set(langs)].sort(
+    (a, b) => GAME_LANGUAGES.indexOf(a) - GAME_LANGUAGES.indexOf(b)
+  )
+})
+
+/** 把语言列表拼成「中文 / 英文」这样的展示串（模板里不写复杂表达式）。 */
+const alternateText = computed(() => alternateLanguages.value.map((lang) => languageShortName(lang)).join(' / '))
+
 /** 换了游戏或换了封面地址就重置失败标记，否则改了元数据还显示占位。 */
 watch(
   () => [props.game.id, props.meta?.coverUrl] as const,
@@ -73,6 +107,13 @@ function onImageError(): void {
       <div class="game-card-title" :title="game.gameTitle">{{ game.gameTitle }}</div>
       <div class="game-card-meta">{{ subtitle }}</div>
       <div v-if="meta?.registDate" class="game-card-meta">{{ t('dlsite.fieldReleased') }} {{ meta.registDate }}</div>
+      <!-- M2.5-C：语言标记 + 「也有 zh 版」（只在本条识别出语言时显示） -->
+      <div v-if="ownLanguageLabel || alternateLanguages.length" class="game-card-lang">
+        <el-tag v-if="ownLanguageLabel" size="small">{{ ownLanguageLabel }}</el-tag>
+        <el-tag v-if="alternateLanguages.length" size="small" type="info">
+          {{ t('library.alsoHas', { langs: alternateText }) }}
+        </el-tag>
+      </div>
       <div class="row" style="margin-top: 8px; gap: 6px">
         <el-button size="small" type="primary" @click="emit('launch', game.id)">{{ t('library.launch') }}</el-button>
         <el-button size="small" @click="emit('edit', game.id)">{{ t('library.edit') }}</el-button>
@@ -93,6 +134,13 @@ function onImageError(): void {
       <div class="game-row-meta">
         {{ subtitle }}
         <template v-if="tags.length"> · {{ tags.join(' / ') }}</template>
+      </div>
+      <!-- M2.5-C：语言标记 + 「也有 zh 版」 -->
+      <div v-if="ownLanguageLabel || alternateLanguages.length" class="game-row-lang">
+        <el-tag v-if="ownLanguageLabel" size="small">{{ ownLanguageLabel }}</el-tag>
+        <el-tag v-if="alternateLanguages.length" size="small" type="info">
+          {{ t('library.alsoHas', { langs: alternateText }) }}
+        </el-tag>
       </div>
     </div>
     <div class="game-row-actions">

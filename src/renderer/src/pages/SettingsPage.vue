@@ -27,6 +27,15 @@ async function patch(partial: Partial<Settings>): Promise<void> {
   }
 }
 
+/** M2.5-C：语言偏好选项（首个是"不启用"，让用户可以整体关掉这个功能）。 */
+const languageOptions = computed<Array<{ label: string; value: string }>>(() => [
+  { label: t('settings.languageNone'), value: 'none' },
+  { label: t('settings.languageZh'), value: 'zh' },
+  { label: t('settings.languageJa'), value: 'ja' },
+  { label: t('settings.languageEn'), value: 'en' },
+  { label: t('settings.languageKo'), value: 'ko' }
+])
+
 /**
  * 外观切换。写成函数而不是在模板里内联 `$event as Appearance`：
  * 模板表达式里不能写 TS 类型断言，否则该页面整块渲染会抛 SyntaxError 而白屏。
@@ -134,6 +143,42 @@ async function copyDataPath(): Promise<void> {
       <el-switch
         :model-value="settings.settings.showAdultCovers"
         @update:model-value="patch({ showAdultCovers: $event === true })"
+      />
+    </div>
+
+    <!-- M2.5-C：多语言版本偏好（§C.4）。与 DLsite 无关，是本地多个语言版本文件夹的事。 -->
+    <div class="settings-row">
+      <div class="settings-row-main">
+        <div class="settings-row-title">{{ t('settings.preferredLanguage') }}</div>
+        <div class="settings-row-hint">{{ t('settings.languagePreferenceHint') }}</div>
+      </div>
+      <div class="row" style="flex: 0 0 auto; gap: 8px">
+        <el-select
+          :model-value="settings.settings.preferredLanguage"
+          style="width: 120px"
+          @update:model-value="patch({ preferredLanguage: $event })"
+        >
+          <el-option v-for="option in languageOptions" :key="option.value" :label="option.label" :value="option.value" />
+        </el-select>
+        <span class="hint">{{ t('settings.fallbackLanguage') }}</span>
+        <el-select
+          :model-value="settings.settings.fallbackLanguage"
+          style="width: 120px"
+          @update:model-value="patch({ fallbackLanguage: $event })"
+        >
+          <el-option v-for="option in languageOptions" :key="option.value" :label="option.label" :value="option.value" />
+        </el-select>
+      </div>
+    </div>
+
+    <div class="settings-row">
+      <div class="settings-row-main">
+        <div class="settings-row-title">{{ t('settings.languageSwitchPrompt') }}</div>
+        <div class="settings-row-hint">{{ t('settings.languageSwitchPromptHint') }}</div>
+      </div>
+      <el-switch
+        :model-value="settings.settings.languageSwitchPrompt"
+        @update:model-value="patch({ languageSwitchPrompt: $event === true })"
       />
     </div>
   </section>

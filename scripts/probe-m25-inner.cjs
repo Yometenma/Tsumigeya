@@ -388,6 +388,117 @@ app.whenReady().then(async () => {
     )
 
     record('finalConsoleErrors2', consoleErrors.slice())
+
+    // ===== ⑩ S6：多语言标记与启动确认（§C.5）=====
+    // 造出真实的「同一游戏两个语言版」布局，验三件事：
+    //   1) 库页卡片出现语言标记与「也有 xx 版」
+    //   2) 启动非偏好语言版时弹确认
+    //   3) 选「就启动这个」→ 尊重用户选择（不擅自替换成另一个游戏）
+    const langSeed = await evaluate(
+      window,
+      `(async () => {
+         const base = ${JSON.stringify((dataDir || '.') + '/lang')}
+         const ja = await window.tsumi.invoke('saveGame', { id: undefined, game: {
+           gameTitle: '傭兵の冒険', gamePath: base + '/傭兵の冒険', gameEngine: 'mkxpz'
+         } })
+         const zh = await window.tsumi.invoke('saveGame', { id: undefined, game: {
+           gameTitle: '傭兵の冒険_CHN', gamePath: base + '/傭兵の冒険/傭兵の冒険_CHN', gameEngine: 'mkxpz'
+         } })
+         return { total: zh.games.length }
+       })()`
+    )
+    record('langSeed', langSeed)
+
+    // 直接验分组 IPC（真实数据走主进程逻辑）
+    record(
+      'languageGroupsIpc',
+      await evaluate(
+        window,
+        `window.tsumi.invoke('languageGroups').then(
+           (value) => ({ ok: true, count: value.groups.length, groups: value.groups }),
+           (error) => ({ ok: false, key: error.key ?? null })
+         )`
+      )
+    )
+
+    // 重载 → 库页应显示语言标记
+    const loadedLang = new Promise((resolve) => window.webContents.once('did-finish-load', resolve))
+    window.webContents.reload()
+    await loadedLang
+    await new Promise((resolve) => setTimeout(resolve, 2000))
+    // 重载后会停在上一次的 hash（#/game/x），必须先回库页才看得到卡片
+    await evaluate(window, "location.hash = '#/library'")
+    await new Promise((resolve) => setTimeout(resolve, 1800))
+
+    record(
+      'libraryLangMarkers',
+      await evaluate(
+        window,
+        `(() => {
+           const tags = Array.from(document.querySelectorAll('.game-card-lang .el-tag, .game-row-lang .el-tag'))
+             .map((tag) => (tag.textContent || '').trim())
+           return {
+             tagCount: tags.length,
+             tags,
+             hasAlsoHas: document.body.innerText.includes('也有'),
+             langWords: ['中文', '日文'].filter((w) => document.body.innerText.includes(w))
+           }
+         })()`
+      )
+    )
+
+    // 启动确认：点日文原版「启动」→ 应弹「要换成偏好的语言版吗？」
+    record(
+      'launchPromptShown',
+      await evaluate(
+        window,
+        `(async () => {
+           const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+           const rows = Array.from(document.querySelectorAll('.game-row, .game-card'))
+           const jaRow = rows.find((row) => {
+             const title = row.querySelector('.game-row-title, .game-card-title')?.textContent || ''
+             return title.trim() === '傭兵の冒険'
+           })
+           if (!jaRow) return { clicked: false, rows: rows.length }
+           const btn = Array.from(jaRow.querySelectorAll('button'))
+             .find((b) => (b.textContent || '').trim() === '启动')
+           if (!btn) return { clicked: false, reason: 'no launch button' }
+           btn.click()
+           await sleep(700)
+           const box = document.querySelector('.el-message-box')
+           return {
+             clicked: true,
+             boxShown: !!box,
+             boxText: box ? (box.innerText || '').replace(/\s+/g, ' ').slice(0, 160) : '',
+             hasSwitchTitle: document.body.innerText.includes('要换成偏好的语言版吗'),
+             mentionsPreferred: box ? (box.innerText || '').includes('中文') : false
+           }
+         })()`
+      )
+    )
+
+    // 点「就启动这个」→ 应尊重用户选择
+    record(
+      'launchCurrentKeepsChoice',
+      await evaluate(
+        window,
+        `(async () => {
+           const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+           const box = document.querySelector('.el-message-box')
+           if (!box) return { ok: false, reason: 'no box' }
+           const buttons = Array.from(box.querySelectorAll('button'))
+             .map((b) => (b.textContent || '').trim())
+           const cancelBtn = Array.from(box.querySelectorAll('button'))
+             .find((b) => (b.textContent || '').trim() === '就启动这个')
+           if (!cancelBtn) return { ok: false, reason: 'no cancel button', buttons }
+           cancelBtn.click()
+           await sleep(900)
+           return { ok: true, boxClosed: !document.querySelector('.el-message-box'), buttons }
+         })()`
+      )
+    )
+
+
   } catch (error) {
     console.error('[probe] 探针本身出错：', error)
     results.probeError = String(error)

@@ -15,7 +15,9 @@ describe('OFF_QUEUE_METHODS', () => {
       'dlsiteDetectRJ',
       'dlsiteLookup',
       // M2.5-A：按名字搜索——只读网络、不写盘，但用户点一下就等结果
-      'dlsiteSearch'
+      'dlsiteSearch',
+      // M2.5-C：多语言分组——纯本地计算（只读 games.json + meta），毫秒级
+      'languageGroups'
     ]) {
       expect(OFF_QUEUE_METHODS.has(method)).toBe(true)
     }
@@ -47,6 +49,6 @@ describe('OFF_QUEUE_METHODS', () => {
 
   test('名单不会意外膨胀（数量与已知命令对齐）', () => {
     // 这条断言的作用：有人偷偷加了命令却没更新这里 → 测试红了，逼他重新想一遍准入标准。
-    expect(OFF_QUEUE_METHODS.size).toBe(7)
+    expect(OFF_QUEUE_METHODS.size).toBe(8)
   })
 })

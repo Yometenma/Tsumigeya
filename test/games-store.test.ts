@@ -168,7 +168,12 @@ describe('settings', () => {
       appearance: 'system',
       language: 'system',
       // R18 封面保护默认开启（打码）；只影响渲染，元数据照常抓取与保存。
-      showAdultCovers: false
+      showAdultCovers: false,
+      // M2.5-C：§7-① 用户确认 —— 首选中文、次选日文；
+      // §7-⑤ 默认弹确认（用户可「不再询问」）
+      preferredLanguage: 'zh',
+      fallbackLanguage: 'ja',
+      languageSwitchPrompt: true
     })
   })
 
