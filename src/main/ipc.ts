@@ -41,7 +41,9 @@ export const OFF_QUEUE_METHODS: ReadonlySet<string> = new Set([
   'versions',
   // M2：RJ 识别只读本地文件；DLsite 查询只写 <dataDir>/dlsite/ 自己的缓存目录（D21）。
   'dlsiteDetectRJ',
-  'dlsiteLookup'
+  'dlsiteLookup',
+  // M2.5-A：按名字搜索——纯网络只读，**不写任何盘**，排在 60 秒更新检查后面就是「搜索按钮点了没反应」。
+  'dlsiteSearch'
 ])
 
 export interface EngineUpdate {
@@ -606,6 +608,18 @@ export function createDispatcher(deps: IpcDeps): Dispatcher {
           refresh: params.refresh === true,
           signal
         })
+
+      /**
+       * M2.5-A：按名字搜索（§A.1）。
+       * **只读网络、不写盘**——搜索结果只回给渲染层做候选列表，用户点选后才走 dlsiteLookup + saveGameMeta。
+       * 所以它进 OFF_QUEUE_METHODS（只读且用户要立刻看到结果）。
+       */
+      case 'dlsiteSearch': {
+        const keyword = String(params.keyword ?? '')
+        const category = typeof params.category === 'string' ? params.category : undefined
+        const result = await host.dlsite.searchWorks({ keyword, category, signal })
+        return result
+      }
 
       case 'saveGameMeta': {
         const gameId = String(params.gameId ?? '')

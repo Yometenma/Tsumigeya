@@ -249,7 +249,20 @@
     "noMeta": "尚未获取 DLsite 信息",
     "coverMissing": "封面加载失败",
     "onlyWithMeta": "只看有封面的游戏",
-    "adultCoverHidden": "R18 封面已隐藏"
+    "adultCoverHidden": "R18 封面已隐藏",
+    "search": "按名字搜索",
+    "searchTitle": "按名字搜索 DLsite",
+    "searchKeywordLabel": "关键词",
+    "searchKeywordPlaceholder": "例如作品名的一部分（日文原名更容易搜到）",
+    "searchSubmit": "搜索",
+    "searching": "正在搜索 DLsite…",
+    "searchHint": "搜索结果可能不完全准确，请从下面的列表里挑出正确的作品。点一行即填入它的 RJ 号。",
+    "searchEmpty": "没有搜到「{keyword}」相关的作品，可换个关键词或直接填 RJ 号",
+    "searchNoKeyword": "请先填关键词",
+    "searchResultsCount": "找到 {count} 个候选作品",
+    "searchTruncated": "只显示前 {count} 条，没搜到想要的作品就换个更准确的关键词",
+    "searchPick": "点选",
+    "searchClose": "收起"
   },
   "error": {
     "invalidObject": "数据文件格式不正确：{file}",
@@ -291,6 +304,7 @@
     "dlsiteTimeout": "访问 DLsite 超时，请确认系统代理已开启后重试",
     "dlsiteNetwork": "网络请求失败：{reason}。DLsite 需要系统代理",
     "dlsiteParse": "无法解析 {rj} 的页面数据（DLsite 可能已改版）",
-    "dlsiteGameRequired": "请先保存游戏，再保存 DLsite 信息"
+    "dlsiteGameRequired": "请先保存游戏，再保存 DLsite 信息",
+    "dlsiteSearchEmpty": "没有搜到「{keyword}」相关的作品，可换个关键词或直接填 RJ 号"
   }
 }

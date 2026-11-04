@@ -5,6 +5,7 @@ import { computed, ref } from 'vue'
 import {
   api,
   type DetectFolderResult,
+  type DlsiteSearchHit,
   type DlsiteWork,
   type GameDraft,
   type GameMeta,
@@ -100,6 +101,15 @@ export const useLibraryStore = defineStore('library', () => {
     return api.dlsiteLookup(rj, refresh)
   }
 
+  /**
+   * M2.5-A：按名字搜索 DLsite，返回候选列表（只读、不写盘）。
+   * **不自动选第一条**——搜索精度一般（实测搜「傭兵」首条不是目标作品），要让用户自己点选。
+   */
+  async function searchDlsite(keyword: string, category?: string): Promise<DlsiteSearchHit[]> {
+    const result = await api.dlsiteSearch(keyword, category)
+    return result.results
+  }
+
   /** M2：把查询结果落盘（用户点「保存」时才调）。 */
   async function saveGameMeta(gameId: string, work: DlsiteWork): Promise<Snapshot> {
     const snapshot = await api.saveGameMeta(gameId, { work })
@@ -143,6 +153,7 @@ export const useLibraryStore = defineStore('library', () => {
     detectFolder,
     detectRj,
     lookupRj,
+    searchDlsite,
     saveGameMeta,
     refreshGameMeta,
     clearGameMeta,

@@ -422,6 +422,75 @@ a {
   color: var(--tsmg-text-dim);
 }
 
+/* ===== M2.5-A：DLsite 搜索候选列表（编辑页）===== */
+
+.search-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--tsmg-border);
+  border-radius: 8px;
+  background: var(--tsmg-surface-2, rgba(255, 255, 255, 0.03));
+}
+
+/* 候选多时可滚动，不让整页被拉长 */
+.search-hits {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 340px;
+  overflow-y: auto;
+}
+
+.search-hit {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.search-hit:hover,
+.search-hit:focus-visible {
+  background: var(--tsmg-surface-2, rgba(255, 255, 255, 0.06));
+  border-color: var(--tsmg-border);
+  outline: none;
+}
+
+/* 当前 RJ 输入框里的那一条，给个明确标记 */
+.search-hit-active {
+  border-color: var(--el-color-primary);
+}
+
+.search-hit-cover {
+  width: 48px;
+  height: 36px;
+  object-fit: cover;
+  border-radius: 4px;
+  flex: 0 0 auto;
+  background: var(--tsmg-border);
+}
+
+.search-hit-no-cover {
+  display: block;
+}
+
+.search-hit-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.search-hit-title {
+  font-size: 13px;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .drop-zone {
   border: 2px dashed var(--tsmg-border);
   border-radius: 12px;

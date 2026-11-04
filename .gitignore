@@ -20,3 +20,7 @@ _xeno_probe/
 release/
 *.log
 .verify-dist/
+.dev-scratch/
+.dev-data-m25probe/
+.dev-data-m25probe.json
+.dev-data-m25boot.txt

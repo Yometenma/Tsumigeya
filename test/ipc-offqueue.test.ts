@@ -7,7 +7,16 @@ import { OFF_QUEUE_METHODS } from '../src/main/ipc'
 
 describe('OFF_QUEUE_METHODS', () => {
   test('包含所有已知的只读 / 独立目录写入命令', () => {
-    for (const method of ['detect', 'detectFolder', 'snapshot', 'versions', 'dlsiteDetectRJ', 'dlsiteLookup']) {
+    for (const method of [
+      'detect',
+      'detectFolder',
+      'snapshot',
+      'versions',
+      'dlsiteDetectRJ',
+      'dlsiteLookup',
+      // M2.5-A：按名字搜索——只读网络、不写盘，但用户点一下就等结果
+      'dlsiteSearch'
+    ]) {
       expect(OFF_QUEUE_METHODS.has(method)).toBe(true)
     }
   })
@@ -38,6 +47,6 @@ describe('OFF_QUEUE_METHODS', () => {
 
   test('名单不会意外膨胀（数量与已知命令对齐）', () => {
     // 这条断言的作用：有人偷偷加了命令却没更新这里 → 测试红了，逼他重新想一遍准入标准。
-    expect(OFF_QUEUE_METHODS.size).toBe(6)
+    expect(OFF_QUEUE_METHODS.size).toBe(7)
   })
 })

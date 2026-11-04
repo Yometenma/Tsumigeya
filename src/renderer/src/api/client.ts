@@ -140,6 +140,28 @@ export interface DlsiteWork {
 /** 落盘的元数据条目（= DlsiteWork，单独起名方便 UI 读）。 */
 export type GameMeta = DlsiteWork
 
+// ===== M2.5-A：按名字搜索（docs/M2.5-实施方案.md §A.1）=====
+
+/**
+ * 一条搜索结果。
+ * `title` 已经过滤掉 DLsite 页面上的噪音按钮文案（カートに追加 等）。
+ * 搜索结果**精度一般**（实测搜「傭兵」首条不是目标作品），所以 UI 必须让用户自己点选。
+ */
+export interface DlsiteSearchHit {
+  /** 规范化大写，如 RJ294126。 */
+  rj: string
+  title: string
+  /** 从链接 URL 的 section 段推断：maniax / homepro / pro / books。 */
+  category?: string
+  /** 缩略图（已校验 host ∈ img.dlsite.jp）。 */
+  coverUrl?: string
+}
+
+export interface DlsiteSearchResult {
+  keyword: string
+  results: DlsiteSearchHit[]
+}
+
 export interface DetectCandidate {
   path: string
   engine: string | null
@@ -266,6 +288,14 @@ export const api = {
   /** 只查不存：查失败不会污染游戏库（方案 §5.1）。成功后由调用方决定是否 saveGameMeta。 */
   dlsiteLookup: (rj: string, refresh?: boolean): Promise<DlsiteWork> =>
     bridge().invoke<DlsiteWork>('dlsiteLookup', { rj, refresh }),
+
+  /**
+   * M2.5-A：按名字搜索 DLsite，返回候选列表（最多 20 条）。
+   * 只读网络、不写盘；搜不到走 `error.dlsiteSearchEmpty`。
+   * **不自动选第一条**——搜索精度一般，必须让用户点选（§1.3）。
+   */
+  dlsiteSearch: (keyword: string, category?: string): Promise<DlsiteSearchResult> =>
+    bridge().invoke<DlsiteSearchResult>('dlsiteSearch', { keyword, category }),
 
   /** 落盘元数据。传 work 直接存；只传 rj 则由主进程拉一次再存。 */
   saveGameMeta: (gameId: string, input: { rj?: string; work?: DlsiteWork }): Promise<Snapshot> =>

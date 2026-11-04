@@ -28,6 +28,19 @@ const PAGE_CATEGORIES = ['maniax', 'homepro', 'books'] as const
 /** 封面只允许来自这个主机（D22：外部数据不可信，禁止任意远程图进渲染层）。 */
 const ALLOWED_COVER_HOSTS = new Set(['img.dlsite.jp'])
 
+/**
+ * 搜索结果页里混在标题位置的**按钮文案**（M2.5 §1.2）。
+ * 实测同一页每个作品都会带「カートに追加 / お気に入りに追加」，而且它们的 `<a>` 也指向 `product_id/`，
+ * 不滤掉就会盖住真标题。
+ */
+const SEARCH_NOISE_TEXTS = new Set(['カートに追加', 'お気に入りに追加', '詳細'])
+
+/** 搜索结果最多返回条数（M2.5 §7-③ 用户确认 20）。 */
+export const SEARCH_RESULT_LIMIT = 20
+
+/** 搜索默认 section（与查询作品页的默认一致）。 */
+const DEFAULT_SEARCH_CATEGORY = 'maniax'
+
 export interface DlsiteWork {
   /** 规范化大写，如 RJ294126。 */
   rj: string
@@ -384,12 +397,193 @@ export interface DlsiteLookupInput {
 
 export interface DlsiteService {
   fetchWork(input: DlsiteLookupInput): Promise<DlsiteWork>
+  /** M2.5-A：按名字搜索（§A）。 */
+  searchWorks(input: DlsiteSearchInput): Promise<DlsiteSearchResult>
   /** `<dataDir>/dlsite/<RJ>.json`。 */
   cachePath(rj: string): string
 }
 
 function pageUrl(category: string, rj: string): string {
   return `https://www.dlsite.com/${category}/work/=/product_id/${rj}.html`
+}
+
+// ===== M2.5-A：按名字搜索（§A）=====
+
+/**
+ * 构造搜索 URL。**唯一有效的格式**（M2.5 §1.1 实测）：
+ * `/{category}/fsr/=/keyword/<编码关键词>`。
+ * 其余写法（`/fs?keyword=`、`/fsr/=/keywords/`）要么 404，要么返回「条件搜索页」而非结果页。
+ */
+export function buildSearchUrl(keyword: string, category: string = DEFAULT_SEARCH_CATEGORY): string {
+  const section = category && /^[a-z]+$/.test(category) ? category : DEFAULT_SEARCH_CATEGORY
+  return `https://www.dlsite.com/${section}/fsr/=/keyword/${encodeURIComponent(keyword)}`
+}
+
+/** 搜索结果页判据：`<title>` 含「検索結果」（§1.1）。含则表示是真结果页。 */
+export function isSearchResultPage(html: unknown): boolean {
+  if (typeof html !== 'string' || !html) return false
+  const title = /<title[^>]*>([\s\S]{0,200}?)<\/title>/i.exec(html)
+  return title ? title[1].includes('検索結果') : false
+}
+
+/** 一条搜索结果。字段与 M2.5 §A.1 的 `DlsiteSearchHit` 一致。 */
+export interface DlsiteSearchHit {
+  /** 规范化大写（如 RJ294126）。 */
+  rj: string
+  /** 已过滤噪音文案的标题。 */
+  title: string
+  /** 从链接 URL 的 section 段推断：maniax / homepro / pro / books ... */
+  category?: string
+  /** 缩略图（归一化后必须是 img.dlsite.jp，否则丢弃）。 */
+  coverUrl?: string
+}
+
+interface RawHit {
+  rj: string
+  title?: string
+  category?: string
+  coverUrl?: string
+  /** 页面里的出现顺序，用于稳定排序。 */
+  order: number
+}
+
+function isNoiseTitle(value: string | undefined): boolean {
+  if (!value) return true
+  const trimmed = value.trim()
+  if (!trimmed) return true
+  if (SEARCH_NOISE_TEXTS.has(trimmed)) return true
+  // 空占位 / 纯符号也别当标题
+  return !/[\p{L}\p{N}]/u.test(trimmed)
+}
+
+/**
+ * 解析搜索结果页 → 作品列表（按 RJ 去重、保序）。
+ *
+ * 实现要点（对照 M2.5 §1.2 与真页面结构）：
+ * 1. 先找**结构化锚点** `data-list_item_product_id="RJ…"`——实测真实结果页每个作品都带（25 个/页），
+ *    且每个 RJ 在整条记录里会重复 5 次（缩略图、链接、购物车按钮…），所以必须按 RJ 去重；
+ * 2. 标题取该条记录里 `work_name` 块的 `<a title="…">`（没有 title 属性时退回标签内文本）；
+ *    按钮文案（カートに追加 / お気に入りに追加 / 詳細）一律过滤；
+ * 3. 页面里没有结构化锚点时，退回「按 href 匹配 product_id」的宽松模式。
+ *    这一层仍会撞到按钮文案，所以同样靠噪音过滤保底。
+ *
+ * 不解析 HTML 表格、不做作者/社团提取——M2.5 只要「能点选填 RJ」。
+ */
+export function parseSearchResults(html: unknown, limit = SEARCH_RESULT_LIMIT): DlsiteSearchHit[] {
+  if (typeof html !== 'string' || !html) return []
+  const raws: RawHit[] = []
+  const seen = new Map<string, RawHit>()
+
+  /** 记录一条出现；同一 RJ 重复出现时只补空缺字段（先到的标题优先）。 */
+  const consider = (rj: string, chunk: string, order: number): void => {
+    if (!rj) return
+    const existing = seen.get(rj)
+    const fields = readHitFields(chunk)
+    if (existing) {
+      if (!existing.title && fields.title) existing.title = fields.title
+      if (!existing.category && fields.category) existing.category = fields.category
+      if (!existing.coverUrl && fields.coverUrl) existing.coverUrl = fields.coverUrl
+      return
+    }
+    const hit: RawHit = { rj, order, ...fields }
+    seen.set(rj, hit)
+    raws.push(hit)
+  }
+
+  // ① 结构化锚点：每条记录从 `data-list_item_product_id` 到下一个锚点之间
+  const anchorPattern = /data-list_item_product_id\s*=\s*"(RJ[0-9]{6,8})"/g
+  const anchors: Array<{ rj: string; index: number }> = []
+  for (const match of html.matchAll(anchorPattern)) anchors.push({ rj: match[1], index: match.index ?? 0 })
+  if (anchors.length > 0) {
+    for (let i = 0; i < anchors.length; i += 1) {
+      const from = anchors[i].index
+      const to = i + 1 < anchors.length ? anchors[i + 1].index : Math.min(html.length, from + 4000)
+      consider(anchors[i].rj, html.slice(from, to), i)
+    }
+  } else {
+    // ② 宽松模式：按次出现的链接记录（每个 link 之后取一小段上下文）
+    const linkPattern = /product_id\/(RJ[0-9]{6,8})\.html/g
+    let counter = 0
+    for (const match of html.matchAll(linkPattern)) {
+      const index = match.index ?? 0
+      consider(match[1], html.slice(index, Math.min(html.length, index + 1500)), counter)
+      counter += 1
+    }
+  }
+
+  const hits: DlsiteSearchHit[] = []
+  const takenRj = new Set<string>()
+  for (const raw of raws.sort((a, b) => a.order - b.order)) {
+    if (isNoiseTitle(raw.title)) continue // 没拿到真标题的（例如只有按钮）直接跳过
+    const rj = normalizeRj(raw.rj)
+    if (!rj || takenRj.has(rj)) continue
+    takenRj.add(rj)
+    hits.push({
+      rj,
+      title: (raw.title as string).trim(),
+      category: raw.category,
+      coverUrl: raw.coverUrl
+    })
+    if (hits.length >= limit) break
+  }
+  return hits
+}
+
+/** 从一条记录片段里读标题 / section / 缩略图。 */
+function readHitFields(chunk: string): { title?: string; category?: string; coverUrl?: string } {
+  // 标题：优先 work_name 块里的 <a ... title="真标题">，否则退回标签内文本
+  const nameBlock = /class="work_name"[\s\S]*?product_id\/(RJ[0-9]{6,8})\.html"?([^>]*)>([\s\S]{0,120}?)<\/a>/i.exec(chunk)
+  let title: string | undefined
+  let category: string | undefined
+  if (nameBlock) {
+    const attrs = nameBlock[2] ?? ''
+    const titleAttr = /\btitle="([^"]{1,200})"/.exec(attrs)
+    title = titleAttr ? decodeHtmlEntities(titleAttr[1]).trim() : decodeHtmlEntities(stripTags(nameBlock[3])).trim()
+    category = sectionFromUrl(chunk, nameBlock.index)
+  } else {
+    // 宽松模式：找紧跟在 product_id 链接之后的第一个非噪音文本
+    const loose = /product_id\/RJ[0-9]{6,8}\.html"?[^>]*>\s*([^<]{1,200})/i.exec(chunk)
+    if (loose) title = decodeHtmlEntities(loose[1]).trim()
+  }
+  // 缩略图：记录里第一个 img.dlsite.jp 地址（协议相对也算）
+  const images = chunk.match(/(?:https?:)?\/\/img\.dlsite\.jp\/[^"'\s,\\]+/g)
+  return {
+    title: isNoiseTitle(title) ? undefined : title,
+    category,
+    coverUrl: images ? normalizeCoverUrl(images[0]) : undefined
+  }
+}
+
+function stripTags(value: string | undefined): string {
+  if (!value) return ''
+  return value.replace(/<[^>]*>/g, ' ')
+}
+
+/** 从 `https://www.dlsite.com/<section>/...` 取 section；取不到返回 undefined。 */
+function sectionFromUrl(text: string, from = 0): string | undefined {
+  const chunk = text.slice(from)
+  const match = /https?:\/\/(?:www\.)?dlsite\.com\/([a-z]+)\//i.exec(chunk)
+  if (match) {
+    const section = match[1].toLowerCase()
+    if (/^[a-z]+$/.test(section)) return section
+  }
+  // 记录片段被裁断时退回全页第一个 section
+  const fallback = /https?:\/\/(?:www\.)?dlsite\.com\/([a-z]+)\//i.exec(text)
+  return fallback ? fallback[1].toLowerCase() : undefined
+}
+
+export interface DlsiteSearchInput {
+  keyword: string
+  /** 默认 maniax。 */
+  category?: string
+  /** 最多返回条数，默认 20（§7-③）。 */
+  limit?: number
+  signal?: AbortSignal
+}
+
+export interface DlsiteSearchResult {
+  keyword: string
+  results: DlsiteSearchHit[]
 }
 
 /** 让返回的 promise 也跟着 signal 走（不依赖 fetch 实现对 signal 的支持程度）。 */
@@ -488,7 +682,18 @@ export function createDlsiteService(options: DlsiteServiceOptions): DlsiteServic
     rj: string,
     signal?: AbortSignal
   ): Promise<{ ok: boolean; status: number; html: string }> {
-    const url = pageUrl(category, rj)
+    return await fetchUrl(pageUrl(category, rj), rj, signal)
+  }
+
+  /**
+   * 抓一个页面（查询页与搜索页共用）。
+   * `context` 会塞进错误参数里，方便 UI 显示「是哪个 RJ / 哪个关键词出错」。
+   */
+  async function fetchUrl(
+    url: string,
+    context: string,
+    signal?: AbortSignal
+  ): Promise<{ ok: boolean; status: number; html: string }> {
     const timeout = AbortSignal.timeout(timeoutMs)
     const combined = signal ? AbortSignal.any([signal, timeout]) : timeout
     try {
@@ -503,11 +708,49 @@ export function createDlsiteService(options: DlsiteServiceOptions): DlsiteServic
       if (signal?.aborted) signal.throwIfAborted()
       const name = (error as { name?: string } | undefined)?.name
       if (name === 'TimeoutError' || name === 'AbortError') {
-        throw failure('error.dlsiteTimeout', `DLsite request timed out: ${url}`, { rj })
+        throw failure('error.dlsiteTimeout', `DLsite request timed out: ${url}`, { rj: context })
       }
       const reason = String((error as { message?: string } | undefined)?.message ?? error)
       throw failure('error.dlsiteNetwork', `DLsite request failed: ${reason}`, { reason })
     }
+  }
+
+  /**
+   * 按名字搜索（M2.5 §A.1）。**刻意只取第一页**：用户要的是「点选填 RJ」，
+   * 翻页会把交互复杂度抬上去，而搜索结果本身精度一般（§1.3），多给一页也不会更好选。
+   *
+   * 错误策略：
+   * - 网络/超时 → 复用 error.dlsiteTimeout / error.dlsiteNetwork；
+   * - 200 但不是结果页（含关键词确实无结果时进的「条件搜索页」）→ error.dlsiteSearchEmpty；
+   * - 结果页但一个作品都没解析出来 → 同样 error.dlsiteSearchEmpty（对用户来说是同一件事）。
+   */
+  async function searchWorks(input: DlsiteSearchInput): Promise<DlsiteSearchResult> {
+    const keyword = typeof input?.keyword === 'string' ? input.keyword.trim() : ''
+    if (!keyword) {
+      throw failure('error.dlsiteSearchEmpty', 'Search keyword is empty', { keyword: '' })
+    }
+    const category = input.category && /^[a-z]+$/.test(input.category) ? input.category : DEFAULT_SEARCH_CATEGORY
+    const limit = input.limit && input.limit > 0 ? Math.min(input.limit, SEARCH_RESULT_LIMIT) : SEARCH_RESULT_LIMIT
+    const signal = input.signal
+
+    await ensureCookie()
+    signal?.throwIfAborted()
+    await throttle()
+
+    const url = buildSearchUrl(keyword, category)
+    const page = await fetchUrl(url, keyword, signal)
+    if (!page.ok) {
+      throw failure('error.dlsiteSearchEmpty', `DLsite search failed with status ${page.status}`, { keyword })
+    }
+    if (!isSearchResultPage(page.html)) {
+      throw failure('error.dlsiteSearchEmpty', 'DLsite returned a non-result page', { keyword })
+    }
+
+    const results = parseSearchResults(page.html, limit)
+    if (results.length === 0) {
+      throw failure('error.dlsiteSearchEmpty', 'DLsite search returned no works', { keyword })
+    }
+    return { keyword, results }
   }
 
   /**
@@ -574,5 +817,5 @@ export function createDlsiteService(options: DlsiteServiceOptions): DlsiteServic
     }
   }
 
-  return { fetchWork, cachePath }
+  return { fetchWork, searchWorks, cachePath }
 }

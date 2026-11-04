@@ -7,7 +7,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import DynamicArgsForm from '@/components/DynamicArgsForm.vue'
 import VersionManagerDialog from '@/components/VersionManagerDialog.vue'
-import { api, iconUrl, translateError, type DlsiteWork, type GameArgDef, type ManifestRaw } from '@/api/client'
+import { api, iconUrl, translateError, type DlsiteSearchHit, type DlsiteWork, type GameArgDef, type ManifestRaw } from '@/api/client'
 import { useLibraryStore } from '@/stores/library'
 import { useEnginesStore } from '@/stores/engines'
 
@@ -49,6 +49,19 @@ const rjCandidates = ref<string[]>([])
 const preview = ref<DlsiteWork | null>(null)
 const looking = ref(false)
 const savingMeta = ref(false)
+
+// ===== M2.5-A：按名字搜索面板状态（§A.3）=====
+//
+// ⚠️ 同一条规矩：这些 ref 都必须声明在 fill() 之前（fill 由 immediate watch 调用，见上方注释）。
+/** 搜索面板是否展开。 */
+const searchOpen = ref(false)
+/** 搜索关键词（默认用游戏目录名，剥离语言/版本后缀）。 */
+const searchKeyword = ref('')
+/** 搜索候选列表。**空数组 ≠ 未搜过**，用 searchedKeyword 区分。 */
+const searchHits = ref<DlsiteSearchHit[]>([])
+const searching = ref(false)
+/** 搜过的关键词（用于「找到 N 个」之类提示，以及与当前输入区分）。 */
+const searchedKeyword = ref('')
 
 /** 当前引擎的 manifest（已装模块才有 raw）。 */
 const manifest = computed<ManifestRaw | null>(() => {
@@ -180,9 +193,68 @@ async function detectRj(): Promise<void> {
   }
 }
 
+// ===== M2.5-A：按名字搜索（§A.3）=====
+//
+// 交互原则：搜索**只出候选列表**，点选后只填 RJ 输入框、不自动拉取
+// （保持 M2 的「查 / 存分离」；也避免用户点错时白跑一次网络请求）。
+
+/**
+ * 从游戏路径生成默认搜索关键词：取目录名，剥掉语言标记与版本号。
+ *
+ * TODO(M2.5-C)：§C.3 会把这段逻辑搬到 `stripLanguageSuffix()` 里统一实现，
+ * 那时这里改成调用共享函数（现在先内联，避免 S2 卡在 C 的排期上）。
+ */
+function guessKeyword(filePath: string): string {
+  const raw = filePath.trim()
+  if (!raw) return ''
+  // 兼容 / 与 \ 两种分隔符（Windows 路径在渲染层也可能是反斜杠）
+  const segment = raw.split(/[\\/]+/).filter(Boolean).pop() ?? ''
+  return segment
+    .replace(/_(chs|cht|chn|cn|sc|tc|jp|ja|jpn|en|eng|us|kor|kr)$/i, '')
+    .replace(/[\s._-]*v?\d+(\.\d+)*$/i, '')
+    .replace(/[\s._-]+$/, '')
+    .trim()
+}
+
+/** 展开搜索面板（第一次展开时用目录名兜底关键词）。 */
+function toggleSearch(): void {
+  searchOpen.value = !searchOpen.value
+  if (searchOpen.value && !searchKeyword.value.trim()) {
+    searchKeyword.value = guessKeyword(path.value)
+  }
+}
+
+/** 执行搜索：只出候选，不落盘、不自动选中。 */
+async function runSearch(): Promise<void> {
+  const keyword = searchKeyword.value.trim()
+  if (!keyword) {
+    ElMessage.warning(t('dlsite.searchNoKeyword'))
+    return
+  }
+  searching.value = true
+  try {
+    const hits = await library.searchDlsite(keyword)
+    searchHits.value = hits
+    searchedKeyword.value = keyword
+    if (hits.length === 0) ElMessage.info(t('dlsite.searchEmpty', { keyword }))
+  } catch (error) {
+    // 搜不到走 error.dlsiteSearchEmpty（主进程给 key，渲染层查文案）
+    searchHits.value = []
+    searchedKeyword.value = keyword
+    ElMessage.error(translateError(error, t))
+  } finally {
+    searching.value = false
+  }
+}
+
+/** 点选一条候选：只填 RJ，不自动查询（保持查存分离）。 */
+function pickHit(hit: DlsiteSearchHit): void {
+  rjInput.value = hit.rj
+  searchOpen.value = false
+}
+
 /** 拉取元数据到预览（不落盘）。 */
-async function lookup(rj?: string, refresh = false): Promise<void> {
-  const target = (rj ?? rjInput.value).trim()
+async function lookup(rj?: string, refresh = false): Promise<void> {  const target = (rj ?? rjInput.value).trim()
   if (!target) {
     ElMessage.warning(t('dlsite.rjPlaceholder'))
     return
@@ -415,9 +487,62 @@ async function save(): Promise<void> {
         <div class="row" style="flex: 0 0 auto">
           <el-input v-model="rjInput" :placeholder="t('dlsite.rjPlaceholder')" style="width: 180px" />
           <el-button :disabled="!path" @click="detectRj">{{ t('dlsite.detect') }}</el-button>
+          <el-button @click="toggleSearch">{{ t('dlsite.search') }}</el-button>
           <el-button type="primary" :loading="looking" :disabled="!rjInput" @click="lookup()">
             {{ t('dlsite.lookup') }}
           </el-button>
+        </div>
+      </div>
+
+      <!-- M2.5-A：按名字搜索（候选列表让用户自己点选，绝不自动选第一条） -->
+      <div v-if="searchOpen" class="search-panel">
+        <div class="row" style="gap: 8px">
+          <el-input
+            v-model="searchKeyword"
+            :placeholder="t('dlsite.searchKeywordPlaceholder')"
+            style="flex: 1"
+            @keyup.enter="runSearch"
+          />
+          <el-button type="primary" :loading="searching" @click="runSearch">
+            {{ t('dlsite.searchSubmit') }}
+          </el-button>
+          <el-button text @click="toggleSearch">{{ t('dlsite.searchClose') }}</el-button>
+        </div>
+        <div class="hint">{{ t('dlsite.searchHint') }}</div>
+
+        <div v-if="searching" class="hint">{{ t('dlsite.searching') }}</div>
+
+        <template v-else-if="searchHits.length > 0">
+          <div class="hint">
+            {{
+              searchHits.length >= 20
+                ? t('dlsite.searchTruncated', { count: searchHits.length })
+                : t('dlsite.searchResultsCount', { count: searchHits.length })
+            }}
+          </div>
+          <div class="search-hits">
+            <div
+              v-for="hit in searchHits"
+              :key="hit.rj"
+              class="search-hit"
+              :class="{ 'search-hit-active': hit.rj === rjInput }"
+              role="button"
+              tabindex="0"
+              @click="pickHit(hit)"
+              @keyup.enter="pickHit(hit)"
+            >
+              <img v-if="hit.coverUrl" :src="hit.coverUrl" :alt="hit.title" class="search-hit-cover" />
+              <div v-else class="search-hit-cover search-hit-no-cover" />
+              <div class="search-hit-main">
+                <div class="search-hit-title">{{ hit.title }}</div>
+                <div class="hint">{{ hit.rj }}</div>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <div v-else-if="searchedKeyword" class="hint">
+          {{ t('dlsite.searchEmpty', { keyword: searchedKeyword }) }}
         </div>
       </div>
 

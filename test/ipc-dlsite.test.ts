@@ -3,12 +3,20 @@
 // 为什么单独一个文件：探针里发现 `dlsiteLookup({rj:'nope'})` 返回的对象居然没有 key，
 // 而渲染层的 translateError 完全依赖 `error.key`——没有 key 就只能显示英文原文。
 // 这条必须在单测里钉死，不能靠端到端探针碰运气。
-import { mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import { createCoreHost, resolveCorePath } from '../src/main/core-host'
-import { createDispatcher } from '../src/main/ipc'
+import { OFF_QUEUE_METHODS, createDispatcher } from '../src/main/ipc'
+
+/** 搜索结果结构（与 api/client.ts 的 DlsiteSearchHit 一致；测试不跨 tsconfig 工程引用渲染层类型）。 */
+interface SearchHit {
+  rj: string
+  title: string
+  category?: string
+  coverUrl?: string
+}
 
 let dataDir: string
 let host: ReturnType<typeof createCoreHost>
@@ -155,5 +163,54 @@ describe('未知命令', () => {
     await expect(
       dispatcher().dispatch('dlsiteNonsense', {}, new AbortController().signal)
     ).rejects.toMatchObject({ translationKey: 'error.unknownMethod' })
+  })
+})
+
+// ===== M2.5-A：dlsiteSearch =====
+
+const searchFixture = readFileSync(
+  path.join(__dirname, 'fixtures', 'dlsite', 'search-mercenary.html'),
+  'utf8'
+)
+
+describe('dlsiteSearch（§A.1）', () => {
+  test('空关键词 → error.dlsiteSearchEmpty（带 keyword 参数）', async () => {
+    await expect(
+      dispatcher().dispatch('dlsiteSearch', { keyword: '  ' }, new AbortController().signal)
+    ).rejects.toMatchObject({
+      translationKey: 'error.dlsiteSearchEmpty',
+      translationArguments: { keyword: '' }
+    })
+  })
+
+  test('假 fetch 全 404 → error.dlsiteSearchEmpty（不是 NotFound）', async () => {
+    await expect(
+      dispatcher().dispatch('dlsiteSearch', { keyword: '傭兵' }, new AbortController().signal)
+    ).rejects.toMatchObject({ translationKey: 'error.dlsiteSearchEmpty' })
+  })
+
+  test('真结果页 → 返回候选列表，且不写 library-meta.json', async () => {
+    // 换一个能返回真结果页的 host
+    const dataDir2 = mkdtempSync(path.join(tmpdir(), 'tsmg-ipc-search-'))
+    const host2 = createCoreHost({
+      dataDir: dataDir2,
+      corePath: resolveCorePath({ isPackaged: false, appPath: process.cwd() }),
+      fetchImpl: (async () => new Response(searchFixture, { status: 200 })) as never
+    })
+    const result = (await createDispatcher({ host: host2 }).dispatch(
+      'dlsiteSearch',
+      { keyword: '傭兵' },
+      new AbortController().signal
+    )) as { keyword: string; results: SearchHit[] }
+    expect(result.keyword).toBe('傭兵')
+    expect(result.results).toHaveLength(5)
+    expect(result.results[0].rj).toBe('RJ01699769')
+    // 搜索是只读的：不落 library-meta.json
+    expect(existsSync(path.join(dataDir2, 'library-meta.json'))).toBe(false)
+    rmSync(dataDir2, { recursive: true, force: true })
+  })
+
+  test('搜索在 OFF_QUEUE_METHODS 里（只读且用户要等结果）', () => {
+    expect(OFF_QUEUE_METHODS.has('dlsiteSearch')).toBe(true)
   })
 })
