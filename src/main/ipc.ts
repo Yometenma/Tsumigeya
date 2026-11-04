@@ -785,7 +785,11 @@ export function createDispatcher(deps: IpcDeps): Dispatcher {
       })
     } catch (error) {
       // 写不进去只是「这次没补上缺省值」，下次启动还会再试一遍
-      console.warn(`[tsumigeya] 补写 gameArgs 缺省值失败（已忽略）：${(error as Error).message}`)
+      const key = (error as { translationKey?: string }).translationKey
+      console.warn(
+        `[tsumigeya] 补写 gameArgs 缺省值失败（已忽略，下次启动再试）：${(error as Error).message}` +
+          (key ? ` [${key}]` : '')
+      )
     }
   }
 
