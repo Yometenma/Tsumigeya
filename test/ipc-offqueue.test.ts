@@ -17,7 +17,10 @@ describe('OFF_QUEUE_METHODS', () => {
       // M2.5-A：按名字搜索——只读网络、不写盘，但用户点一下就等结果
       'dlsiteSearch',
       // M2.5-C：多语言分组——纯本地计算（只读 games.json + meta），毫秒级
-      'languageGroups'
+      'languageGroups',
+      // M3：启动前诊断——纯本地文件扫描（读 8 字节魔数 / 读 Game.ini / 查目录），
+      // 只读不写盘；用户点「启动」就在等它
+      'diagnoseGame'
     ]) {
       expect(OFF_QUEUE_METHODS.has(method)).toBe(true)
     }
@@ -34,7 +37,9 @@ describe('OFF_QUEUE_METHODS', () => {
       'removeVersion',
       'saveGameMeta',
       'refreshGameMeta',
-      'clearGameMeta'
+      'clearGameMeta',
+      // M3：一键修复可能触发 244MB 的 RTP 下载 → 必须排队
+      'repairGame'
     ]) {
       expect(OFF_QUEUE_METHODS.has(method)).toBe(false)
     }
@@ -49,6 +54,7 @@ describe('OFF_QUEUE_METHODS', () => {
 
   test('名单不会意外膨胀（数量与已知命令对齐）', () => {
     // 这条断言的作用：有人偷偷加了命令却没更新这里 → 测试红了，逼他重新想一遍准入标准。
-    expect(OFF_QUEUE_METHODS.size).toBe(8)
+    // 8（M2/M2.5）→ 9（M3 的 diagnoseGame）
+    expect(OFF_QUEUE_METHODS.size).toBe(9)
   })
 })

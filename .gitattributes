@@ -9,3 +9,8 @@
 *.zip binary
 *.dmg binary
 *.exe binary
+# M3 fixture 故意用 GBK 字节 + CRLF（复刻真实 Game.ini，见 docs/M3-实施方案.md §2.5）。
+# 这些字节本身就是被断言的测试数据：必须 -text（关掉一切行尾/编码规范化）。
+# 注意：只写 binary 不够——binary 只关掉 diff，eol 转换照旧（实测索引里的 0d0a 被改成了 0a）。
+test/fixtures/encrypted-rgss3a/Game.ini -text
+test/fixtures/encrypted-rgss3a/Game.rgss3a -text

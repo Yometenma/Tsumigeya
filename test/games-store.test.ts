@@ -173,7 +173,9 @@ describe('settings', () => {
       // §7-⑤ 默认弹确认（用户可「不再询问」）
       preferredLanguage: 'zh',
       fallbackLanguage: 'ja',
-      languageSwitchPrompt: true
+      languageSwitchPrompt: true,
+      // M3 §4.3：启动前自动诊断默认开（嫌慢可在设置页关掉）
+      diagnoseBeforeLaunch: true
     })
   })
 

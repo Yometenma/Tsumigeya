@@ -181,6 +181,18 @@ async function copyDataPath(): Promise<void> {
         @update:model-value="patch({ languageSwitchPrompt: $event === true })"
       />
     </div>
+
+    <!-- M3 §4.3：启动前自动诊断的逃生口（诊断是本地只读扫描，但给用户关掉的余地） -->
+    <div class="settings-row">
+      <div class="settings-row-main">
+        <div class="settings-row-title">{{ t('settings.diagnoseBeforeLaunch') }}</div>
+        <div class="settings-row-hint">{{ t('settings.diagnoseBeforeLaunchHint') }}</div>
+      </div>
+      <el-switch
+        :model-value="settings.settings.diagnoseBeforeLaunch"
+        @update:model-value="patch({ diagnoseBeforeLaunch: $event === true })"
+      />
+    </div>
   </section>
 
   <section class="panel" style="margin-top: 16px">

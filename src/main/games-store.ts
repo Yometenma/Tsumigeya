@@ -48,6 +48,13 @@ export interface Settings {
   fallbackLanguage: LanguagePreferenceOrNone
   /** M2.5-C：启动非偏好语言版时是否弹确认（用户可勾「不再询问」关掉它）。 */
   languageSwitchPrompt: boolean
+  /**
+   * M3：启动前是否自动跑故障诊断（默认 true）。
+   *
+   * 用户如果嫌慢可以关掉（方案 §4.3）。实测诊断是纯本地文件扫描、毫秒级，
+   * 但没有大量样本前不承诺具体耗时，所以留这个开关作为逃生口。
+   */
+  diagnoseBeforeLaunch: boolean
   /** 保留上游 / 未来版本写入的未知键（例如旧的 darkTheme）。 */
   [key: string]: unknown
 }
@@ -124,7 +131,12 @@ export function writeJSON(file: string, value: unknown): void {
 
 const DEFAULT_SETTINGS: Omit<
   Settings,
-  'appearance' | 'language' | 'preferredLanguage' | 'fallbackLanguage' | 'languageSwitchPrompt'
+  | 'appearance'
+  | 'language'
+  | 'preferredLanguage'
+  | 'fallbackLanguage'
+  | 'languageSwitchPrompt'
+  | 'diagnoseBeforeLaunch'
 > = {
   listView: false,
   deletionConfirmation: true,
@@ -165,7 +177,9 @@ export function normalizeSettings(saved: Record<string, unknown> = {}): Settings
     preferredLanguage: validLanguagePreference(saved.preferredLanguage, DEFAULT_PREFERRED_LANGUAGE),
     fallbackLanguage: validLanguagePreference(saved.fallbackLanguage, DEFAULT_FALLBACK_LANGUAGE),
     // 默认 true = 弹确认（§7-⑤ 用户确认「弹，可不再询问」）
-    languageSwitchPrompt: saved.languageSwitchPrompt === false ? false : true
+    languageSwitchPrompt: saved.languageSwitchPrompt === false ? false : true,
+    // M3：启动前诊断默认开（§4.3）。旧库没有这个键 → true。
+    diagnoseBeforeLaunch: saved.diagnoseBeforeLaunch === false ? false : true
   } as Settings
 }
 
@@ -265,6 +279,12 @@ export function createGameStore(dataDir: string): GameStore {
     if (Object.hasOwn(partial, 'languageSwitchPrompt') && typeof partial.languageSwitchPrompt !== 'boolean') {
       throw failure('error.languagePreference', 'Invalid language prompt flag', {
         value: String(partial.languageSwitchPrompt)
+      })
+    }
+    // M3：诊断开关也要显式校验（静默改正会让用户以为设置没保存）
+    if (Object.hasOwn(partial, 'diagnoseBeforeLaunch') && typeof partial.diagnoseBeforeLaunch !== 'boolean') {
+      throw failure('error.languagePreference', 'Invalid diagnose flag', {
+        value: String(partial.diagnoseBeforeLaunch)
       })
     }
     writeJSON(settingsFile, next)

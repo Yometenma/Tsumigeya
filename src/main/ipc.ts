@@ -18,6 +18,7 @@ import { component, failure, type GameDraft } from './games-store'
 import { extractArchive } from './extract'
 import { detectRjFromPath } from './dlsite'
 import { mergeWork, normalizeEditedFields } from './library-meta'
+import { diagnoseGame, type Diagnosis, type DiagnosisFix } from './diagnose'
 import { groupByLanguage } from '../shared/language-group'
 import type { CoreHost, CoreEvent, ProgressBridge, RemoteManifest } from './core-host'
 
@@ -47,8 +48,23 @@ export const OFF_QUEUE_METHODS: ReadonlySet<string> = new Set([
   // M2.5-A：按名字搜索——纯网络只读，**不写任何盘**，排在 60 秒更新检查后面就是「搜索按钮点了没反应」。
   'dlsiteSearch',
   // M2.5-C：多语言分组——纯本地计算，只读 games.json，毫秒级。
-  'languageGroups'
+  'languageGroups',
+  // M3：启动前诊断——纯本地文件扫描（读魔数 8 字节 / 读 Game.ini / 查目录），
+  // 毫秒级、只读、不写盘。用户点「启动」就在等它，排到 60 秒更新检查后面就是「点了没反应」。
+  // **repairGame 不在名单里**：它可能触发 244MB 的 RTP 下载，必须排队（§4.1）。
+  'diagnoseGame'
 ])
+
+/**
+ * `launch` 的返回类型（M3 §4.2 扩展）。
+ *
+ * - 正常启动：`{ message }`
+ * - 被 fatal 诊断拦下：`{ blocked: true, diagnoses }` —— UI 弹中文诊断框
+ *
+ * 用联合类型而不是 `{ blocked?: boolean }` 是为了让渲染层**必须**先判 `blocked`
+ * 才去读 `message`（漏判会在 TS 里报错，而不是在用户面前变成 `undefined`）。
+ */
+export type LaunchResult = { message: string } | { blocked: true; diagnoses: Diagnosis[] }
 
 export interface EngineUpdate {
   id: string
@@ -365,11 +381,38 @@ export function createDispatcher(deps: IpcDeps): Dispatcher {
 
   // ===== launch 自实现（D5，§3.8）=====
 
-  async function launch(params: Record<string, unknown>): Promise<{ message: string }> {
+  /**
+   * 启动（D5 自实现 + M3 §4.2 启动前诊断）。
+   *
+   * **返回值契约扩展**（M3 引入，三处同步：ipc.ts / api/client.ts）：
+   * - 正常：`{ message }`
+   * - 有 fatal 诊断：`{ blocked: true, diagnoses }` —— UI 弹中文诊断框，**不抛英文错误**
+   *
+   * 为什么用返回值而不是抛错：抛错会走 translateError 的通用路径，
+   * 而诊断需要「多条 + 每条带 fix」的结构化数据，错误对象扛不住（也会被 contextBridge 截断）。
+   */
+  async function launch(params: Record<string, unknown>): Promise<LaunchResult> {
     const id = String(params.id ?? '')
     const all = host.store.loadGames()
     const game = all[id]
     if (!game) throw failure('error.gameNotFound', 'Game not found', { id })
+
+    // ---- M3 §4.2：启动前自动诊断 ----
+    // 用户可关（settings.diagnoseBeforeLaunch=false → 直接按老路径走）。
+    const shouldDiagnose = host.store.settings().diagnoseBeforeLaunch !== false
+    if (shouldDiagnose) {
+      let diagnoses: Diagnosis[] = []
+      try {
+        diagnoses = runDiagnose(id)
+      } catch (error) {
+        // 诊断自己出错绝不能拦住启动——它只是辅助（§9 R4 的精神）
+        console.warn(`[tsumigeya] 启动前诊断失败（已忽略，继续启动）：${(error as Error).message}`)
+      }
+      if (diagnoses.some((item) => item.level === 'fatal')) {
+        return { blocked: true, diagnoses }
+      }
+    }
+
     if (!fs.existsSync(game.gamePath)) {
       throw failure('error.gamePath', 'The game path no longer exists.', { path: game.gamePath })
     }
@@ -434,6 +477,102 @@ export function createDispatcher(deps: IpcDeps): Dispatcher {
       throw failure('error.launchFailed', (error as Error).message, { reason: (error as Error).message })
     }
     return { message: '已发送启动请求' }
+  }
+
+  // ===== M3：启动前诊断（§3 / §4.1）=====
+
+  /**
+   * 对某个游戏跑全套诊断。**只读**、不写盘，所以能进 OFF_QUEUE_METHODS。
+   *
+   * 依赖的输入全部来自本地：
+   * - `host.store.loadGames()` → gamePath / gameEngine
+   * - `host.modulesDir()` → `deps/RTP/RTP/<版本>` 的检查根
+   * - `host.core.getInstalledModuleFolders()` → 到底装没装引擎模块
+   *
+   * 任一依赖读失败都**不能**让诊断整体抛错：诊断的价值在于「告诉用户怎么修」，
+   * 它自己崩掉就又退化成「点启动没反应」。
+   */
+  function runDiagnose(gameId: string): Diagnosis[] {
+    const game = host.store.loadGames()[gameId]
+    if (!game) throw failure('error.gameNotFound', 'Game not found', { id: gameId })
+    let installed: string[] = []
+    try {
+      installed = [...host.core.getInstalledModuleFolders()]
+    } catch (error) {
+      console.warn(`[tsumigeya] 读取已装引擎列表失败（按空处理）：${(error as Error).message}`)
+    }
+    return diagnoseGame({
+      game: { gamePath: game.gamePath ?? '', gameEngine: game.gameEngine ?? '', gameArgs: game.gameArgs },
+      modulesDir: host.modulesDir(),
+      installedModules: installed
+    })
+  }
+
+  /**
+   * 执行一条修复动作（§4.1 的 repairGame）。
+   *
+   * 刻意**只做「有 fix 的第一条」**（§11-③ 用户确定的暂定值）：多条一起做会让用户
+   * 不知道进度条在干什么，而且第一条修完可能让后面的诊断失效（例如重选路径后目录变了）。
+   *
+   * 每个动作的安全边界：
+   * - `installRtp` / `installModule` → 复用已有的 `runModuleTask`（同一个事务与回滚，D7）
+   * - `openFolder` → 走 `isPathAllowed` 白名单，**绝不开任意路径**（§3.3 #17）
+   * - `repoint` → 只是告诉 UI「去编辑页重选」，主进程不猜新路径
+   */
+  async function repairGame(
+    params: Record<string, unknown>,
+    signal: AbortSignal
+  ): Promise<{ ok: boolean; action: string; message: string; diagnoses: Diagnosis[] }> {
+    const gameId = String(params.gameId ?? '')
+    const fix = params.fix as DiagnosisFix | undefined
+    const game = host.store.loadGames()[gameId]
+    if (!game) throw failure('error.gameNotFound', 'Game not found', { id: gameId })
+    if (!fix || typeof fix.kind !== 'string') {
+      throw failure('error.repairFixMissing', 'Missing fix action', { gameId })
+    }
+
+    abortCheck(signal)
+    let message = ''
+    switch (fix.kind) {
+      case 'installRtp': {
+        const folder = component(fix.engine, 'module')
+        await runModuleTask(folder, 'dependencies', signal)
+        message = 'RTP 补装完成'
+        break
+      }
+      case 'installModule': {
+        if (!fix.engine) throw failure('error.moduleMissing', 'No engine specified', { module: '' })
+        const folder = component(fix.engine, 'module')
+        await runModuleTask(folder, 'install', signal)
+        message = '引擎安装完成'
+        break
+      }
+      case 'openFolder': {
+        const target = path.resolve(fix.path)
+        if (!isPathAllowed(host, target)) {
+          throw failure('error.pathNotAllowed', 'Path is not allowed to open', { path: target })
+        }
+        const openPath = deps.openPath ?? defaultOpenPath
+        const error = await openPath(target)
+        if (error) throw failure('error.pathNotAllowed', error, { path: target })
+        message = '已打开游戏目录'
+        break
+      }
+      case 'repoint':
+        // 不改任何东西：让 UI 把用户带到编辑页重选路径（主进程不猜新路径）
+        message = '请在编辑页重新选择游戏路径'
+        break
+      default:
+        // 理论到不了（四个 kind 已穷尽）。留着是为了防「渲染层传来一个我们不认识的新 kind」——
+        // 那种情况必须明确报错，不能静默成功（否则用户以为修好了、启动还是失败）。
+        throw failure('error.repairUnknownFix', 'Unknown fix action', {
+          action: String((fix as { kind: string }).kind)
+        })
+    }
+
+    abortCheck(signal)
+    // 修完立刻重诊断，让 UI 用最新结果刷新对话框（而不是让用户自己再点一次）
+    return { ok: true, action: fix.kind, message, diagnoses: runDiagnose(gameId) }
   }
 
   // ===== 命令分派（§3.3 全表）=====
@@ -704,6 +843,20 @@ export function createDispatcher(deps: IpcDeps): Dispatcher {
         })
         return { groups }
       }
+
+      /**
+       * M3：启动前诊断（§4.1）。**绕队列**（纯本地只读、毫秒级）。
+       * 返回结构化诊断数组；调用方（渲染层）按 `level` 决定能不能启动。
+       */
+      case 'diagnoseGame':
+        return runDiagnose(String(params.gameId ?? ''))
+
+      /**
+       * M3：一键修复（§4.1）。**进队列**——可能触发 244MB 的 RTP 下载，
+       * 与 installVersion / moduleTask 是同一类长任务（也复用同一套事务回滚）。
+       */
+      case 'repairGame':
+        return await repairGame(params, signal)
 
       default:
         throw failure('error.unknownMethod', `Unknown method: ${method}`, { method })

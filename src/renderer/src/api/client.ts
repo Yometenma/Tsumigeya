@@ -45,6 +45,8 @@ export interface Settings {
   fallbackLanguage: LanguagePreference
   /** M2.5-C：启动非偏好语言版时是否弹确认（可「不再询问」关掉）。 */
   languageSwitchPrompt: boolean
+  /** M3：启动前是否自动跑故障诊断（默认 true）。 */
+  diagnoseBeforeLaunch: boolean
 }
 
 export interface GameArgDef {
@@ -199,6 +201,57 @@ export interface DlsiteSearchResult {
   results: DlsiteSearchHit[]
 }
 
+// ===== M3：启动前诊断（docs/M3-实施方案.md §3.1 / §4）=====
+
+export type DiagnosisLevel = 'fatal' | 'warning' | 'info'
+
+/**
+ * 诊断条目的稳定标识。UI 与 i18n 用它查文案（键是 `diagnose.<code>`）。
+ * 与主进程 `src/main/diagnose.ts` 的 DiagnosisCode 必须保持一致。
+ */
+export type DiagnosisCode =
+  | 'encryptedArchive'
+  | 'missingRtp'
+  | 'missingExecutable'
+  | 'moduleMissing'
+  | 'pathGone'
+  | 'fontsPresent'
+
+/**
+ * 能一键修的动作。修不了（或只能引导用户自己动手）的条目没有 `fix`。
+ * `openFolder` 只负责「打开目录让用户自己看」，**不是**「自动解包加密发行」（D34）。
+ */
+export type DiagnosisFix =
+  | { kind: 'installRtp'; engine: string }
+  | { kind: 'installModule'; engine: string }
+  | { kind: 'openFolder'; path: string }
+  | { kind: 'repoint' }
+
+export interface Diagnosis {
+  code: DiagnosisCode
+  level: DiagnosisLevel
+  /** i18n key（不是原文）。 */
+  messageKey: string
+  /** 文案占位符（只允许 `{simpleIdentifier}` 形式）。 */
+  args?: Record<string, string>
+  /** 能一键修的话指向哪个动作。 */
+  fix?: DiagnosisFix
+}
+
+/**
+ * `launch` 的返回（M3 §4.2 扩展）。
+ * 用联合类型让调用方**必须**先判 `blocked`，否则读不到 `message`（TS 会报错）。
+ */
+export type LaunchResult = { message: string } | { blocked: true; diagnoses: Diagnosis[] }
+
+/** `repairGame` 的返回：修完立刻带一份重诊断结果，UI 不用再请求一次。 */
+export interface RepairResult {
+  ok: boolean
+  action: DiagnosisFix['kind']
+  message: string
+  diagnoses: Diagnosis[]
+}
+
 export interface DetectCandidate {
   path: string
   engine: string | null
@@ -272,7 +325,11 @@ export const api = {
 
   deleteGame: (id: string): Promise<Snapshot> => bridge().invoke<Snapshot>('deleteGame', { id }),
 
-  launch: (id: string): Promise<{ message: string }> => bridge().invoke('launch', { id }),
+  /**
+   * `launch`：正常返回 `{ message }`；被 fatal 诊断拦下时返回 `{ blocked, diagnoses }`。
+   * **不抛错**——诊断框需要结构化数据，抛错会被 contextBridge 截断（见 bridge-error）。
+   */
+  launch: (id: string): Promise<LaunchResult> => bridge().invoke('launch', { id }),
 
   detect: (path: string, includeRemote?: boolean): Promise<{ engine: string | null; installed: boolean }> =>
     bridge().invoke('detect', { path, includeRemote }),
@@ -355,7 +412,23 @@ export const api = {
   languageGroups: (threshold?: number): Promise<{ groups: LanguageGroup[] }> =>
     bridge().invoke<{ groups: LanguageGroup[] }>('languageGroups', { threshold }),
 
-  clearGameMeta: (gameId: string): Promise<Snapshot> => bridge().invoke<Snapshot>('clearGameMeta', { gameId })
+  clearGameMeta: (gameId: string): Promise<Snapshot> => bridge().invoke<Snapshot>('clearGameMeta', { gameId }),
+
+  // ===== M3：故障自愈（全部走既有 tsumi:invoke，无新 preload channel）=====
+
+  /**
+   * M3：启动前诊断（纯本地、只读、毫秒级，绕开串行队列）。
+   * 返回按 fatal → warning → info 排序的数组；空数组 = 没发现问题。
+   */
+  diagnoseGame: (gameId: string): Promise<Diagnosis[]> =>
+    bridge().invoke<Diagnosis[]>('diagnoseGame', { gameId }),
+
+  /**
+   * M3：一键修复（进队列——可能触发 244MB 的 RTP 下载）。
+   * 只处理传入的那**一条** fix（§11-③：第一版不并行处理多条）。
+   */
+  repairGame: (gameId: string, fix: DiagnosisFix): Promise<RepairResult> =>
+    bridge().invoke<RepairResult>('repairGame', { gameId, fix })
 }
 
 // ===== 图片 URL（§3.7）=====

@@ -5,6 +5,8 @@ import { computed, ref } from 'vue'
 import {
   api,
   type DetectFolderResult,
+  type Diagnosis,
+  type DiagnosisFix,
   type DlsiteSearchHit,
   type DlsiteWork,
   type EditableField,
@@ -13,6 +15,8 @@ import {
   type GameMeta,
   type GameRecord,
   type LanguageGroup,
+  type LaunchResult,
+  type RepairResult,
   type Snapshot
 } from '@/api/client'
 
@@ -88,9 +92,24 @@ export const useLibraryStore = defineStore('library', () => {
     applySnapshot(await api.deleteGame(id))
   }
 
-  async function launch(id: string): Promise<string> {
-    const result = await api.launch(id)
-    return result.message
+  /**
+   * 启动游戏（M3 §4.2 起返回结构化结果，不再只有 message）。
+   *
+   * **不在这里弹诊断框**：store 只管数据，弹窗交给页面（LibraryPage），
+   * 这样「谁能启动、被拦了怎么办」的决策点只有一处，也便于探针断言 DOM。
+   */
+  async function launch(id: string): Promise<LaunchResult> {
+    return api.launch(id)
+  }
+
+  /** M3：跑一次启动前诊断（纯本地、只读、绕队列）。 */
+  async function diagnose(id: string): Promise<Diagnosis[]> {
+    return api.diagnoseGame(id)
+  }
+
+  /** M3：执行一键修复；返回修复后的重诊断结果（UI 用它刷新对话框）。 */
+  async function repair(id: string, fix: DiagnosisFix): Promise<RepairResult> {
+    return api.repairGame(id, fix)
   }
 
   async function detectFolder(path: string, includeRemote?: boolean): Promise<DetectFolderResult> {
@@ -194,6 +213,8 @@ export const useLibraryStore = defineStore('library', () => {
     saveGame,
     removeGame,
     launch,
+    diagnose,
+    repair,
     detectFolder,
     detectRj,
     lookupRj,

@@ -204,6 +204,8 @@
     "languagePreferenceHint": "当库里同一个游戏有多个语言版本时，启动非首选版本会提示你切换。选「不启用」可整体关闭这个功能。",
     "languageSwitchPrompt": "启动非偏好语言版时提示",
     "languageSwitchPromptHint": "开着的时候，点启动会先问你要不要换成偏好的语言版；关掉就不再提示，直接启动你点的那一个。",
+    "diagnoseBeforeLaunch": "启动前自动诊断",
+    "diagnoseBeforeLaunchHint": "每次启动前检查游戏能不能跑（加密发行、缺 RTP、路径失效等），发现问题会给中文提示。只读本地文件、不联网；嫌慢可以关掉。",
     "languageNone": "不启用",
     "languageZh": "中文",
     "languageJa": "日文",
@@ -292,6 +294,31 @@
     "invalidCover": "封面地址必须是 https://img.dlsite.jp/ 开头",
     "editHint": "手动改过的字段在「重新获取」时不会被 DLsite 覆盖；点「重置此字段」可恢复。"
   },
+  "diagnose": {
+    "sectionTitle": "启动诊断",
+    "sectionHint": "启动前自动检查这个游戏能不能跑。只读本地文件，不联网。",
+    "encryptedArchive": "「{file}」使用了加密发行（{rgssVersion}），mkxp-z 需要解包后的 Data/ 目录才能运行。建议先用 RGSS 解包工具把 {file} 解开，把得到的 Data/ 放到游戏目录里。",
+    "encryptedArchiveHint": "我们不会自动解包：那是作者的加密发行方式，自动破解有法律风险。",
+    "missingRtp": "这个游戏需要 RTP「{rtp}」，当前缺失。缺 RTP 时游戏可能黑屏、缺素材或崩溃。",
+    "missingRtpFix": "一键补装 RTP（约 244MB）",
+    "missingExecutable": "这个目录里找不到可执行文件，请确认选中的是游戏根目录。",
+    "moduleMissing": "引擎「{engine}」还没安装，请先到「引擎管理」里安装。",
+    "pathGone": "游戏路径不存在了，可能被移动或删除。请到编辑页重新选择。",
+    "fontsPresent": "这个游戏自带 {count} 个字体文件。如果游戏内文字显示为方块或乱码，多半是字体没被正确加载。",
+    "blockedTitle": "这个游戏暂时无法启动",
+    "ratherTry": "还是启动试试",
+    "repair": "一键修复",
+    "repairing": "正在修复…",
+    "repaired": "修复完成，请重试启动",
+    "noProblems": "没有发现问题",
+    "refresh": "重新诊断",
+    "fixOpenFolder": "打开游戏目录",
+    "fixRepoint": "去编辑页重选路径",
+    "fixInstallModule": "安装引擎",
+    "levelError": "必须解决",
+    "levelWarning": "建议检查",
+    "levelInfo": "提示"
+  },
   "error": {
     "invalidObject": "数据文件格式不正确：{file}",
     "invalidComponent": "名称不合法：{label}",
@@ -334,6 +361,8 @@
     "dlsiteParse": "无法解析 {rj} 的页面数据（DLsite 可能已改版）",
     "dlsiteGameRequired": "请先保存游戏，再保存 DLsite 信息",
     "dlsiteSearchEmpty": "没有搜到「{keyword}」相关的作品，可换个关键词或直接填 RJ 号",
-    "languagePreference": "语言偏好设置不合法：{value}"
+    "languagePreference": "语言偏好设置不合法：{value}",
+    "repairFixMissing": "缺少修复动作，请刷新诊断后重试",
+    "repairUnknownFix": "不认识的修复动作：{action}"
   }
 }

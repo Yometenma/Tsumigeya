@@ -5,7 +5,7 @@ import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import GameCard from '@/components/GameCard.vue'
-import { translateError } from '@/api/client'
+import { translateError, type Diagnosis } from '@/api/client'
 import { languageShortName } from '../../../shared/game-language'
 import { decideLaunchTarget } from '../../../shared/launch-language'
 import { useLibraryStore } from '@/stores/library'
@@ -33,12 +33,31 @@ async function launch(id: string): Promise<void> {
   const game = library.byId(id)
   const target = await resolveLaunchTarget(id)
   try {
-    await library.launch(target)
+    const result = await library.launch(target)
+    // M3 §4.2：被 fatal 诊断拦下时弹中文诊断框（S3 实装），而不是抛英文错误
+    if ('blocked' in result) {
+      showDiagnosisDialog(target, result.diagnoses)
+      return
+    }
     const targetGame = library.byId(target)
     ElMessage.success(t('library.launchSent', { title: targetGame?.gameTitle ?? game?.gameTitle ?? '' }))
   } catch (error) {
     ElMessage.error(translateError(error, t))
   }
+}
+
+/**
+ * M3：诊断框（S3 实装完整交互；此处先保证 blocked 分支有反馈，不出现「点了没反应」）。
+ * 完整版见 S3：列出每条诊断 + 「一键修复」+ 仅 warning 时给「还是启动试试」。
+ */
+function showDiagnosisDialog(gameId: string, diagnoses: Diagnosis[]): void {
+  const lines = diagnoses.map((item) => t(item.messageKey, item.args ?? {}))
+  void ElMessageBox.alert(lines.join('\n'), t('diagnose.blockedTitle'), {
+    type: 'warning',
+    confirmButtonText: t('common.ok'),
+    dangerouslyUseHTMLString: false
+  })
+  void gameId
 }
 
 /**
