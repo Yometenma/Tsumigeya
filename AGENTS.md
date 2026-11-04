@@ -20,7 +20,7 @@
 
 ## 当前项目状态（每次收尾必须更新）
 
-- **阶段**：**M1 / M2 已完成**（v0.1.4 已发布）；**M2.5 方案已冻结待实施**（见 `docs/M2.5-实施方案.md`）
+- **阶段**：**M1 / M2 / M2.5 已完成**（M2.5 的 S1–S7 全部落地并端到端验证，见 `docs/M2.5-实施方案.md`）
   - M2.5 = 用户 2026-11-04 提的三项改进：按名字搜索 DLsite + 候选列表 / 可编辑元数据 / 多语言版本偏好
   - **技术前提已实测完毕**（搜索 URL 格式、结果解析、噪音过滤、无法靠 lang_options 判断多语言版），
     写在 M2.5 文档 §1，**新会话不要重复验证**
@@ -34,24 +34,49 @@
   - **R18 封面打码**（用户 2026-11-04 拍板）：设置项 `showAdultCovers` 默认 false，
     判定依据是 DLsite 的 section（`maniax`/`books` = R18；实测同一 R18 作品在 `homepro` 返回 404），
     **只影响渲染、不影响抓取与存储**。实现在 `src/shared/age-rating.ts`（零依赖纯函数）
-  - **测试 172 个全绿 / 10 个文件**（M1 的 76 + M2 的 89 + R18 打码 7）
-- **M2 端到端实测（Windows 本机，`node scripts/probe-m2.cjs`）**：
+  - **M2.5 全套**（三个提交 `ad35e95` / `401c531` / `b2a7cfe`）：
+    - **§A 按名字搜索**：`buildSearchUrl` / `isSearchResultPage` / `parseSearchResults` / `searchWorks`
+      （解析优先用真实页面的 `data-list_item_product_id` 结构化锚点，无锚点退回 href 宽松匹配；
+      噪音文案过滤 + 按 RJ 去重 + 缩略图过 D22 白名单）；IPC `dlsiteSearch`（绕队列）；
+      编辑页候选列表（**绝不自动选第一条**，实测搜「傭兵」首条不是目标作品）
+    - **§B 可编辑元数据**：`EDITABLE_FIELDS`（title/circle/coverUrl/registDate/price，**不含 rj**）、
+      `normalizeEditedFields`（去重 + 按白名单排序）、`mergeWork`（被编辑字段刷新不覆盖）、
+      `save` 三态（传非空→并集 / 传 `[]`→清空=强制覆盖 / 不传→沿用）；
+      编辑页每字段「编辑 / 已修改 / 重置此字段」+「强制覆盖全部」
+    - **§C 多语言偏好**：`src/shared/game-language.ts`（`stripLanguageSuffix` / `normalizeTitle`）、
+      `src/shared/language-group.ts`（`similarity` / **`isSuffixExtension`** / `applyParentFolderInference` /
+      `groupByLanguage`）、`src/shared/launch-language.ts`（`decideLaunchTarget`）；
+      设置项 `preferredLanguage`(zh) / `fallbackLanguage`(ja) / `languageSwitchPrompt`(true)；
+      IPC `languageGroups`（纯本地、绕队列）；卡片语言标签 +「也有 xx 版」；启动非偏好版时弹确认
+- **测试 280 个全绿 / 13 个文件**（M1 的 76 + M2 的 89 + R18 打码 7 + M2.5 的 108）
+- **M2.5 端到端实测（Windows 本机，`node scripts/probe-m25.cjs`）**：
+  - 搜索：搜「傭兵」返回 **20 条真作品**（约 2.2s），第二次调用 828ms → 确实绕开了队列
+  - 候选点选：关键词默认「傭兵の冒険」（目录名剥 `_CHN` 得来）→ 出 1 条 → 点选填 `RJ306254` →
+    当场查询得到「傭兵の冒険」（**搜索→点选→查询闭环**）
+  - 搜不到时 `decodedKey` 正确解回 `error.dlsiteSearchEmpty`；**搜索不创建 library-meta.json**
+  - 可编辑元数据：点「编辑」→ 改标题 → 保存 → `edited=true`/`editedFields=["title"]`；
+    **再「重新获取」标题仍是用户改的**，circle 换成 DLsite 值；「强制覆盖全部」→ 标题回到 DLsite 值
+  - 多语言：真实布局（日文原版父目录 + 中文版内层）正确成组 ja+zh；库页出现「中文 / 日文」标签与
+    「也有 日文 版 / 也有 中文 版」；点日文版启动弹「要换成偏好的语言版吗？」（按钮「就启动这个 / 启动中文版」）；
+    选「就启动这个」→ 尊重用户选择
+  - 编辑页 `htmlLen ≈ 8900`、`consoleErrors = []` → 组件没白屏
+- **M2 端到端实测（`node scripts/probe-m2.cjs`）**：
   - `dlsiteLookup` 走系统代理**真拿到数据**：`純愛おま○こ当番【アップデート版】` / `青春×フェティシズム` /
     `2020/08/30`，**约 260ms**
   - 封面 `<img>` 真的加载成功：`naturalWidth = 560, complete = true`
     → **方案 §11 的 R3（防盗链）与 R4（R18 二次拦截）实测解除，不需要「主进程下载封面」的备选**
   - `snapshot.games[0]` 的键只有 `gameEngine/gamePath/gameTitle/id` → **D18（GameRecord 零改动）实测验证**
-  - 编辑页 `htmlLen = 6411`、`consoleErrors = []` → 组件没白屏
 - **验证基线（Windows 本机实测）**：
   - `npm run typecheck` ✅ exit 0
-  - `npm test` ✅ 172 passed / 10 files
+  - `npm test` ✅ 280 passed / 13 files
   - `npm run build` ✅ exit 0
-  - `node scripts/probe-m2.cjs` ✅ 全链路通过（见上）
+  - `node scripts/probe-m25.cjs` ✅ 全链路通过（见上）
 - **仍未验证（必须在有桌面会话的机器上做）**：
   - **视觉观感**：暗色主题配色、封面卡片裁切比例、进度浮层动效需人眼验收
+  - **M2.5 的新 UI 手感**：搜索候选列表的滚动与点击、字段编辑框的弹出位置、
+    语言确认对话框的措辞（本机无画面，只能用 DOM 断言验证存在与文案）
   - **系统文件对话框的返回值**（M1 遗留，已加手输路径兜底）
   - **安装引擎 / 其他引擎类型**（需 mac）
-  - **M2 编辑页交互手感**：RJ 候选多选、预览保存按钮的可见性
 - **已知网络现实（本机）**：DLsite 与 `raw.githubusercontent.com` **都依赖系统代理**。
   产品侧靠 `net.fetch` + `session.setProxy({ mode: 'system' })` 走代理（D9）；
   纯 Node / vitest / curl 验收必须显式设代理，否则一律超时。
@@ -107,8 +132,12 @@ npm run build:mac    # 出 mac 包（Windows 上只能出 zip/dir，签名需 Ma
 │   │   ├── dlsite.ts       #   M2：RJ 识别 + var contents 解析 + TTL 缓存（不 import electron）
 │   │   ├── library-meta.ts #   M2：DLsite 元数据旁挂存储（library-meta.json）
 │   │   └── ipc.ts          #   IPC 命令表 + 串行队列 + 取消 + 对话框桥 + OFF_QUEUE_METHODS
-│   ├── shared/
-│   │   └── bridge-error.ts #   ★ 跨 contextBridge 的 error.key 编解码（preload 与渲染层共享）
+│   ├── shared/            #   零依赖纯函数（主进程 / 渲染层 / vitest 三处共用）
+│   │   ├── bridge-error.ts#   ★ 跨 contextBridge 的 error.key 编解码（preload 与渲染层共享）
+│   │   ├── age-rating.ts  #   R18 判定（只影响渲染）
+│   │   ├── game-language.ts#  M2.5：语言标记剥离 + 标题归一化
+│   │   ├── language-group.ts# M2.5：多语言版本分组（相似度 + 前缀防线 + 父目录推断）
+│   │   └── launch-language.ts# M2.5：启动时的语言切换决策
 │   ├── preload/index.ts    # contextBridge 白名单桥（window.tsumi）
 │   └── renderer/src/       # Vue3 前端
 │       ├── pages/          #   Library / GameEdit / Engines / Settings
@@ -118,10 +147,12 @@ npm run build:mac    # 出 mac 包（Windows 上只能出 zip/dir，签名需 Ma
 │       └── locales/        #   zh-CN.json（所有 UI 文案集中在此）
 ├── scripts/
 │   ├── dev.cjs             #   开发启动包装（文件入口 + 清环境变量 + NO_SANDBOX）
-│   └── probe-m2.cjs        #   M2 端到端验收探针（+ probe-m2-inner.cjs）
+│   ├── probe-m2.cjs        #   M2 端到端验收探针（+ probe-m2-inner.cjs）
+│   └── probe-m25.cjs       #   M2.5 端到端验收探针（+ probe-m25-inner.cjs）
 └── test/
     ├── fixtures/           # 假游戏目录（MV/VX Ace/2000/Ren'Py）+ dlsite/RJ294126.html
-    └── *.test.ts           # vitest 单测（172 个，10 个文件，不依赖网络与 GUI）
+    │                       #   + dlsite/search-mercenary.html（M2.5 真搜索页裁切）
+    └── *.test.ts           # vitest 单测（280 个，13 个文件，不依赖网络与 GUI）
 ```
 
 ## 架构与数据流（30 秒版）
@@ -166,6 +197,15 @@ Vue 组件 → Pinia store → api/client → preload(window.tsumi.invoke)
 | D20 | 元数据抓取**只在主进程**做（渲染层不发网络请求），CSP 只加 `img-src https://img.dlsite.jp` | 最小攻击面；`<img>` 不受 `connect-src` 约束，所以不动 `connect-src`/`script-src` |
 | D21 | `dlsiteLookup` / `dlsiteDetectRJ` 进 `OFF_QUEUE_METHODS`（绕串行队列） | 只写自己独立的 `<dataDir>/dlsite/` 缓存目录，与队列内写操作无共享资源；防重演"更新检查堵死队列"。**名单用测试锁死**（`test/ipc-offqueue.test.ts`） |
 | D22 | 封面 URL 必须 host ∈ `img.dlsite.jp`，否则丢弃 | 外部数据不可信，禁止任意远程图进渲染层 |
+| D23 | DLsite 搜索结果解析**优先用结构化锚点** `data-list_item_product_id`，无锚点时退回 `product_id/(RJ…).html` 宽松匹配；两条路径共用噪音过滤 + 按 RJ 去重 | 实测真实结果页每条记录里 RJ 重复出现 5 次（缩略图/链接/购物车按钮各一次），纯 href 正则会把按钮文案当成标题；结构化锚点是最稳的边界 |
+| D24 | 搜索**只取第一页**，上限 20 条，**绝不自动选第一条** | §1.3 实测：搜「傭兵」首条是「即ハメ王女」而非目标作品。自动选中会让用户以为搜到了对的、实际存进错的 RJ |
+| D25 | 可编辑字段白名单**不含 `rj`**（title/circle/coverUrl/registDate/price） | 改 RJ 等于换作品，会产生「标题属于 A、RJ 属于 B」的错位数据；换作品应走「搜索/填 RJ」流程 |
+| D26 | 可编辑元数据用 `editedFields` 标记 + `mergeWork` 合并：**被编辑的字段刷新不覆盖** | 用户手改过的值属于用户数据；不标记的话一次「重新获取」就把用户劳动冲掉了 |
+| D27 | **多语言偏好与 DLsite 无关**，纯本地文件层面判断（§1.5 实测 `lang_options` 是作品单值） | 不同语言版是独立 RJ，不能靠 DLsite 字段判断；本地按目录名/标题的语言标记 + 相似度判 |
+| D28 | 多语言分组**必须**加 `isSuffixExtension` 前缀防线，不能只靠相似度阈值 | 实测 `similarity("傭兵の冒険","傭兵の冒険2") = 0.833 > 0.8`：光靠阈值会把续作判成原作的多语言版，用户点启动会被引到错的游戏。归一化后真正的多语言版应当**完全相同**，还差尾巴的是另一个商品 |
+| D29 | 多语言分组允许**父目录推断为 ja**（极保守）：某游戏无任何语言标记、且它正好是另一个「已识别出非 ja 语言」游戏的祖先目录 | 用户真实布局是「日文原版在父目录、中文版在内层带 `_CHN`」，父目录本身无标记；不推断则这条最常见的样本永远成不了组。自己标了 `_EN` 时以显式为准，不被覆盖 |
+| D30 | 语言切换确认的「不再询问」做成**设置页开关**，不做对话框勾选框 | 勾选框一旦勾上就再也找不到入口重开；设置页随时能改回来 |
+| D31 | 语言偏好（§C）**绝不自动删除/隐藏**其他语言版 | 那是用户数据，§C.5 明令不代删；只做标记与提示 |
 
 ## 已知坑
 
@@ -222,6 +262,8 @@ Vue 组件 → Pinia store → api/client → preload(window.tsumi.invoke)
 - **M2（已完成）**：DLsite 元数据（RJ 号 → 标题 / 社团 / 封面 / 发售日 / 价格，封面墙）
   - 方案与决策见 [`docs/M2-实施方案.md`](./docs/M2-实施方案.md)（D18–D22）
   - **标签（genre）明确不做** —— 调研实测接口不可用，不承诺（D19）
+- **M2.5（已完成）**：搜索 / 可编辑元数据 / 多语言偏好
+  - 方案见 [`docs/M2.5-实施方案.md`](./docs/M2.5-实施方案.md)（D23–D31）
 - **M3（下一个）**：故障自愈（RTP 缺失、字体/乱码修复、一键修复启动）
   - 【新增】**加密发行检测与引导**（用户 2026-11-04 拍板）：识别「只有 `Game.rgss3a`/`Game.rgssad`、
     没有 `Data/Scripts.rvdata2`」的游戏，给出可操作的中文提示。

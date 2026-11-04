@@ -18,6 +18,7 @@ import {
   type GameArgDef,
   type ManifestRaw
 } from '@/api/client'
+import { stripLanguageSuffix } from '../../../shared/game-language'
 import { useLibraryStore } from '@/stores/library'
 import { useEnginesStore } from '@/stores/engines'
 
@@ -220,19 +221,16 @@ async function detectRj(): Promise<void> {
 /**
  * 从游戏路径生成默认搜索关键词：取目录名，剥掉语言标记与版本号。
  *
- * TODO(M2.5-C)：§C.3 会把这段逻辑搬到 `stripLanguageSuffix()` 里统一实现，
- * 那时这里改成调用共享函数（现在先内联，避免 S2 卡在 C 的排期上）。
+ * 直接复用 stripLanguageSuffix()（src/shared/game-language.ts），与 §C 的多语言识别
+ * **同一套规则**。S2 阶段这里是临时内联的，内联版把裸数字当版本号剥，
+ * 会把「傭兵の冒険2」的续作序号吃掉 → 搜到错的游戏；S7 统一到共享实现后隐患消失。
  */
 function guessKeyword(filePath: string): string {
   const raw = filePath.trim()
   if (!raw) return ''
   // 兼容 / 与 \ 两种分隔符（Windows 路径在渲染层也可能是反斜杠）
   const segment = raw.split(/[\\/]+/).filter(Boolean).pop() ?? ''
-  return segment
-    .replace(/_(chs|cht|chn|cn|sc|tc|jp|ja|jpn|en|eng|us|kor|kr)$/i, '')
-    .replace(/[\s._-]*v?\d+(\.\d+)*$/i, '')
-    .replace(/[\s._-]+$/, '')
-    .trim()
+  return stripLanguageSuffix(segment).base
 }
 
 /** 展开搜索面板（第一次展开时用目录名兜底关键词）。 */
