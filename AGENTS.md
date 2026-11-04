@@ -116,7 +116,7 @@ Vue → Pinia → api/client → preload(window.tsumi.invoke)
 | **`Game.ini` 是 GBK/Shift-JIS，不是 UTF-8** | `readGameIni()` 只按 `latin1` 读 `[Game]` 的 ASCII 结构行；**绝不用 `Title=`** |
 | **XP 的 RTP 目录名是 `Standard` 不是 `RPGXP`** | 实测 `RTP.zip` 只有 `Standard`/`RPGVX`/`RPGVXAce`（D59）。错映射 → XP 永久判「RTP 缺失」 |
 | RTP 名大小写：`RPGVXace` vs `Game.ini` 的 `RPGVXAce` | `normalizeRtpName()` + 查不到时 `findCaseInsensitive()`。**CI 是 Linux（大小写敏感）** |
-| 解压依赖时**只剥与依赖名同名**的包裹层 | 盲目剥单层会把版本目录一起吞掉 → 诊断永远判缺失 |
+| 解压依赖时**默认保留**单层目录（别拍平） | 盲目拍平会吞掉 `nwjs-sdk-…/` 版本目录 → 二进制路径差一层 → 启动失败（D69） |
 | 路径上的 `tar` 在 Windows 是 GNU tar | 单测用 `C:\Windows\System32\tar.exe`（bsdtar） |
 | `tarBinary()` 必须有 Linux 分支 | darwin→`/usr/bin/tar`、win32→System32、其余→PATH |
 
