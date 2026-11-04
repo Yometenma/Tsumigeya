@@ -13,9 +13,22 @@ files:
 # 核心（GPL fork 的 module.js）不进 asar：launcher.js 用相对路径 require 它，
 # 打进 asar 会拿不到真实文件路径。打包后对应 Contents/Resources/core/module.js，
 # 与 src/main/core-host.ts 的 resolveCorePath({ isPackaged: true }) 分支一致。
+#
+# ===== M4.2 S5：`resources/core/module.js` 已删除（D63）=====
+#
+# 上面那段注释记的是**曾经**为什么要 extraResources —— 那个 GPL fork 脚本已经不在了，
+# 装载它的 `loadCoreFactory` / `resolveCorePath` 也一起删了。现在 `resources/core/` 里
+# 只剩 `FORK-NOTES.md`（历史记录，说明本项目曾基于 GPL 上游、各补丁改了什么）。
+#
+# 这个 extraResources 条目**保留**，只把内容从「整个 core 目录」收窄到那一份说明：
+#   · 保留：GPL 精神要求分发时能看到「曾基于上游」这件事，而 FORK-NOTES.md 是唯一证据
+#   · 收窄：再搬一个 73 KB 的废弃脚本进安装包，等于把上游代码继续带着走（D63 要的正是相反）
+#
+# ⚠️ 不要改成删掉整个 extraResources —— CI 的自检会读 Contents/Resources/core/FORK-NOTES.md，
+#    删了它自检就失去意义（没有东西可验「extraResources 到底有没有生效」）。
 extraResources:
-  - from: resources/core
-    to: core
+  - from: resources/core/FORK-NOTES.md
+    to: core/FORK-NOTES.md
 
 asar: true
 

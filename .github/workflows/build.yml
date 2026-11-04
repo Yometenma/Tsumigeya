@@ -90,11 +90,17 @@ jobs:
           echo "找到 app: $APP"
           echo "--- Contents/Resources 顶层 ---"
           ls -1 "$APP/Contents/Resources" | head -20
-          test -f "$APP/Contents/Resources/core/module.js" \
-            || { echo "❌ 缺少 Contents/Resources/core/module.js（extraResources 未生效）"; exit 1; }
+          # M4.2 S5：core/module.js 已删除（D63）。extraResources 只剩 FORK-NOTES.md，
+          # 用它验「extraResources 到底有没有生效」——它没了就说明打包配置坏了。
+          test -f "$APP/Contents/Resources/core/FORK-NOTES.md" \
+            || { echo "❌ 缺少 Contents/Resources/core/FORK-NOTES.md（extraResources 未生效）"; exit 1; }
+          # 反向断言：上游那个 1911 行的脚本**必须不存在**（D63 的全部意义）
+          test ! -f "$APP/Contents/Resources/core/module.js" \
+            || { echo "❌ 上游 module.js 又被打进包里了（D63 要求它不存在）"; exit 1; }
           test -f "$APP/Contents/Resources/app.asar" \
             || { echo "❌ 缺少 app.asar"; exit 1; }
-          echo "✅ core/module.js 就位：$(wc -c < "$APP/Contents/Resources/core/module.js") 字节"
+          echo "✅ core/FORK-NOTES.md 就位：$(wc -c < "$APP/Contents/Resources/core/FORK-NOTES.md") 字节"
+          echo "✅ 确认 core/module.js 不存在（D63）"
           echo "✅ app.asar 就位：$(wc -c < "$APP/Contents/Resources/app.asar") 字节"
           echo "--- 签名状态 ---"
           # Apple Silicon 要求所有可执行文件至少被 ad-hoc 签名，
@@ -145,9 +151,13 @@ jobs:
         run: |
           $app = "dist/win-unpacked"
           if (-not (Test-Path $app)) { Write-Error "找不到 $app"; exit 1 }
+          # M4.2 S5：core/module.js 已删除（D63）。extraResources 只剩 FORK-NOTES.md。
+          $fork = Join-Path $app "resources/core/FORK-NOTES.md"
+          if (-not (Test-Path $fork)) { Write-Error "缺少 resources/core/FORK-NOTES.md"; exit 1 }
+          Write-Host "core/FORK-NOTES.md 就位：$((Get-Item $fork).Length) 字节"
           $core = Join-Path $app "resources/core/module.js"
-          if (-not (Test-Path $core)) { Write-Error "缺少 resources/core/module.js"; exit 1 }
-          Write-Host "core/module.js 就位：$((Get-Item $core).Length) 字节"
+          if (Test-Path $core) { Write-Error "上游 module.js 又被打进包里了（D63 要求它不存在）"; exit 1 }
+          Write-Host "确认 core/module.js 不存在（D63）"
       - name: 列出产物
         run: dir dist
 

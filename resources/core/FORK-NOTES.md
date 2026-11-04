@@ -1,5 +1,22 @@
 # FORK-NOTES — `resources/core/module.js` 与上游的差异
 
+> ## ⚠️ 这份文件只保留作历史记录（M4.2 / D63）
+>
+> **`module.js` 已被删除。** M4.2 那个里程碑的目标就是「彻底零上游」，所以这一整份
+> 补丁登记表现在描述的是一个**本仓库里已经不存在**的文件。
+>
+> 保留它的两个理由（都不是「懒得删」）：
+> 1. **GPL 精神**：本仓库是 GPL-3.0，且历史上确实基于
+>    [Xenolauncher](https://github.com/m5kro/Xenolauncher) 的 `app/module.js`。
+>    分发时能查到「曾基于哪个上游、改了什么」，是这个许可证要求的透明度。
+> 2. **考古价值**：18 个 API 的判决（自实现 7 / 替换 2 / 删除 4 / 已删 3）记在
+>    `docs/M4.2-实施方案.md` §1.1。将来若有人问「为什么 `deps/RTP/RTP/` 有两层」
+>    （补丁 #3 与 #7 的后果），追这段历史比读代码快。
+>
+> 现在的实现分布：`src/main/engines/`（registry / manifest / detect / semver / install /
+> versions），启动在 `src/main/launchers/`。**这些代码是新写的，不是从下面这个文件搬过来的**
+> （除了逐条照抄的语义，每条都注明了出处）。
+
 本文件记录 `resources/core/module.js` 相对于上游
 [Xenolauncher](https://github.com/m5kro/Xenolauncher) `app/module.js` 的**全部**改动。
 
