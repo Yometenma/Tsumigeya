@@ -317,7 +317,9 @@
     "fixInstallModule": "安装引擎",
     "levelError": "必须解决",
     "levelWarning": "建议检查",
-    "levelInfo": "提示"
+    "levelInfo": "提示",
+    "notRunYet": "还没诊断过，点上面的按钮跑一次",
+    "saveFirst": "请先保存游戏，再做启动诊断"
   },
   "error": {
     "invalidObject": "数据文件格式不正确：{file}",

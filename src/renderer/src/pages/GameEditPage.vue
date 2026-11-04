@@ -12,6 +12,8 @@ import {
   iconUrl,
   translateError,
   EDITABLE_FIELDS,
+  type Diagnosis,
+  type DiagnosisFix,
   type DlsiteSearchHit,
   type DlsiteWork,
   type EditableField,
@@ -82,6 +84,21 @@ const editingField = ref<EditableField | null>(null)
 /** 编辑框里的草稿值（字符串统一处理，price 保存时再转数字）。 */
 const editDraft = ref('')
 const savingField = ref(false)
+
+// ===== M3：启动诊断面板（§6 文件清单：GameEditPage 的「启动诊断」面板）=====
+//
+// ⚠️ 同一条 TDZ 规矩：这些 ref 必须声明在 fill() 之前。
+// 面板与自动诊断**共用同一份数据源**（diagnoseGame），区别只是触发时机：
+//   · 启动时由 launch 自动跑（用户被动看到对话框）
+//   · 这里由用户手动点「重新诊断」（编辑完路径/引擎后想看一眼）
+/** 当前诊断结果（空数组 = 没发现问题，也 = 还没跑过；用 diagnosed 区分）。 */
+const diagnoses = ref<Diagnosis[]>([])
+/** 是否已经跑过一次（决定显示「没有发现问题」还是「点一下诊断」）。 */
+const diagnosed = ref(false)
+/** 诊断进行中。 */
+const diagnosing = ref(false)
+/** 正在修哪一条（fix.kind；null = 没有修复在跑）。 */
+const repairingKind = ref<string | null>(null)
 
 /** 当前引擎的 manifest（已装模块才有 raw）。 */
 const manifest = computed<ManifestRaw | null>(() => {
@@ -561,6 +578,81 @@ async function save(): Promise<void> {
     saving.value = false
   }
 }
+
+// ===== M3：启动诊断面板的交互 =====
+
+/**
+ * 手动跑一次诊断。
+ *
+ * 新游戏（还没保存）没有 id，诊断要按 gameId 查库里的记录，所以这里先要求先保存。
+ * 这不是偷懒：诊断读的是**库里那条记录**的路径/引擎，而用户此刻屏幕上的输入可能还没落盘——
+ * 用一个「未保存的草稿」去诊断，结果会和他以为的不一样。
+ */
+async function runDiagnosis(): Promise<void> {
+  if (isNew.value || !gameId.value) {
+    ElMessage.info(t('diagnose.saveFirst'))
+    return
+  }
+  diagnosing.value = true
+  try {
+    diagnoses.value = await library.diagnose(gameId.value)
+    diagnosed.value = true
+  } catch (error) {
+    ElMessage.error(translateError(error, t))
+  } finally {
+    diagnosing.value = false
+  }
+}
+
+/** 执行一条修复；修完用主进程回传的重诊断结果刷新面板。 */
+async function repairDiagnosis(item: Diagnosis): Promise<void> {
+  if (!item.fix || !gameId.value) return
+  // 显式浅拷贝：Vue 的 reactive Proxy 过 contextBridge 会克隆失败（AGENTS.md 已知坑）
+  const fix = { ...item.fix }
+  repairingKind.value = fix.kind
+  try {
+    const result = await library.repair(gameId.value, fix)
+    diagnoses.value = result.diagnoses
+    diagnosed.value = true
+    ElMessage.success(result.message || t('diagnose.repaired'))
+  } catch (error) {
+    ElMessage.error(translateError(error, t))
+  } finally {
+    repairingKind.value = null
+  }
+}
+
+/** 级别 → Element Plus alert 类型（与 DiagnosisDialog 同一套映射）。 */
+function diagnosisType(level: Diagnosis['level']): 'error' | 'warning' | 'info' {
+  if (level === 'fatal') return 'error'
+  if (level === 'warning') return 'warning'
+  return 'info'
+}
+
+function diagnosisLabel(level: Diagnosis['level']): string {
+  if (level === 'fatal') return t('diagnose.levelError')
+  if (level === 'warning') return t('diagnose.levelWarning')
+  return t('diagnose.levelInfo')
+}
+
+function diagnosisMessage(item: Diagnosis): string {
+  return t(item.messageKey, item.args ?? {})
+}
+
+function diagnosisFixLabel(fix: DiagnosisFix): string {
+  switch (fix.kind) {
+    case 'installRtp':
+      return t('diagnose.missingRtpFix')
+    case 'installModule':
+      return t('diagnose.fixInstallModule')
+    case 'openFolder':
+      return t('diagnose.fixOpenFolder')
+    case 'repoint':
+      return t('diagnose.fixRepoint')
+    default:
+      return t('diagnose.repair')
+  }
+}
 </script>
 
 <template>
@@ -645,6 +737,48 @@ async function save(): Promise<void> {
         :manifest="manifest"
         @manage-versions="manageVersions"
       />
+    </section>
+
+    <!-- M3：启动诊断面板（§4.2 / §6）。与自动诊断共用同一份数据源，这里是手动刷新入口。 -->
+    <section class="panel stack diagnosis-panel" style="margin-top: 16px">
+      <div>
+        <h3 style="margin: 0">{{ t('diagnose.sectionTitle') }}</h3>
+        <div class="hint">{{ t('diagnose.sectionHint') }}</div>
+      </div>
+
+      <div class="row" style="gap: 8px">
+        <el-button type="primary" :loading="diagnosing" @click="runDiagnosis">
+          {{ diagnosed ? t('diagnose.refresh') : t('diagnose.sectionTitle') }}
+        </el-button>
+        <span v-if="!diagnosed" class="hint">{{ t('diagnose.notRunYet') }}</span>
+        <span v-else-if="diagnoses.length === 0" class="hint">{{ t('diagnose.noProblems') }}</span>
+      </div>
+
+      <el-alert
+        v-for="(item, index) in diagnoses"
+        :key="`${item.code}-${index}`"
+        :type="diagnosisType(item.level)"
+        :closable="false"
+        show-icon
+      >
+        <template #title>
+          <span class="diagnosis-level">{{ diagnosisLabel(item.level) }}</span>
+        </template>
+        <div class="diagnosis-message">{{ diagnosisMessage(item) }}</div>
+        <div v-if="item.code === 'encryptedArchive'" class="diagnosis-hint">
+          {{ t('diagnose.encryptedArchiveHint') }}
+        </div>
+        <div v-if="item.fix" class="diagnosis-actions">
+          <el-button
+            size="small"
+            type="primary"
+            :loading="repairingKind === item.fix.kind"
+            @click="repairDiagnosis(item)"
+          >
+            {{ diagnosisFixLabel(item.fix) }}
+          </el-button>
+        </div>
+      </el-alert>
     </section>
 
     <!-- M2：DLsite 信息（只挂在编辑页；新游戏还没有 id，所以只能预览不能保存） -->

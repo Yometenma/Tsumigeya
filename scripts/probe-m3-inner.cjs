@@ -170,6 +170,61 @@ app.whenReady().then(async () => {
          })()`
       )
       record('diagnosisDialog', domProbe)
+
+      // ===== ⑤ S4：编辑页的「启动诊断」面板（§8 S4 验收：面板存在 + htmlLen 不塌陷）=====
+      // 白屏是本项目最隐蔽的坑（TDZ / ICU 语法 / TS 断言都会导致整块组件消失），
+      // 所以判据必须是「htmlLen 没塌」+「面板真的渲染出来」，而不是「没报错」。
+      const editPanel = await evaluate(
+        window,
+        `(async () => {
+           // 关掉诊断框（点「关闭」），免得挡住后续操作
+           const closeBtn = Array.from(document.querySelectorAll('.diagnosis-dialog button')).find(
+             (b) => (b.innerText || '').trim() === '关闭'
+           )
+           if (closeBtn) closeBtn.click()
+           await new Promise((r) => setTimeout(r, 300))
+
+           const before = document.querySelector('#app').innerHTML.length
+           // 走真实路由跳到编辑页
+           const app = document.querySelector('#app').__vue_app__
+           const router = app.config.globalProperties.$router
+           await router.push('/game/${gameId}')
+           await new Promise((r) => setTimeout(r, 1200))
+
+           const panels = Array.from(document.querySelectorAll('.diagnosis-panel'))
+           const text = panels.map((p) => p.innerText || '').join('\\n')
+           const buttons = Array.from(document.querySelectorAll('.diagnosis-panel button')).map((b) =>
+             (b.innerText || '').trim()
+           )
+
+           // 点面板上的诊断按钮，看它真的能跑出结果
+           const runBtn = Array.from(document.querySelectorAll('.diagnosis-panel button')).find(
+             (b) => /启动诊断|重新诊断/.test(b.innerText || '')
+           )
+           let afterRun = null
+           if (runBtn) {
+             runBtn.click()
+             await new Promise((r) => setTimeout(r, 900))
+             const afterPanels = Array.from(document.querySelectorAll('.diagnosis-panel'))
+             afterRun = {
+               text: afterPanels.map((p) => p.innerText || '').join('\\n').slice(0, 800),
+               alerts: document.querySelectorAll('.diagnosis-panel .el-alert').length
+             }
+           }
+
+           return {
+             beforeLen: before,
+             afterLen: document.querySelector('#app').innerHTML.length,
+             panelCount: panels.length,
+             text: text.slice(0, 600),
+             buttons,
+             afterRun,
+             // 塌陷判据：编辑页应当比库页更"重"，只要没跌回只剩侧边栏（~500）就算没白屏
+             collapsed: document.querySelector('#app').innerHTML.length < 3000
+           }
+         })()`
+      )
+      record('editDiagnosisPanel', editPanel)
     } else {
       record('skipped', '真实样本不存在，跳过启动链验收')
     }
