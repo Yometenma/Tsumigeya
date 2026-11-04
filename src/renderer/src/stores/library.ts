@@ -95,11 +95,14 @@ export const useLibraryStore = defineStore('library', () => {
   /**
    * 启动游戏（M3 §4.2 起返回结构化结果，不再只有 message）。
    *
+   * `diagnoseAllowed=false` 表示「诊断框已经看过了，别再拦」——
+   * 用户点「还是启动试试」时必须传 false，否则会反复弹同一个框（§9 R5）。
+   *
    * **不在这里弹诊断框**：store 只管数据，弹窗交给页面（LibraryPage），
    * 这样「谁能启动、被拦了怎么办」的决策点只有一处，也便于探针断言 DOM。
    */
-  async function launch(id: string): Promise<LaunchResult> {
-    return api.launch(id)
+  async function launch(id: string, diagnoseAllowed = true): Promise<LaunchResult> {
+    return api.launch(id, diagnoseAllowed)
   }
 
   /** M3：跑一次启动前诊断（纯本地、只读、绕队列）。 */

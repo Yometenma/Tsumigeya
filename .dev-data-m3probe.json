@@ -1,0 +1,63 @@
+{
+  "ok": true,
+  "results": {
+    "bridgeType": "object",
+    "appHtmlLen": 4883,
+    "sampleExists": true,
+    "saveGame": {
+      "ok": true,
+      "count": 1,
+      "ids": [
+        "1"
+      ]
+    },
+    "gameId": "1",
+    "diagnose": {
+      "ok": true,
+      "count": 3,
+      "first": {
+        "code": "encryptedArchive",
+        "level": "fatal",
+        "messageKey": "diagnose.encryptedArchive",
+        "args": {
+          "file": "Game.rgss3a",
+          "rgssVersion": "VX Ace",
+          "count": "1"
+        },
+        "fix": {
+          "kind": "openFolder",
+          "path": "E:\\Game\\RPG\\傭兵の冒険\\傭兵の冒険_CHN"
+        }
+      },
+      "codes": [
+        "encryptedArchive:fatal",
+        "moduleMissing:fatal",
+        "fontsPresent:info"
+      ]
+    },
+    "diagnoseMs": 3,
+    "launchResult": {
+      "ok": true,
+      "blocked": true,
+      "diagnosisCount": 3,
+      "message": null
+    },
+    "diagnosisDialog": {
+      "clicked": true,
+      "dialogCount": 1,
+      "text": "这个游戏暂时无法启动\n必须解决\n\n「Game.rgss3a」使用了加密发行（VX Ace），mkxp-z 需要解包后的 Data/ 目录才能运行。建议先用 RGSS 解包工具把 Game.rgss3a 解开，把得到的 Data/ 放到游戏目录里。\n我们不会自动解包：那是作者的加密发行方式，自动破解有法律风险。\n打开游戏目录\n\n必须解决\n\n引擎「mkxpz」还没安装，请先到「引擎管理」里安装。\n安装引擎\n\n提示\n\n这个游戏自带 3 个字体文件。如果游戏内文字显示为方块或乱码，多半是字体没被正确加载。\n\n重新诊断\n关闭",
+      "buttons": [
+        "",
+        "打开游戏目录",
+        "安装引擎",
+        "重新诊断",
+        "关闭"
+      ],
+      "hasChineseTitle": true,
+      "hasEnglishMkxpError": false,
+      "hasRatherTryButton": false,
+      "htmlLen": 9357
+    },
+    "consoleErrors": []
+  }
+}

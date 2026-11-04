@@ -159,6 +159,50 @@ describe('launch 的启动前诊断（M3 §4.2）', () => {
     expect(threw).toBe(true)
   })
 
+  test('params.diagnose=false 时不再拦（用户已看过诊断框，点「还是启动试试」）', async () => {
+    const gameDir = makeEncryptedGame()
+    installModule('mkxpz')
+    host.store.saveGame({ game: { gameTitle: 'm', gamePath: gameDir, gameEngine: 'mkxpz' } })
+    // 前置条件：默认确实会被拦
+    const blocked = (await createDispatcher({ host }).dispatch('launch', { id: '1' }, signal())) as {
+      blocked?: boolean
+    }
+    expect(blocked.blocked).toBe(true)
+
+    // 带 diagnose=false：不该再返回 blocked。这是「绕过按钮真的有效」的证据——
+    // 没有它，点「还是启动试试」会再次被同一个框拦住（§9 R5）。
+    let returnedBlocked = false
+    try {
+      const result = (await createDispatcher({ host }).dispatch(
+        'launch',
+        { id: '1', diagnose: false },
+        signal()
+      )) as { blocked?: boolean }
+      returnedBlocked = result.blocked === true
+    } catch {
+      /* 抛错也算没拦住 */
+    }
+    expect(returnedBlocked).toBe(false)
+  })
+
+  test('settings.diagnoseBeforeLaunch=false 时整个诊断关闭（连 fatal 也不拦）', async () => {
+    const gameDir = makeEncryptedGame()
+    installModule('mkxpz')
+    host.store.saveGame({ game: { gameTitle: 'm', gamePath: gameDir, gameEngine: 'mkxpz' } })
+    host.store.saveSettings({ diagnoseBeforeLaunch: false })
+
+    let returnedBlocked = false
+    try {
+      const result = (await createDispatcher({ host }).dispatch('launch', { id: '1' }, signal())) as {
+        blocked?: boolean
+      }
+      returnedBlocked = result.blocked === true
+    } catch {
+      /* 抛错也算没拦住 */
+    }
+    expect(returnedBlocked).toBe(false)
+  })
+
 })
 
 describe('repairGame', () => {

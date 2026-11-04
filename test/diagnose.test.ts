@@ -500,6 +500,24 @@ describe('diagnoseGame（§3.3）', () => {
     expect(sorted.map((item) => item.level)).toEqual(['fatal', 'info'])
     expect(list[0].level).toBe('info')
   })
+
+  test('同级 fatal 内部：pathGone > encryptedArchive > moduleMissing > missingExecutable', () => {
+    // S3 端到端探针实测发现的缺陷：moduleMissing 排在 encryptedArchive 前面时，
+    // 诊断框第一个按钮是「安装引擎」——用户装完问题依旧（这游戏是被加密的）。
+    // 排序必须让「最根本、最不可绕过」的排最前。
+    const list: Diagnosis[] = [
+      { code: 'missingExecutable', level: 'fatal', messageKey: 'diagnose.missingExecutable' },
+      { code: 'moduleMissing', level: 'fatal', messageKey: 'diagnose.moduleMissing' },
+      { code: 'encryptedArchive', level: 'fatal', messageKey: 'diagnose.encryptedArchive' },
+      { code: 'pathGone', level: 'fatal', messageKey: 'diagnose.pathGone' }
+    ]
+    expect(sortDiagnoses(list).map((item) => item.code)).toEqual([
+      'pathGone',
+      'encryptedArchive',
+      'moduleMissing',
+      'missingExecutable'
+    ])
+  })
 })
 
 // ===== 真实样本回归（§2.2：傭兵の冒険 的结构）=====

@@ -1,10 +1,11 @@
 <script setup lang="ts">
 // 游戏库：网格/列表（读 settings.listView）、搜索、标签过滤、空状态、启动/编辑/删除（§4 LibraryPage.vue）。
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import GameCard from '@/components/GameCard.vue'
+import DiagnosisDialog from '@/components/DiagnosisDialog.vue'
 import { translateError, type Diagnosis } from '@/api/client'
 import { languageShortName } from '../../../shared/game-language'
 import { decideLaunchTarget } from '../../../shared/launch-language'
@@ -30,13 +31,26 @@ const listView = computed(() => settings.settings.listView)
  * 3. 设置里关掉提示（preferred= none 或 languageSwitchPrompt=false）时**直接启动**，不问。
  */
 async function launch(id: string): Promise<void> {
+  await launchTarget(id, true)
+}
+
+/**
+ * 启动流程（M3 §4.2 改造后）。
+ *
+ * `diagnose` 参数的意义：**只有第一次启动**才拦 fatal 诊断。
+ * 用户在诊断框里点「还是启动试试」后，`proceed` 事件会带 `false` 再来一次——
+ * 那次绝不重复诊断（否则绕过按钮等于没用）。
+ */
+async function launchTarget(id: string, diagnoseAllowed: boolean): Promise<void> {
   const game = library.byId(id)
   const target = await resolveLaunchTarget(id)
   try {
-    const result = await library.launch(target)
-    // M3 §4.2：被 fatal 诊断拦下时弹中文诊断框（S3 实装），而不是抛英文错误
+    const result = await library.launch(target, diagnoseAllowed)
     if ('blocked' in result) {
-      showDiagnosisDialog(target, result.diagnoses)
+      // 被 fatal 诊断拦下 → 弹中文诊断框，**不出现英文报错**
+      diagnosisGameId.value = target
+      diagnosisItems.value = result.diagnoses
+      diagnosisOpen.value = true
       return
     }
     const targetGame = library.byId(target)
@@ -46,18 +60,19 @@ async function launch(id: string): Promise<void> {
   }
 }
 
+/** 诊断框状态（M3 §4.2）。三个 ref 都在任何 immediate watch 之前声明（AGENTS.md：TDZ 白屏）。 */
+const diagnosisOpen = ref(false)
+const diagnosisGameId = ref('')
+const diagnosisItems = ref<Diagnosis[]>([])
+
 /**
- * M3：诊断框（S3 实装完整交互；此处先保证 blocked 分支有反馈，不出现「点了没反应」）。
- * 完整版见 S3：列出每条诊断 + 「一键修复」+ 仅 warning 时给「还是启动试试」。
+ * 用户在诊断框里点了「还是启动试试」。
+ * 用 `diagnoseAllowed=false` 重走一次启动：诊断框已经看过了，不能再拦一次（§9 R5）。
  */
-function showDiagnosisDialog(gameId: string, diagnoses: Diagnosis[]): void {
-  const lines = diagnoses.map((item) => t(item.messageKey, item.args ?? {}))
-  void ElMessageBox.alert(lines.join('\n'), t('diagnose.blockedTitle'), {
-    type: 'warning',
-    confirmButtonText: t('common.ok'),
-    dangerouslyUseHTMLString: false
-  })
-  void gameId
+async function launchAnyway(): Promise<void> {
+  const id = diagnosisGameId.value
+  if (!id) return
+  await launchTarget(id, false)
 }
 
 /**
@@ -229,4 +244,12 @@ async function toggleView(next: boolean): Promise<void> {
       @remove="remove"
     />
   </div>
+
+  <!-- M3 §4.2：启动诊断框（被 fatal 拦下时出现；不出现英文报错） -->
+  <DiagnosisDialog
+    v-model="diagnosisOpen"
+    :game-id="diagnosisGameId"
+    :diagnoses="diagnosisItems"
+    @proceed="launchAnyway"
+  />
 </template>

@@ -398,8 +398,11 @@ export function createDispatcher(deps: IpcDeps): Dispatcher {
     if (!game) throw failure('error.gameNotFound', 'Game not found', { id })
 
     // ---- M3 §4.2：启动前自动诊断 ----
-    // 用户可关（settings.diagnoseBeforeLaunch=false → 直接按老路径走）。
-    const shouldDiagnose = host.store.settings().diagnoseBeforeLaunch !== false
+    // 两个开关决定跑不跑：
+    //   · settings.diagnoseBeforeLaunch=false → 用户彻底关掉了这个功能
+    //   · params.diagnose=false → 渲染层说「诊断框已经看过了」（用户点了「还是启动试试」）
+    // 后者是必须的：没有它，点绕过按钮会再次被拦，绕过等于不存在（§9 R5）。
+    const shouldDiagnose = params.diagnose !== false && host.store.settings().diagnoseBeforeLaunch !== false
     if (shouldDiagnose) {
       let diagnoses: Diagnosis[] = []
       try {

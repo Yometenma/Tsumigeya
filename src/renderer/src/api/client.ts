@@ -328,8 +328,12 @@ export const api = {
   /**
    * `launch`：正常返回 `{ message }`；被 fatal 诊断拦下时返回 `{ blocked, diagnoses }`。
    * **不抛错**——诊断框需要结构化数据，抛错会被 contextBridge 截断（见 bridge-error）。
+   *
+   * `diagnose:false` = 「诊断框已经看过了，别再拦」（用户点「还是启动试试」时用），
+   * 否则会反复弹同一个框，绕过按钮等于没用（§9 R5）。
    */
-  launch: (id: string): Promise<LaunchResult> => bridge().invoke('launch', { id }),
+  launch: (id: string, diagnose = true): Promise<LaunchResult> =>
+    bridge().invoke('launch', { id, diagnose }),
 
   detect: (path: string, includeRemote?: boolean): Promise<{ engine: string | null; installed: boolean }> =>
     bridge().invoke('detect', { path, includeRemote }),

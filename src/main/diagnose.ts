@@ -52,6 +52,26 @@ export interface Diagnosis {
 
 const LEVEL_WEIGHT: Record<DiagnosisLevel, number> = { fatal: 0, warning: 1, info: 2 }
 
+/**
+ * 同一级别内部的顺序（数字小的排前面）。
+ *
+ * 为什么需要（S3 端到端探针实测发现的真实缺陷）：`moduleMissing` 与 `encryptedArchive`
+ * 都是 fatal，按检测顺序 moduleMissing 会排第一，于是诊断框里第一个按钮是「安装引擎」——
+ * 但用户装完引擎**问题依旧**（这个游戏是被加密的，装了引擎也跑不了），等于让用户白忙一场。
+ *
+ * 排序原则：**越根本、越不可绕过的阻塞排越前**。
+ *   pathGone（目录都没了）→ encryptedArchive（要用户自己解包，最重的活）
+ *   → moduleMissing / missingExecutable → missingRtp → fontsPresent
+ */
+const CODE_WEIGHT: Record<DiagnosisCode, number> = {
+  pathGone: 0,
+  encryptedArchive: 1,
+  moduleMissing: 2,
+  missingExecutable: 3,
+  missingRtp: 4,
+  fontsPresent: 5
+}
+
 /** fatal 会拦下启动；warning / info 只提示（§3.1）。 */
 export function isBlocking(diagnosis: Diagnosis): boolean {
   return diagnosis.level === 'fatal'
@@ -62,9 +82,14 @@ export function hasBlocking(diagnoses: readonly Diagnosis[]): boolean {
   return diagnoses.some(isBlocking)
 }
 
-/** fatal → warning → info 的稳定排序（§3.3）。sort 在 V8 里是稳定的，同级保持检测顺序。 */
+/**
+ * fatal → warning → info；同级内按 CODE_WEIGHT。
+ * 排序稳定：同级别同 weight 的条目保持检测顺序。
+ */
 export function sortDiagnoses(diagnoses: Diagnosis[]): Diagnosis[] {
-  return [...diagnoses].sort((a, b) => LEVEL_WEIGHT[a.level] - LEVEL_WEIGHT[b.level])
+  return [...diagnoses].sort(
+    (a, b) => LEVEL_WEIGHT[a.level] - LEVEL_WEIGHT[b.level] || CODE_WEIGHT[a.code] - CODE_WEIGHT[b.code]
+  )
 }
 
 // ===== ① 加密发行：RGSS 归档魔数（§2.1，实测过的规律）=====
