@@ -1,55 +1,28 @@
-# M2 端到端探针的产物（数据目录 + 结果文件 + boot 痕迹）
-# TypeScript 增量构建缓存（tsc --noEmit + composite 也会写）
-# 上一会话遗留的计划副本（方案已落到 docs/M1-实施方案.md）
-# 上游参考 clone（只读，不入库）
-# 打包产物与日志
-# 本机调试数据目录
-*.local
-*.log
+# 依赖与构建产物
+node_modules/
+dist/
+out/
+release/
 *.tsbuildinfo
+
+# 打包与构建日志
+*.log
+*.local
+
+# 系统
 .DS_Store
-.dev-data-m25/
-.dev-data-m25boot.txt
-.dev-data-m25probe.json
-.dev-data-m25probe/
-.dev-data-m2boot.txt
-.dev-data-m2probe.json
-.dev-data-m2probe/
-.dev-data-m3boot.txt
-.dev-data-m3probe
-.dev-data-m3probe.json
-.dev-data-m3probe/
-.dev-data-m26boot.txt
-.dev-data-m26probe.json
-.dev-data-m26probe/
+
+# 本机调试数据目录（`.dev-data` 及所有探针变体如 .dev-data-m42probe / .dev-data-m3probe）
 .dev-data/
+.dev-data-*/
 .dev-scratch/
 .verify-dist/
 .vite/
 .zcode/
-_xeno_probe/
-dist/
-node_modules/
-out/
-release/
-.dev-data-m26/
-.dev-data-fix/
-.dev-data-fixprobe.json
-.dev-data-diag/
-.dev-data-diagprobe.json
-.dev-data-m27/
-.dev-data-m27probe.json
-# M3.5 进程管理探针的产物
-.dev-data-m35boot.txt
-.dev-data-m35probe.json
-.dev-data-m35probe/
-.dev-data-m40/
-# M4.1 引擎清单探针的产物
-.dev-data-m41boot.txt
-.dev-data-m41probe.json
-.dev-data-m41probe/
 
-# M4.2 删 module.js 探针的产物
-.dev-data-m42boot.txt
-.dev-data-m42probe.json
-.dev-data-m42probe/
+# 探针结果文件与 boot 痕迹（项目目录内，见「验收探针」一节）
+.dev-*boot.txt
+.dev-*probe.json
+
+# 上游参考 clone（只读，不入库）
+_xeno_probe/

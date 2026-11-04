@@ -26,7 +26,7 @@ import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 import { createCoreHost } from '../src/main/core-host'
 import { readLocalManifests } from '../src/main/engines/manifest'
-import { createDispatcher, safeDependencyPath } from '../src/main/ipc'
+import { createDispatcher } from '../src/main/ipc'
 import { buildManifest, findEngine } from '../src/main/engines/registry'
 import { NWJS_VERSIONS_URL, fetchNwjsVersions, pickMacBuilds } from '../src/main/engines/versions'
 
@@ -310,45 +310,6 @@ describe('S3 更新引擎：多版本目录不被误删、失败要回滚', () =
 })
 
 // ===== 4. safeDependencyPath（修 bug 时新增的校验函数）=====
-
-describe('S3 safeDependencyPath：放行斜杠、挡住越界', () => {
-  test('普通名原样放行', () => {
-    expect(safeDependencyPath('RTP')).toBe('RTP')
-    expect(safeDependencyPath('soundfont')).toBe('soundfont')
-  })
-
-  test('带斜杠的依赖名放行（斜杠 = 子目录，上游就是这么用的）', () => {
-    expect(safeDependencyPath('version/v0.106.1')).toBe('version/v0.106.1')
-    // 多段也放行
-    expect(safeDependencyPath('a/b/c')).toBe('a/b/c')
-  })
-
-  test('.. 段被拒绝（防止爬出 deps 目录）', () => {
-    expect(() => safeDependencyPath('..')).toThrow()
-    expect(() => safeDependencyPath('a/../b')).toThrow()
-    expect(() => safeDependencyPath('a/..')).toThrow()
-  })
-
-  test('绝对路径与盘符被拒绝', () => {
-    expect(() => safeDependencyPath('/etc/passwd')).toThrow()
-    expect(() => safeDependencyPath('C:evil')).toThrow()
-  })
-
-  test('反斜杠被拒绝（避免同一份清单在 win/mac 上跳向不同目录）', () => {
-    expect(() => safeDependencyPath('a\\b')).toThrow()
-  })
-
-  test('空段被拒绝（a//b、结尾斜杠）', () => {
-    expect(() => safeDependencyPath('a//b')).toThrow()
-    expect(() => safeDependencyPath('a/')).toThrow()
-    expect(() => safeDependencyPath('/a')).toThrow()
-  })
-
-  test('空值 / 非字符串被拒绝', () => {
-    expect(() => safeDependencyPath('')).toThrow()
-    expect(() => safeDependencyPath(null as unknown as string)).toThrow()
-  })
-})
 
 // ===== 5. 版本列表（§3.3 的实际实现）=====
 

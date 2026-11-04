@@ -20,8 +20,8 @@
 - **已完成**：M1（游戏库/识别/装引擎/启动）、M2（DLsite 元数据）、M2.5（搜索/可编辑元数据/多语言）、
   M3（故障自愈）、M2.6（海报墙与详情页）、M2.7（编辑页重构）、M3.5（进程管理）、M4.0（自实现启动）、
   M4.1（引擎清单自己维护）、**M4.2（彻底零上游）**
-- **已发布**：v0.4.1（GitHub `Yometenma/Tsumigeya`）；**M4.2 = v0.5.0，代码已就绪、待打 tag 发版**
-- **测试**：**859 个 / 35 文件**全绿；`typecheck` / `test` / `build` 三绿
+- **已发布**：**v0.5.0**（含 M4.2；GitHub `Yometenma/Tsumigeya`）
+- **测试**：**852 个 / 35 文件**全绿（清掉 7 条重复用例）；`typecheck` / `test` / `build` 三绿
 - **下一步**：M4（存档管理 + 增强）或 M5（手柄/全屏/缩放/公证分发）
 
 ### 各模块在哪（一句话）
@@ -50,6 +50,12 @@ npm run build:mac  # 出 mac 包（Windows 上只能 zip/dir；正式包走 CI�
 ```
 
 数据目录隔离：`TSUMIGEYA_DATA_DIR=D:\YomeXProjects\Tsumigeya\.dev-data npm run dev`
+
+**目录卫生**（2026-11-04 清过一轮）：
+- `scripts/` 只剩 `dev.cjs`（`npm run dev` 用）与 `after-pack.cjs`（electron-builder 用）。
+  **历史里程碑的 `probe-*.cjs` 已全删** —— 验收都做过，留着是纯历史包袱。
+- `docs/archive/` 放已失效的历史材料。**别删**：完成里程碑的文档还在引用它们。
+- `.gitignore` 用通配 `.dev-data-*/` 与 `.dev-*probe.json`，不再一个里程碑加一条。
 
 ## 架构（30 秒）
 
