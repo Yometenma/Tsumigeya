@@ -20,7 +20,7 @@
   M4.1（引擎清单自己维护）
 - **已发布**：v0.4.1（GitHub `Yometenma/Tsumigeya`）
 - **测试**：**755 个 / 31 文件**全绿；`typecheck` / `test` / `build` 三绿
-- **下一步**：M4.2（删 `module.js`）→ `docs/盘点-还留着哪些上游依赖.md`
+- **下一步**：M4.2（删 `module.js`）—— **方案已就绪**：`docs/M4.2-实施方案.md`
 
 ### 各模块在哪（一句话）
 
@@ -193,15 +193,20 @@ Vue → Pinia → api/client → preload(window.tsumi.invoke)
 | D60 | 引擎清单自己维护（4 个硬编码），**不再拉上游 manifest** | 过滤/隐藏是障眼法，从源头删才是真删 |
 | D61 | 参数表单大幅精简（nwjs 1 / mkxpz 10 / easyrpg 6 / renpy 2） | 砍的是渲染微调与调试参数，不写就用引擎默认值 |
 | D62 | 安装时从 registry **生成** `manifest.json`（字段名兼容上游） | 没有远程 manifest 后必须自己写 |
+| D63 | **删 `resources/core/module.js`**，18 个 API 全自实现或删除；`FORK-NOTES.md` 保留作历史记录 | 用户明确要「彻底摆脱」。M4.0/M4.1 已砍一半，留着 1911 行等于半途而废 |
+| D64 | 「检查依赖更新」**删除**；「检查引擎更新」降级为「本地 vs registry 版本」 | 不再有远端清单，依赖更新检查没有比较对象 |
+| D65 | `deleteWithEngine` **删除**，删游戏直接走 `store.removeGame` | 它调模块里的 `postdelete.js`，而我们生成的 manifest 不含该文件 → 现在等于空操作，且钩子抛错会拦住删游戏（是 bug） |
+| D66 | `updateEngine` 的多版本保留用「识别 `version/` 前缀 + 原样搬回」，不重写上游那套临时目录流转 | 引擎只有 4 个，多版本只有 nwjs 一种形态；简化实现 + 3 条不变量测试足够 |
 
 ## 里程碑路线图
 
 - **M1–M4.1（已完成）**：见「当前状态」。实现细节与探针结论在 `docs/M*.md`
-- **M4.2（下一步，方案待写）**：删 `module.js` —— `docs/盘点-还留着哪些上游依赖.md`
-  - `resources/core/module.js`（1911 行）仍在用，**18 个 API 被调用**
-  - 自己实现 17 个 API + 删整个 `resources/core/`（`FORK-NOTES.md` 留作历史记录）
-  - 有利条件：下载/解压/回滚 M3 已自实现；引擎识别 M4.1 已自实现
-  - 唯一真要写的是「多版本 deps 保留更新」；「检查依赖更新」直接删（没远端清单了）
+- **M4.2（下一步，方案已就绪）**：删 `module.js` —— `docs/M4.2-实施方案.md`（D63–D66）
+  - `resources/core/module.js`（1911 行）仍在用，**18 个 API**：自实现 7 / 替换 2（已有代码）/ 删除 4 / 已删 3
+  - 新增 `src/main/engines/` 下 4 个文件（manifest / detect / semver / install）
+  - **唯一真正复杂的是「多版本 deps 保留更新」**（nwjs 的 `deps/version/v0.106.1` 不能被删）
+  - 顺带删掉 `deleteWithEngine`（它调的 `postdelete.js` 我们根本不生成 → 现在是空操作，且失败会拦住删游戏）
+  - `FORK-NOTES.md` 保留作历史记录
 - **M4**：存档管理（查看/备份/导出）+ 增强（Cheat 注入/变速）
 - **M5**：手柄、无边框全屏、像素缩放、dmg 公证分发
 
