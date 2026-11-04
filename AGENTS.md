@@ -21,7 +21,7 @@
   M3（故障自愈）、M2.6（海报墙与详情页）、M2.7（编辑页重构）、M3.5（进程管理）、M4.0（自实现启动）、
   M4.1（引擎清单自己维护）、**M4.2（彻底零上游）**
 - **已发布**：**v0.5.3**（含 M4.2 + 两个启动修复；GitHub `Yometenma/Tsumigeya`）
-- **测试**：**1156 个 / 50 文件**全绿；`typecheck` / `test` / `build` 三绿
+- **测试**：**1164 个 / 51 文件**全绿；`typecheck` / `test` / `build` 三绿
 - **M5.0 进行中**（`docs/M5.0-实施方案.md`）：12 项体验优化，**逐条提交**（用户拍板）
   - 顺序见方案 §12：B1 版本号 → U3+U4 筛选 → U5 选文件 → U6 去跳过 → N1 游玩时间
     → U1 批量 → U2 分类 → U10 全部安装 → U9 设置页 → U7 抽组件 → U8 编辑页重构
@@ -45,6 +45,9 @@
     （分组定义抽到 `shared/settings-groups.ts`，24 条单测含**源码级核对**「每个 Settings 字段恰好归一次」）
   - ✅ **S10 / U7 已提交**：抽 `GameInfoForm.vue`，向导第 3 步**复用编辑页组件**
     （bound/staged 双模式判据抽到 `shared/gameinfo-form.ts`，26 条单测）
+  - ✅ **S11 / U8 已提交**：编辑页重构（保存合一 + 区块重排 + 折叠 + **拆 5 文件**）
+    （`GameEditPage.vue` 1109 → 295 行；新增 `test/vue-handler-exists.test.ts` 守模板-脚本一致性）
+  - **M5.0 全部 11 步已完成**（S1–S11），v0.5.4 待发布
 
 ### 各模块在哪（一句话）
 
@@ -68,7 +71,8 @@
 | 自定义分类 | `src/main/category-store.ts` + `src/shared/categories.ts` | **分离式存储**（顶层 categories/assignments，不改条目形状）；删分类绝不删游戏 |
 | 全部安装编排 | `src/shared/install-all.ts` | **失败不中断**（与 `updateAllEngines` 的 throw 策略刻意不同）；逐个 + 进度 |
 | 设置页分组 | `src/shared/settings-groups.ts` | 分组是**数据**；`SETTINGS_KEYS` + 源码级核对防「搬家漏项」；`BOOL_DEFAULTS` 是主进程镜像（有测试对齐） |
-| 游戏信息表单 | `src/renderer/src/components/GameInfoForm.vue` + `src/shared/gameinfo-form.ts` | **编辑页与向导共用**；`bound`（有 id，立刻落盘）/ `staged`（没 id，暂存到游戏保存后提交） |
+| 游戏信息表单 | `src/renderer/src/components/GameInfoForm.vue` + `src/shared/gameinfo-form.ts` | **编辑页与向导共用**；`bound`（有 id，立刻落盘）/ `staged`（没 id，暂存到游戏保存后提交）。编辑页用 staged 实现「全页一个保存」 |
+| 编辑页容器 | `src/renderer/src/pages/GameEditPage.vue`（295 行） | 只做路由/保存/表单状态；区块拆成 `GameLocalSection` / `GameTagsSection` / `GameEngineArgsSection` / `GameDiagnosisSection` /（`GameInfoForm`） |
 
 ## 开发命令
 
@@ -113,6 +117,7 @@ Vue → Pinia → api/client → preload(window.tsumi.invoke)
 | **模板里写 TS 类型断言 → 白屏** | 模板只写运行时代码，断言进 `<script setup>` |
 | **模板里写复杂表达式 → 难断言也易白屏** | 复杂逻辑放 computed，模板只读一个值 |
 | **`.vue` 的 `watch({immediate:true})` 引用了后声明的 ref → TDZ 白屏** | 所有 ref/computed 必须在 immediate watch 之前 |
+| **SFC 里 `</template>` 不止一个**（`<template #title>` 具名插槽） | 用 `lastIndexOf` 取最后一个闭合；用 match 取第一个会提前截断 → 扫模板的测试**假绿**（S11 实测踩到） |
 | **响应式 Proxy 传给 IPC → `An object could not be cloned.`** | 走 store 层统一 `toPlain()`（D44）；**逐字段拷贝会漏** |
 | `el-dropdown-item` 的 `aria-disabled` 是**字符串** `"false"` | 判据用 `=== 'true'`，别用 `!!getAttribute()` |
 | `settings-row` 塞 array 编辑块 → 布局错乱 | `DynamicArgsForm` 把它放 `settings-row` 外面 |
@@ -160,6 +165,7 @@ Vue → Pinia → api/client → preload(window.tsumi.invoke)
 |---|---|
 | **给 `GameMeta` 加字段必须同步改 `library-meta.ts` 的 `sanitize()`** | 它是落盘白名单，漏了会**静默丢弃**；改完先看 `saveGameMeta` 的返回键集 |
 | **向导里 DLsite 元数据没有 gameId 可挂** | 原实现只能弹 `error.dlsiteGameRequired`（"先保存游戏"）—— 那正是 U7 要消灭的割裂。`GameInfoForm` 的 **staged 模式**把动作收在内存，`finish()` 在 `saveGame` 之后一起提交。**顺序不能反** |
+| **模板里的 `@click="xxx"` 指向不存在的函数 → 点了没反应** | tsc / build / 单测**全部放过**（模板里的标识符是字符串）。S10 曾因此把 `save`/`goBack` 删掉、保存按钮变死键。`test/vue-handler-exists.test.ts` 会红 |
 | **设置页的分组漏项不报错** | 只看"页面能渲染"永远发现不了；`shared/settings-groups.ts` 的 `missingSettings()` + 一条扫 `client.ts` 的源码级测试会红 |
 | **`DEFAULT_SETTINGS` 不是全部默认值的来源** | `languageSwitchPrompt` / `diagnoseBeforeLaunch` 用的是 `saved.x === false ? false : true`（不在那个常量里）。渲染层的 `BOOL_DEFAULTS` 是镜像，有测试逐项对齐 |
 | **`library-meta.json` 现在有非游戏顶层键**（`categories` / `assignments`） | ① `load()` 必须按「键是纯数字」过滤，否则 `categories` 会被当成一个游戏；② `save()`/`remove()` 是**整体覆写**，写回前必须把非数字键带回去，否则一次改 DLsite 信息就把分类全抹了 |
