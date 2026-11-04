@@ -59,22 +59,14 @@
   故 507 + 127 + 124 − 28 − 3 = 727，+ 其余新增 = 755）
 - **M3.5 实现**（`play-stats.ts` / `exec-inject.ts` / `process-registry.ts`）：细节见 `docs/M3.5-实施方案.md`
   探针结论：真拿到 PID、真落盘 play-stats、真杀进程（`kill(pid,0)` 复核）—— 详见该文档
-- **M3.5 端到端实测（本机 `node scripts/probe-m35.cjs`）**：探针造一个**假 mkxpz 模块**，
-  launcher.js 照上游真实形态写（`exec(cmd, cb)` 且**丢弃返回值**）—— 正是 M3.5 要修的那个形态：
-  - `runningCount=1` / **`runningPid=21616`** / `hasRealPid=true` → **真的拿到 PID 了**（D48/D49 生效）
-  - `execPathParsed="ping"` → 命令串正确解析（PID 复用复核的原料）
-  - `playStatsExists=true` / `playCount=1` → `play-stats.json` 真落盘（D51）
-  - `snapshotHasRunning=true` / `snapshotRunningHasNoCommand=true` → S4 字段如约下发
-  - **详情页**：`hasRunningBar=true` / `runningText="正在运行（已 0 秒）"` / `hasCloseButton=true` / `hasLaunchButton=false`
-  - **卡片**：`cardCount=1` / `runningDots=1` / `cardHasStopButton=false`
-  - **重复启动**：`relaunchRejected=true`，key 解回 `error.gameAlreadyRunning`，`playCountStillOne=true`
-  - **关闭**：`action="terminated"` + **`processReallyGone=true`**（用系统层 `kill(pid,0)` 复核，不只信自己的表）
-  - **关闭后**：`runningCountAfterStop=0`、详情页回到「启动游戏」按钮
-  - **停一个没在跑的**：`stopIdleRejected=true` + key 解回 `error.gameNotRunning`
-  - `consoleErrors=[]` / `finalHtmlLen=2982` → 没白屏
-  - 探针自身踩到的三个坑（已写进方案 §8.2）：①验收 UI **必须走 Pinia store**（直接 invoke 只改主进程的表，
-    页面读的是 store 的 `running` 投影，DOM 会一动不动）；②假「游戏」不能用 `process.execPath -e`（那是 Electron 的
-    execPath，立刻退出），要用系统自带 `ping -n 120`（win）/ `sleep 120`；③`executeJavaScript` 里不能写顶层 `await`，要包 `(async () => {...})()`
+- **M3.5 端到端实测**（`node scripts/probe-m35.cjs`）：探针造**假 mkxpz 模块**，launcher.js 照上游真实形态写
+  （`exec(cmd, cb)` 且**丢弃返回值**）——**12 条结论全部如约**（真 PID、play-stats 落盘、真杀进程用
+  `kill(pid,0)` 复核、详情页/卡片运行态、重复启动拒绝、关闭后回启动按钮）。
+  **明细见 `docs/M3.5-实施方案.md`**；探针自身踩到的三个坑（§8.2）：①验收 UI **必须走 Pinia store**
+  （直接 invoke 只改主进程的表，页面读的 store 投影，DOM 不动）；②假「游戏」用系统自带 `ping -n 120`
+  （win）/ `sleep 120`，不能用 `process.execPath -e`（那是 Electron 的 execPath，立刻退出）；
+  ③`executeJavaScript` 里不能写顶层 `await`，要包 `(async () => {...})()`
+
 - **M4.0 全套**（去掉上游 launcher，自实现启动）：细节见 `docs/M4.0-实施方案.md`
   - **S1 `binary-paths.ts`**：四个引擎的可执行文件路径（照抄上游实测拼法，**D56 唯一来源**）。
     nwjs 的 `<arch>` 用 `os.arch()`（不是 `process.arch`）；renpy 扫目录用 `localeCompare(numeric:true)`
@@ -96,19 +88,13 @@
   - **S6.5 数据目录 → `Tsumigeya`**（D58，**不迁移**）+ `data-dir-notice.ts` 一次性中文说明（**18 条**）
   - **S7** i18n（`error.engineNotLaunchable` / `error.launchPrepareFailed`）+ 引擎页标灰（`notLaunchableBadge`）
     + 名单一致性测试（**3 条**，直接读 `.vue` 源码比对主进程的 `LAUNCHABLE_ENGINES`）
-  - **端到端实测（本机 `node scripts/probe-m40.cjs`）**：
-    - `launchProbe.ok=false` + **`找不到引擎的可执行文件：…Z-Universal` + 「请到引擎管理检查」**
-      → 本机没有 mac 二进制，但**错误路径与中文文案是对的**（不是英文 `spawn ENOENT`）
-    - `mkxpJsonExists=true` / `mkxpGameFolderCorrect=true` / `mkxpRgssVersion=3` /
-      **`mkxpRtpInOurDataDir=true`** / `mkxpJsonHasNoLegacyPath=true` → prepare 真的写了配置，且路径全在我们的数据目录
-    - **`ruffleRejected=true`** + `ruffleErrorMentionsEngine=true` + `ruffleErrorListsSupported=true`
-      + `ruffleDidNotRegister=true` → D57 的失败行为如约（明确报错 + 列出 4 个支持的引擎 + 不登记进程）
-    - **`dataPathIsOurs=true`**（= `TSUMIGEYA_DATA_DIR`）
-    - **`enginePage.hasNotLaunchableBadge=true`** / `warnHintCount=1` /
-      `warnHintText="该引擎本版本不支持启动（装了也用不了）…"` → 引擎页真的标了
-    - `libraryPage.cardCount=2` / `bodyHasTitle=true` / `consoleErrors=[]` → 没白屏
-    - `verificationLevel="error-path only (windows)"` → **如实记录**本机验到的层次
-      （真进程链路在 `test/launchers-spawn-real.test.ts` 里用系统 ping/sleep 验过）
+  - **端到端实测（`node scripts/probe-m40.cjs`，本机 Windows）**：`verificationLevel="error-path only (windows)"`
+    —— **如实记录本机验到的层次**（真进程链路在 `test/launchers-spawn-real.test.ts` 用系统 ping/sleep 验过）。
+    验到的：**中文错误路径**（`找不到引擎的可执行文件：…Z-Universal` + 「请到引擎管理检查」，不是英文 `spawn ENOENT`）；
+    prepare 真写 `mkxp.json` 且 `mkxpRtpInOurDataDir=true`、`mkxpJsonHasNoLegacyPath=true`；
+    `ruffleRejected=true` + 报错列出 4 个支持引擎 + `ruffleDidNotRegister=true`（D57 如约）；
+    `dataPathIsOurs=true`；`enginePage.hasNotLaunchableBadge=true`（M4.0 的标灰，**M4.1 已删**）；
+    `cardCount=2` / `consoleErrors=[]` 没白屏。**明细见 `docs/M4.0-实施方案.md`**
 - **M4.1 全套**（自己维护引擎清单，彻底不拉上游）：细节见 `docs/M4.1-实施方案.md`
   - **S1 `engines/types.ts` + `registry.ts`**（**42 条**）：四个引擎硬编码（`ENGINES`）。
     autodetect 逐字段照抄上游实测；参数精简到 nwjs 1 / mkxpz 10 / easyrpg 6 / renpy 2。
@@ -119,9 +105,8 @@
   - **S3 `detectFolder` / `installEngine` / `versions.ts`**（**32 条**）：
     识别规则改读 registry（`engineDefinitionsFromRegistry()`）；安装 = 写生成的 manifest + 装依赖；
     **`versions.ts` 自己实现 NW.js 版本列表**（拉 `nwjs.io/versions.json`，失败给 warning 不抛错）
-  - **S4 渲染层清理**（**22 条**）：删掉 `LAUNCHABLE_ENGINE_IDS` 镜像 / 标灰 / 两条远端告警；
-    `DynamicArgsForm` 认 `string`（上游写法）与 `text`（历史方言）；参数标签中文化；
-    删 `test/launchable-engines-consistency.test.ts`（没有两份名单了）
+  - **S4 渲染层清理**（**22 条**）：删 `LAUNCHABLE_ENGINE_IDS` 镜像 / 标灰 / 两条远端告警；
+    `DynamicArgsForm` 认 `string`（上游写法）与 `text`（历史方言）；参数标签中文化
   - **S5 删残留**（**14 条**）：`CoreApi` 删掉 4 个上游方法声明；`loadScript` / `scriptPath` 实现删除；
     源码扫描守护「这些调用不会回来」。**剩在 `resources/core/module.js` 的实现属 M4.2 范围**
   - **端到端实测（`node scripts/probe-m41.cjs`，本机 Windows）**：
@@ -129,10 +114,8 @@
     - `cachedRemote=false` / `alertTitles=[]` / `unavailableCardCount=0` / `hasNotLaunchableText=false`
     - 装了一个旧引擎 ruffle → 它出现在「已安装」，`remoteVersion="N/A"`、`moduleUpdate=false`，
       并给提示「已安装但本程序不再维护的引擎：ruffle…」
-    - `argForm.labels` = `RGSS 版本 / 全屏启动 / 窗口标题 / 窗口宽度（0 = 自动）/ 字体替换（原名>新名）`，
-      `inputCount=4`（`string` 参数真的渲染出输入框）
-    - `manifestProbe.mkxpzRawKeys` 六项齐全 / `pageHasNoArgsHint=false`
-    - `consoleErrors=[]` → 没白屏
+    - `argForm.labels` 显示 5 个**中文**标签（RGSS 版本/全屏启动/窗口标题/窗口宽度/字体替换），`inputCount=4`
+    - `manifestProbe.mkxpzRawKeys` 六项齐全 / `pageHasNoArgsHint=false` / `consoleErrors=[]` → 没白屏
   - **⚠️ M4.1 实施中修掉的 4 个真 bug**（全部有反向验证：回退修复后测试立刻变红）：
     1. `installDependencies` 用 `component()` 校验依赖名（**M3 引入**）→ 上游合法的
        `version/v0.106.1`（斜杠=子目录）被判非法 → **NW.js 永远装不上**
@@ -268,7 +251,7 @@ npm run build:mac    # 出 mac 包（Windows 上只能出 zip/dir，签名需 Ma
     ├── fixtures/           # 假游戏目录（MV/VX Ace/2000/Ren'Py）+ dlsite/RJ294126.html
     │                       #   + dlsite/search-mercenary.html（M2.5 真搜索页裁切）
     │                       #   + encrypted-rgss3a/（M3：0x03 魔数 + GBK Game.ini，.gitattributes 锁住字节）
-    └── *.test.ts           # vitest 单测（634 个，27 个文件，不依赖网络与 GUI）
+    └── *.test.ts           # vitest 单测（755 个，31 个文件，不依赖网络与 GUI）
 ```
 
 ## 架构与数据流（30 秒版）
