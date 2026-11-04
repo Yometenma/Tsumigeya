@@ -2,6 +2,7 @@
 // 这里不 import 任何 Node 内置模块——窗口用 sandbox: true，preload 只能要求 electron。
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { encodeBridgeError } from '../shared/bridge-error'
+import { APP_VERSION } from './app-version'
 
 /** 主进程事件形态（与 api/client.ts 的 CoreEvent 保持一致）。 */
 export interface CoreEvent {
@@ -106,7 +107,9 @@ const bridge: TsumiBridge = {
     }
   },
   platform: process.platform,
-  appVersion: process.env.npm_package_version ?? '0.0.0'
+  // B1：构建时注入的版本号（见 src/preload/app-version.ts 与 electron.vite.config.ts）。
+  // 原来读 `process.env.npm_package_version`，那个变量打包后不存在 → 恒 '0.0.0'。
+  appVersion: APP_VERSION
 }
 
 contextBridge.exposeInMainWorld('tsumi', bridge)

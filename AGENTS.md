@@ -21,11 +21,12 @@
   M3（故障自愈）、M2.6（海报墙与详情页）、M2.7（编辑页重构）、M3.5（进程管理）、M4.0（自实现启动）、
   M4.1（引擎清单自己维护）、**M4.2（彻底零上游）**
 - **已发布**：**v0.5.3**（含 M4.2 + 两个启动修复；GitHub `Yometenma/Tsumigeya`）
-- **测试**：**856 个 / 35 文件**全绿；`typecheck` / `test` / `build` 三绿
+- **测试**：**861 个 / 36 文件**全绿；`typecheck` / `test` / `build` 三绿
 - **M5.0 进行中**（`docs/M5.0-实施方案.md`）：12 项体验优化，**逐条提交**（用户拍板）
   - 顺序见方案 §12：B1 版本号 → U3+U4 筛选 → U5 选文件 → U6 去跳过 → N1 游玩时间
     → U1 批量 → U2 分类 → U10 全部安装 → U9 设置页 → U7 抽组件 → U8 编辑页重构
   - **B2（VX Ace 打不开）已在 v0.5.3 修复**，不在本轮范围
+  - ✅ **S1 / B1 已提交**：版本号改为构建期 `define` 注入（`__APP_VERSION__`）
 
 ### 各模块在哪（一句话）
 
@@ -100,6 +101,7 @@ Vue → Pinia → api/client → preload(window.tsumi.invoke)
 | **`net.fetch` 不自动走系统代理** | 必须 `session.setProxy({ mode:'system' })`（D9）。症状：浏览器能上网、引擎下载报连接关闭 |
 | 主进程没注入 `fetchImpl` → 静默降级全局 fetch | `index.ts` 必须显式传 `net.fetch` |
 | **whenReady 里抛错 = 窗口永不出现，用户看不到原因** | 启动链上的可预期失败必须降级 + 告知 |
+| **`process.env.npm_package_version` 只在 `npm run` 起的进程里存在** | 打包成 .app 由 Finder 启动时消失 → 版本号恒 `v0.0.0`（B1）。版本号一律走构建期 `define`：`electron.vite.config.ts` 注入 `__APP_VERSION__`，preload 从 `src/preload/app-version.ts` 读。**preload 是同步暴露的，拿不到 `app.getVersion()`**（有测试守着，见 `test/app-version.test.ts`） |
 | **`failure()` 返回的 Error 没有 `code`** | 要分支就显式补 `code`，别靠 `err.code` 猜 |
 | **mkxp-z 的两个非 ASCII 陷阱**（mac 实测） | ① `mkxp.json` 里含非 ASCII 路径 → 编码嗅探判失败 → 回落 XP → 弹「No script file」；② `Game.ini` 的 `Title=` 是 GBK → **整份 ini 读不出**。处置见 D71/D72。**别写 \uXXXX 转义** —— 它会 crash |
 | **这份 mkxp-z 只读 app 包内那份 mkxp.json，不看 cwd** | 别再把配置改到游戏目录（v0.5.2 错了）。判据：删掉 Game.ini、cwd 换纯 ASCII 目录，它照旧报同一句 → 证明没读 cwd |
