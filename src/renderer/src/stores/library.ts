@@ -24,12 +24,7 @@ import {
 // 过 contextBridge 前必须把 Vue 的响应式 Proxy 剥成纯值，否则 structured clone 抛
 // `An object could not be cloned.`（症状：点保存没反应，只弹一句英文）。见 plain.ts 注释。
 import { toPlain } from '../../../shared/plain'
-import {
-  filterGames,
-  unboundCount,
-  type FilterableMeta,
-  type LibraryFilter
-} from '../../../shared/library-filter'
+import { filterGames, unboundCount, type LibraryFilter } from '../../../shared/library-filter'
 
 export const useLibraryStore = defineStore('library', () => {
   const games = ref<GameRecord[]>([])
@@ -124,9 +119,7 @@ export const useLibraryStore = defineStore('library', () => {
   /** M5.0 S2：筛选条件（判据在 shared/library-filter.ts，有单测）。 */
   const filter = computed<LibraryFilter>(() => ({ keyword: search.value, onlyUnbound: onlyUnbound.value }))
 
-  const filtered = computed(() =>
-    filterGames(games.value, meta.value as Record<string, FilterableMeta | undefined>, filter.value)
-  )
+  const filtered = computed(() => filterGames(games.value, meta.value, filter.value))
 
   /** M5.0 U4：「未绑定」有多少个（工具栏显示待办规模）。 */
   const unboundTotal = computed(() => unboundCount(games.value, meta.value))

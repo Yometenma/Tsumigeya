@@ -21,12 +21,14 @@
   M3（故障自愈）、M2.6（海报墙与详情页）、M2.7（编辑页重构）、M3.5（进程管理）、M4.0（自实现启动）、
   M4.1（引擎清单自己维护）、**M4.2（彻底零上游）**
 - **已发布**：**v0.5.3**（含 M4.2 + 两个启动修复；GitHub `Yometenma/Tsumigeya`）
-- **测试**：**861 个 / 36 文件**全绿；`typecheck` / `test` / `build` 三绿
+- **测试**：**885 个 / 37 文件**全绿；`typecheck` / `test` / `build` 三绿
 - **M5.0 进行中**（`docs/M5.0-实施方案.md`）：12 项体验优化，**逐条提交**（用户拍板）
   - 顺序见方案 §12：B1 版本号 → U3+U4 筛选 → U5 选文件 → U6 去跳过 → N1 游玩时间
     → U1 批量 → U2 分类 → U10 全部安装 → U9 设置页 → U7 抽组件 → U8 编辑页重构
   - **B2（VX Ace 打不开）已在 v0.5.3 修复**，不在本轮范围
   - ✅ **S1 / B1 已提交**：版本号改为构建期 `define` 注入（`__APP_VERSION__`）
+  - ✅ **S2 / U3+U4 已提交**：删「按标签筛选」；「只看有封面」→「只看未绑定」
+    （判据抽到 `shared/library-filter.ts`，24 条单测）
 
 ### 各模块在哪（一句话）
 
@@ -42,6 +44,7 @@
 | 进程表 | `src/main/process-registry.ts` | 只在内存（D50）；`stopGame` 两段式（D52） |
 | 游玩记录 | `src/main/play-stats.ts` | 独立 `play-stats.json`（D51） |
 | IPC | `src/main/ipc.ts` | 单 channel + 串行队列；只读命令走 `OFF_QUEUE_METHODS` |
+| 库页筛选 | `src/shared/library-filter.ts` | 纯函数（搜索 + 只看未绑定）；判据有单测，别在 store 里重写 |
 
 ## 开发命令
 

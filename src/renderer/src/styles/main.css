@@ -440,6 +440,13 @@ a {
   flex: 1;
 }
 
+/* M5.0 U4：「只看未绑定」旁边的待办数量。弱化显示 —— 它是提示，不是主信息 */
+.unbound-count {
+  margin-left: 4px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+
 /* ===== 引擎页 ===== */
 
 .engine-grid {
