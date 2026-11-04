@@ -1,6 +1,6 @@
 {
   "name": "tsumigeya",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "description": "macOS 上的 DLsite 游戏启动器：自动识别引擎、安装原生运行时、一键启动（GPL-3.0；引擎/启动链路均为自实现，仅历史参考 Xenolauncher）",
   "main": "./out/main/index.js",
   "author": "Tsumigeya contributors",

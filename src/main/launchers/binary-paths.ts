@@ -79,17 +79,18 @@ export function mkxpzBinaryPath(dataDir: string): string {
 }
 
 /**
- * mkxp-z 的 app 包内 `Contents/Game` 目录。
+ * mkxp-z 的 app 包内 `Contents/Game` 目录 —— **配置就写在这里**。
  *
- * ⚠️ **`mkxp.json` 不写在这里**（M5.1 改）：mkxp-z 按 **cwd** 找配置，而我们的 spawn
- * 传 `cwd: 游戏目录`。写在 app 包里它读不到 → 报
- * 「No script file has been specified」。
- * 配置现在写在 `<游戏目录>/mkxp.json`（见 `mkxpz.ts` 的 `mkxpzPlan`）。
- *
- * 这个函数保留是因为**排障时要知道用户以前把配置写在哪**（老版本的残留文件）。
+ * 实测（Mac, 2026-11-04）：这份 `Z-Universal` **只读这个位置**的 `mkxp.json`，
+ * 完全不看 cwd、也不看游戏目录。v0.5.2 曾把它改到游戏目录 → 无效（它照旧读这里）。
  */
 export function mkxpzConfigDir(dataDir: string): string {
   return path.join(depsDir(dataDir, 'mkxpz'), 'mkxpz', 'Z-Universal.app', 'Contents', 'Game')
+}
+
+/** mkxp-z 读的配置文件（`Contents/Game/mkxp.json`）。 */
+export function mkxpzConfigPath(dataDir: string): string {
+  return path.join(mkxpzConfigDir(dataDir), 'mkxp.json')
 }
 
 /**

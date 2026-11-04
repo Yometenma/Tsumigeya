@@ -40,7 +40,8 @@ import {
   resolveGameDir
 } from '../diagnose'
 import { expandDataDirPlaceholders } from '../engines/registry'
-import { mkxpzBinaryPath, mkxpzRtpDir } from './binary-paths'
+import { mkxpzBinaryPath, mkxpzConfigPath, mkxpzRtpDir } from './binary-paths'
+import { asciiAliasPath, ensureAsciiAlias, needsAsciiAlias, sanitizeGameIniTitle } from './mkxpz-ascii'
 import type { LaunchContext, LaunchPlan } from './types'
 
 /** mkxp-z 认的「自动判断」值（`rgssVersion: 0`）。 */
@@ -300,20 +301,14 @@ function sanitize(value: unknown, ctx: LaunchContext, homedir: string): unknown 
 
 export function mkxpzPlan(ctx: LaunchContext, homedir: string = os.homedir()): LaunchPlan {
   const binary = mkxpzBinaryPath(ctx.dataDir)
-  // ⚠️ 写在**游戏目录**里，不是 app 包内（M5.1 修的）：
+
+  // ===== 配置写在 app 包里（**不是**游戏目录，别忘了 v0.5.2 踩过的坑）=====
   //
-  // mkxp-z 按 **cwd** 找 `mkxp.json`，而我们的 spawn 传了 `cwd: ctx.folder`（游戏目录）。
-  // 原来写进 `Z-Universal.app/Contents/Game/mkxp.json` → **它根本读不到** →
-  // 没有 gameFolder / rgssVersion → 弹 mkxp-z 自己的英文错误
-  // 「No script file has been specified. Check the game's INI and try again.」
-  // （用户 mac 实测，`傭兵の冒険_CHN` 完美解包却打不开）。
-  //
-  // 写到游戏目录 = 与 cwd 一致，mkxp-z 必然找得到。代价是游戏目录里多一个 `mkxp.json`，
-  // 这是可接受的（启动器给游戏写配置是通行做法，且它只影响启动参数，不改游戏数据）。
-  //
-  // 顺带：同名文件若已存在（用户手改过 / 上次启动留下的），直接覆盖 —— 配置是
-  // 「每次启动按当前设置重新生成」的，不该沿用旧值（否则用户在编辑页改的参数不生效）。
-  const configFile = path.join(ctx.folder, 'mkxp.json')
+  // 实测（Mac, 2026-11-04）：这份 mkxp-z **只读 app 包内 `Contents/Game/mkxp.json`**，
+  // 完全不看 cwd。v0.5.2 曾把配置改写到游戏目录，结果它照旧读 app 包里那份旧配置
+  // → 报 `Failed to parse mkxp.json: Unknown encoding`（那份旧配置里有中文路径）。
+  // 判据：把 Game.ini 都删掉、cwd 换成纯 ASCII 临时目录，它仍然报同一句。
+  const configFile = mkxpzConfigPath(ctx.dataDir)
 
   // M4.1 S1/S3（D62）：manifest 里的默认值带 `<dataDir>` 占位符（例如
   // preloadScript 的 `<dataDir>/modules/mkxpz/deps/kawariki/kawariki/preload.rb`）。
@@ -330,15 +325,33 @@ export function mkxpzPlan(ctx: LaunchContext, homedir: string = os.homedir()): L
     binary,
     // mkxp-z **不接受命令行参数**，一切配置走 mkxp.json
     args: [],
-    cwd: ctx.folder,
+    // ⚠️ **不传 cwd**：这份二进制不看 cwd，传了反而让「配置到底在哪」更难判
+    // （v0.5.2 就是被 cwd 误导成「按 cwd 找配置」）。
     engine: 'mkxpz',
     prepare() {
-      writeMkxpConfig(configFile, buildMkxpConfig({ ...ctx, gameArgs: expandedArgs }, homedir))
+      // ① Game.ini 的 Title 若是 GBK，整个 ini 都读不出来（实测）→ 改成 ASCII
+      sanitizeGameIniTitle(ctx.folder)
+
+      // ② 中文路径会让 mkxp-z 的 JSON 编码嗅探失败 → 配置里写 ASCII 符号链接
+      let gameFolder = ctx.folder
+      if (needsAsciiAlias(gameFolder)) {
+        try {
+          gameFolder = ensureAsciiAlias(ctx.folder, asciiAliasPath(ctx.folder))
+        } catch (error) {
+          // 建链接失败（临时目录不可写等）→ 退回真实路径。
+          // 中文路径下 mkxp-z 大概率还是会失败，但至少错误发生在它那边、不在我们这
+          console.warn(`[tsumigeya] 建 ASCII 别名失败（退回真实路径）：${(error as Error).message}`)
+        }
+      }
+
+      const config = buildMkxpConfig({ ...ctx, folder: gameFolder, gameArgs: expandedArgs }, homedir)
+      // 保持 gameFolder 指向别名（buildMkxpConfig 用 ctx.folder 填这个字段）
+      writeMkxpConfig(configFile, config)
     }
   }
 }
 
-/** 配置目录（排障用）：mkxp.json 现在写在游戏目录里，这里返回「它会写到哪」。 */
-export function mkxpzConfigLocation(gameFolder: string): string {
-  return path.join(gameFolder, 'mkxp.json')
+/** 配置目录（排障用：mkxp.json 写在 app 包内）。 */
+export function mkxpzConfigLocation(dataDir: string): string {
+  return mkxpzConfigPath(dataDir)
 }

@@ -15,7 +15,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, test } from 'vitest'
 import { RTP_BY_RGSS_VERSION, decideWantedRtp, normalizeRtpName, readGameIni } from '../src/main/diagnose'
-import { mkxpzBinaryPath, mkxpzRtpDir } from '../src/main/launchers/binary-paths'
+import { mkxpzBinaryPath, mkxpzConfigPath, mkxpzRtpDir } from '../src/main/launchers/binary-paths'
 import {
   buildMkxpConfig,
   coerceValue,
@@ -273,27 +273,72 @@ describe('S3：mkxpz 启动方案', () => {
     expect(plan.engine).toBe('mkxpz')
   })
 
-  test('prepare 把 mkxp.json 写到**游戏目录**里（M5.1：mkxp-z 按 cwd 找配置）', async () => {
+  test('prepare 把 mkxp.json 写到 app 包内的 Contents/Game/（mkxp-z 只读这里）', async () => {
+    // 实测（Mac）：这份 Z-Universal 只读 app 包内那份配置，不看 cwd、也不看游戏目录。
     const ctx = makeGame({ ini: '[Game]\r\nRTP=RPGVXace\r\n' })
-    const plan = mkxpzPlan(ctx, HOME)
-    await plan.prepare?.()
+    await mkxpzPlan(ctx, HOME).prepare?.()
 
-    // ⚠️ 不能写在 app 包里：mkxp-z 按 cwd（= 游戏目录）找 mkxp.json，
-    // 写 app 包里它读不到 → 「No script file has been specified」
-    const file = path.join(ctx.folder, 'mkxp.json')
+    const file = mkxpzConfigPath(ctx.dataDir)
     expect(fs.existsSync(file)).toBe(true)
     const written = JSON.parse(fs.readFileSync(file, 'utf8')) as Record<string, unknown>
     expect(written.gameFolder).toBe(ctx.folder)
     expect(written.rgssVersion).toBe(3)
     expect(written.RTP).toEqual([mkxpzRtpDir(ctx.dataDir, 'RPGVXace')])
-    // 反向判据：app 包里**不应**有我们写的 mkxp.json
-    expect(fs.existsSync(path.join(ctx.dataDir, 'modules', 'mkxpz', 'deps', 'mkxpz', 'Z-Universal.app', 'Contents', 'Game', 'mkxp.json'))).toBe(false)
   })
 
-  test('prepare 在游戏目录里写配置（目录本来就存在，不报错）', async () => {
-    const ctx = makeGame()
+  test('★ 不往游戏目录里写 mkxp.json（v0.5.2 的错误方向，已回退）', async () => {
+    const ctx = makeGame({ ini: '[Game]\r\nRTP=RPGVXace\r\n' })
     await mkxpzPlan(ctx, HOME).prepare?.()
-    expect(fs.existsSync(path.join(ctx.folder, 'mkxp.json'))).toBe(true)
+    // Game.ini 可能被修正过（GBK Title），但**不该**出现 mkxp.json
+    expect(fs.existsSync(path.join(ctx.folder, 'mkxp.json'))).toBe(false)
+  })
+
+  test('中文路径 → gameFolder 写成 ASCII 符号链接（中文会让 mkxp-z 解析失败）', async () => {
+    // 实测：中文路径 → "Failed to parse mkxp.json : Unknown encoding" → 回落 RGSS 1 (XP)
+    const cnDir = path.join(tempDir(), '傭兵の冒険')
+    fs.mkdirSync(cnDir, { recursive: true })
+    fs.writeFileSync(path.join(cnDir, 'Game.ini'), '[Game]\r\nRTP=RPGVXace\r\n')
+
+    const ctx = {
+      gamePath: cnDir,
+      folder: cnDir,
+      gameArgs: {},
+      gameTitle: 'G',
+      dataDir: tempDir('tsmg-cn-data-'),
+      platform: 'darwin' as const,
+      arch: 'arm64' as const
+    }
+    await mkxpzPlan(ctx, HOME).prepare?.()
+
+    const written = JSON.parse(fs.readFileSync(mkxpzConfigPath(ctx.dataDir), 'utf8')) as Record<string, unknown>
+    const folder = String(written.gameFolder)
+    // 写出来的必须全是 ASCII
+    expect(/[^\x00-\x7F]/.test(folder)).toBe(false)
+    // 且是个能走到的符号链接（readlink 指回中文原目录）
+    try {
+      expect(path.resolve(fs.readlinkSync(folder))).toBe(path.resolve(cnDir))
+    } catch {
+      expect.fail(`gameFolder 不是符号链接：${folder}`)
+    }
+  })
+
+  test('纯 ASCII 路径不建别名（gameFolder 就是真路径）', async () => {
+    const asciiDir = path.join(tempDir(), 'plain-game')
+    fs.mkdirSync(asciiDir, { recursive: true })
+    fs.writeFileSync(path.join(asciiDir, 'Game.ini'), '[Game]\r\nRTP=RPGVXace\r\n')
+
+    const ctx = {
+      gamePath: asciiDir,
+      folder: asciiDir,
+      gameArgs: {},
+      gameTitle: 'G',
+      dataDir: tempDir('tsmg-ascii-data-'),
+      platform: 'darwin' as const,
+      arch: 'arm64' as const
+    }
+    await mkxpzPlan(ctx, HOME).prepare?.()
+    const written = JSON.parse(fs.readFileSync(mkxpzConfigPath(ctx.dataDir), 'utf8')) as Record<string, unknown>
+    expect(written.gameFolder).toBe(asciiDir)
   })
 
   test('写盘用 4 空格缩进（用户手改配置文件时能看懂）', () => {
@@ -313,25 +358,17 @@ describe('S3：mkxpz 启动方案', () => {
     expect(() => writeMkxpConfig(file, { gameFolder: '/g', RTP: [], rgssVersion: 0 })).toThrow()
   })
 
-  test('★ 必须写进游戏目录（M5.1 反转了旧原则：写 app 包里 mkxp-z 读不到）', async () => {
-    const ctx = makeGame({ ini: '[Game]\r\nRTP=RPGVXace\r\n' })
-    const before = fs.readdirSync(ctx.folder).sort()
-    await mkxpzPlan(ctx, HOME).prepare?.()
-    const after = fs.readdirSync(ctx.folder).sort()
-    // 唯一的新增就是 mkxp.json，不污染别的
-    expect(after.filter((n) => !before.includes(n))).toEqual(['mkxp.json'])
-  })
-
   test('重复 prepare 幂等（内容一样）', async () => {
     const ctx = makeGame({ ini: '[Game]\r\nRTP=RPGVXace\r\n' })
     const plan = mkxpzPlan(ctx, HOME)
     await plan.prepare?.()
-    const first = fs.readFileSync(path.join(ctx.folder, 'mkxp.json'), 'utf8')
+    const first = fs.readFileSync(mkxpzConfigPath(ctx.dataDir), 'utf8')
     await plan.prepare?.()
-    expect(fs.readFileSync(path.join(ctx.folder, 'mkxp.json'), 'utf8')).toBe(first)
+    expect(fs.readFileSync(mkxpzConfigPath(ctx.dataDir), 'utf8')).toBe(first)
   })
 
-  test('每个游戏各有一份 mkxp.json（不再共用同一个文件）', async () => {
+  test('换游戏时同一个 mkxp.json 被覆盖（配置是「每次启动按当前设置重生成」）', async () => {
+    // 配置只有一份（在 app 包里），所以换游戏必须覆盖 —— 不能叠加、不能沿用旧值
     const dataDir = tempDir('tsmg-s3-shared-')
     const gameA = path.join(tempDir('tsmg-s3-ga-'), 'A')
     const gameB = path.join(tempDir('tsmg-s3-gb-'), 'B')
@@ -344,13 +381,10 @@ describe('S3：mkxpz 启动方案', () => {
     await mkxpzPlan({ ...base, folder: gameA, dataDir }, HOME).prepare?.()
     await mkxpzPlan({ ...base, folder: gameB, dataDir }, HOME).prepare?.()
 
-    const a = JSON.parse(fs.readFileSync(path.join(gameA, 'mkxp.json'), 'utf8')) as Record<string, unknown>
-    expect(a.gameFolder).toBe(gameA)
-    expect(a.rgssVersion).toBe(3)
-    const b = JSON.parse(fs.readFileSync(path.join(gameB, 'mkxp.json'), 'utf8')) as Record<string, unknown>
-    expect(b.gameFolder).toBe(gameB)
-    expect(b.rgssVersion).toBe(2)
-    expect(b.RTP).toEqual([mkxpzRtpDir(dataDir, 'RPGVX')])
+    const written = JSON.parse(fs.readFileSync(mkxpzConfigPath(dataDir), 'utf8')) as Record<string, unknown>
+    expect(written.gameFolder).toBe(gameB)
+    expect(written.rgssVersion).toBe(2)
+    expect(written.RTP).toEqual([mkxpzRtpDir(dataDir, 'RPGVX')])
   })
 })
 

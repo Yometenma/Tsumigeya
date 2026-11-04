@@ -321,14 +321,13 @@ describe('M4.0 S5：未知引擎不回退（D57）', () => {
 })
 
 describe('M4.0 S5：prepare 失败 → 不启动', () => {
-  test('mkxp.json 写不进（游戏目录只读/被占）→ 报 launchPrepareFailed，且不 spawn', async () => {
+  test('mkxp.json 写不进（app 包内位置被占）→ 报 launchPrepareFailed，且不 spawn', async () => {
     makeGame('1')
-    // M5.1 之后 mkxp.json 写在**游戏目录**里（mkxp-z 按 cwd 找配置）。
-    // 造一条写不进去的场景：把游戏目录里同名位置占成**目录**，
-    // 让 writeFileSync('mkxp.json') 必失败（EISDIR）。
-    const gameDir = path.join(dataDir, 'game-1')
-    // 用**目录**占住 mkxp.json 这个位置 → writeFileSync 报 EISDIR
-    fs.mkdirSync(path.join(gameDir, 'mkxp.json'), { recursive: true })
+    // M5.2：配置写在 app 包内的 Contents/Game/mkxp.json（实测那份 mkxp-z 只读这里）。
+    // 造一条写不进去的场景：把 Contents 这个位置占成**文件**，让 mkdirSync 必失败。
+    const appRoot = path.join(dataDir, 'modules', 'mkxpz', 'deps', 'mkxpz', 'Z-Universal.app')
+    fs.mkdirSync(appRoot, { recursive: true })
+    fs.writeFileSync(path.join(appRoot, 'Contents'), 'blocker')
 
     const fake = fakeProcess()
     const spawned = fakeSpawn()

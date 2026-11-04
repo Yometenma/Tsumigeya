@@ -1,0 +1,135 @@
+<script setup lang="ts">
+// 侧边栏布局 + 路由出口 + 全局挂载 ProgressOverlay / CoreDialogHost（§4 App.vue）。
+// 首次 snapshot 在这里拉取，并把 settings 同步给 settings store。
+import { computed, onBeforeUnmount, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { useRoute } from 'vue-router'
+import { ElMessage } from 'element-plus'
+import ProgressOverlay from '@/components/ProgressOverlay.vue'
+import CoreDialogHost from '@/components/CoreDialogHost.vue'
+import { api, translateError } from '@/api/client'
+import { useLibraryStore } from '@/stores/library'
+import { useSettingsStore } from '@/stores/settings'
+import { useEnginesStore } from '@/stores/engines'
+import { useTaskStore } from '@/stores/task'
+import { useCoreDialogsStore } from '@/stores/coreDialogs'
+
+const { t } = useI18n()
+const route = useRoute()
+const library = useLibraryStore()
+const settings = useSettingsStore()
+const engines = useEnginesStore()
+const task = useTaskStore()
+const coreDialogs = useCoreDialogsStore()
+
+const navItems = computed(() => [
+  { path: '/library', label: t('nav.library'), icon: '🎮' },
+  { path: '/engines', label: t('nav.engines'), icon: '⚙️' },
+  { path: '/settings', label: t('nav.settings'), icon: '🛠️' }
+])
+
+const appVersion = computed(() => (window.tsumi?.appVersion ? `v${window.tsumi.appVersion}` : ''))
+const platform = computed(() => window.tsumi?.platform ?? '')
+
+onMounted(async () => {
+  // 事件订阅先装（core 可能在 snapshot 之前就发 dialog）
+  // M3.5：进程事件（gameStarted / gameExited）转给 library store —— 它是运行态的唯一投影。
+  // 事件订阅仍然只装一次（task.install 内部判重）。
+  task.install((event) => library.handleProcessEvent(event))
+  coreDialogs.install()
+  settings.initMeta(window.tsumi?.appVersion ?? '', '', window.tsumi?.platform ?? '')
+  // system 外观要跟随系统变化
+  window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener('change', applyAppearanceOnChange)
+
+  try {
+    const snapshot = await api.snapshot()
+    library.applySnapshot(snapshot)
+    settings.applySnapshot(snapshot)
+    engines.applySnapshot(snapshot)
+    // M4.0 S6.5（D58）：数据目录切换的一次性说明。
+    // 判定与「只提示一次」的标记都在主进程（data-dir-notice.ts），这里只负责展示。
+    // 用 ElMessage.info（**不是 error**）：这不是故障，是「新目录是空的」这个事实。
+    showDataDirNoticeOnce()
+    // M2.5-C：多语言分组（纯本地计算、毫秒级）。失败不影响库页使用，故不阻塞也不报错。
+    void library.loadLanguageGroups()
+    if (snapshot.settings.checkModuleUpdatesOnStartup) {
+      // 启动检查更新：失败静默（引擎页可以看到 warning）
+      void task
+        .run('startup-updates', api.checkEngineUpdates(false))
+        .then((report) => {
+          engines.engineUpdates = report
+        })
+        .catch(() => undefined)
+    }
+  } catch (error) {
+    ElMessage.error(translateError(error, t))
+  }
+})
+
+function applyAppearanceOnChange(): void {
+  settings.applyAppearance()
+}
+
+/**
+ * 弹一次「数据目录已切换」的说明（M4.0 S6.5 / D58）。
+ *
+ * 为什么文案来自主进程而不是 i18n：
+ * 那句话是「事实陈述 + 用户该做什么」，判定条件（目录为空 / 未提示过 / 是 mac）
+ * 也在主进程里（`data-dir-notice.ts`，有单测）。文案与判定放一处，
+ * 否则加一个判定条件就得同时改两边、而且两边很容易对不上。
+ *
+ * 为什么 consume 之后要清空：同一个会话里 snapshot 可能被多次拉取
+ * （保存设置也会返回 snapshot），不清空就会重复弹。
+ */
+function showDataDirNoticeOnce(): void {
+  const notice = settings.dataDirNotice
+  if (!notice) return
+  ElMessage.info({ message: notice, duration: 12_000, showClose: true })
+  settings.consumeDataDirNotice()
+}
+
+onBeforeUnmount(() => {
+  window.matchMedia?.('(prefers-color-scheme: dark)').removeEventListener('change', applyAppearanceOnChange)
+  task.dispose()
+  coreDialogs.dispose()
+})
+
+function isActive(path: string): boolean {
+  if (path === '/library') return route.path.startsWith('/library') || route.path.startsWith('/game')
+  return route.path.startsWith(path)
+}
+</script>
+
+<template>
+  <div class="app-shell">
+    <aside class="app-sidebar">
+      <div class="app-brand">
+        <span class="app-brand-name">{{ t('app.name') }}</span>
+        <span class="app-brand-tagline">{{ t('app.tagline') }}</span>
+      </div>
+
+      <RouterLink
+        v-for="item in navItems"
+        :key="item.path"
+        :to="item.path"
+        class="app-nav-item"
+        :class="{ 'is-active': isActive(item.path) }"
+      >
+        <span>{{ item.icon }}</span>
+        <span>{{ item.label }}</span>
+      </RouterLink>
+
+      <div class="app-sidebar-footer">
+        <div>{{ appVersion }}</div>
+        <div>{{ platform }}</div>
+      </div>
+    </aside>
+
+    <main class="app-main">
+      <RouterView />
+    </main>
+
+    <ProgressOverlay />
+    <CoreDialogHost />
+  </div>
+</template>
