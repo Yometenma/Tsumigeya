@@ -171,6 +171,7 @@ npm run build:mac    # 出 mac 包（Windows 上只能出 zip/dir，签名需 Ma
 │   ├── 调研-去掉上游launcher的可行性.md ← 上游 launcher 能否自实现（**已调研并已实施**）
 │   ├── M4.0-实施方案.md    ← ★ M4.0 交接稿（去掉上游 launcher，自实现启动）——**已实施完毕**
 │   ├── M4.1-实施方案.md    ← ★ M4.1 交接稿（自己维护引擎清单，彻底不拉上游）——**待实施**
+│   ├── 盘点-还留着哪些上游依赖.md ← ★ **M4.0 只砍了一半**：module.js 1911 行仍在用（18 个 API）
 │   └── 技术选型-三方案对比.md
 ├── _xeno_probe/            # 上游 Xenolauncher clone，只读参考，gitignore
 ├── resources/core/
@@ -419,6 +420,13 @@ Vue 组件 → Pinia store → api/client → preload(window.tsumi.invoke)
   - 不再调 `fetchRemoteManifestsList`；4 个引擎硬编码；安装时自己生成 manifest
   - **参数大幅精简**（mkxpz 59→约10 / easyrpg 51→约6 / nwjs 4→2）
   - 顺带修掉：mkxpz manifest 里硬编码的 `xenolauncher` 路径（D58 后已失效）
+- **M4.2（待 M4.1 完成后实施）**：连 `module.js` 一起删 —— 见 [`docs/盘点-还留着哪些上游依赖.md`](./docs/盘点-还留着哪些上游依赖.md)
+  - **现状**：M4.0 只砍了 `launcher.js`；`resources/core/module.js`（1911 行）仍在用，**18 个 API 被调用**
+  - **用户意图**（原话）：「做 m4.0 本来就是为了摆脱 xenolauncher 的依赖……别给我小偷小摸偷偷藏着」
+  - 自己实现 17 个 core API + **删整个 `resources/core/` 目录**（`FORK-NOTES.md` 保留作历史记录）
+  - **有利条件**：依赖下载/解压/回滚 M3 已自实现（`installDependencies`）；引擎识别 M4.1 已自实现
+  - **唯一真正要写的是**「多版本 deps 保留更新」；「检查依赖更新」直接删（没有远端清单了）
+  - 代价：D2（接受 GPL 复用上游）**作废**；「检查引擎更新」功能降级为「本地版本 vs registry 版本」
 - **M4**：存档管理（集中查看/备份/导出）+ 增强（Cheat 注入/变速）
 - **M5**：手柄、无边框全屏、像素缩放、dmg 公证分发
 
