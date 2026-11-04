@@ -39,6 +39,7 @@ import {
   readGameIni,
   resolveGameDir
 } from '../diagnose'
+import { expandDataDirPlaceholders } from '../engines/registry'
 import { mkxpzBinaryPath, mkxpzConfigDir, mkxpzConfigPath, mkxpzRtpDir } from './binary-paths'
 import type { LaunchContext, LaunchPlan } from './types'
 
@@ -301,6 +302,17 @@ export function mkxpzPlan(ctx: LaunchContext, homedir: string = os.homedir()): L
   const binary = mkxpzBinaryPath(ctx.dataDir)
   const configFile = mkxpzConfigPath(ctx.dataDir)
 
+  // M4.1 S1/S3（D62）：manifest 里的默认值带 `<dataDir>` 占位符（例如
+  // preloadScript 的 `<dataDir>/modules/mkxpz/deps/kawariki/kawariki/preload.rb`）。
+  // 它**只能在启动时展开**——manifest 属于「引擎定义」，数据目录属于「这台机器的安装」。
+  //
+  // ⚠️ 顺序很关键：**先展开再 sanitize**。
+  //   `sanitize` 会丢掉「指向别人家数据目录」的绝对路径（判据是路径里带 `/modules/`
+  //   但前缀不是我们的）。如果先 sanitize，占位符还没展开就变成了一个不含 `/modules/`
+  //   的字符串，判断落空 → 侥幸保住；但等它展开后就成了真实绝对路径，而**判据已经跑过了**，
+  //   该报错的地方报不出来。先展开，sanitize 才能在真实路径上做判断。
+  const expandedArgs = expandDataDirPlaceholders(ctx.gameArgs, ctx.dataDir)
+
   return {
     binary,
     // mkxp-z **不接受命令行参数**，一切配置走 mkxp.json
@@ -308,7 +320,7 @@ export function mkxpzPlan(ctx: LaunchContext, homedir: string = os.homedir()): L
     cwd: ctx.folder,
     engine: 'mkxpz',
     prepare() {
-      writeMkxpConfig(configFile, buildMkxpConfig(ctx, homedir))
+      writeMkxpConfig(configFile, buildMkxpConfig({ ...ctx, gameArgs: expandedArgs }, homedir))
     }
   }
 }

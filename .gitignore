@@ -44,3 +44,7 @@ release/
 .dev-data-m35probe.json
 .dev-data-m35probe/
 .dev-data-m40/
+# M4.1 引擎清单探针的产物
+.dev-data-m41boot.txt
+.dev-data-m41probe.json
+.dev-data-m41probe/

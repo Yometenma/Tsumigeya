@@ -867,6 +867,7 @@ function diagnosisFixLabel(fix: DiagnosisFix): string {
       <DynamicArgsForm
         v-model="gameArgs"
         :manifest="manifest"
+        :engine-folder="engine"
         @manage-versions="manageVersions"
       />
     </section>

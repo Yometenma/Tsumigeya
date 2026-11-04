@@ -21,6 +21,7 @@ import { mergeWork, normalizeEditedFields } from './library-meta'
 import { diagnoseGame, type Diagnosis, type DiagnosisFix } from './diagnose'
 import { DATA_DIR_NOTICE_KEY, DATA_DIR_NOTICE_TEXT, shouldShowDataDirNotice } from './data-dir-notice'
 import { createPlayStatsStore, sessionSeconds, type PlayStatsStore } from './play-stats'
+import { engineDefinitionsFromRegistry } from './core-host'
 import {
   createProcessRegistry,
   describeLaunch,
@@ -36,12 +37,28 @@ import { buildLaunchPlan } from './launchers'
 import { describeSpawnFailure, spawnGame } from './launchers/spawn'
 import type { LaunchPlan } from './launchers/types'
 import { groupByLanguage } from '../shared/language-group'
+// M4.1 S2（D60）：引擎清单的唯一来源。这里**不再 import core 的远端拉取能力**。
+import { ENGINES, ENGINE_FOLDERS, GENERATED_MANIFEST_AUTHOR, buildManifest, findEngine } from './engines/registry'
+import { fetchNwjsVersions } from './engines/versions'
 import type { CoreHost, CoreEvent, ProgressBridge, RemoteManifest } from './core-host'
 
 const runFile = promisify(execFile)
 
-/** 更新检查的整体超时（§3.3 #9 → error.updateCheckTimeout）。 */
-const UPDATE_CHECK_TIMEOUT_MS = 60_000
+/**
+ * 更新检查的整体超时（§3.3 #9 → error.updateCheckTimeout）。
+ *
+ * ⚠️ M4.1 S2 之后这条**不再被 checkEngineUpdates 使用**：那次检查已经不联网了，
+ * 毫秒级返回，没有需要超时护栏的东西。
+ *
+ * 保留它的两个理由：
+ *   1. `checkEngineUpdates` 的**调用方**（渲染层的 task store / App.vue 的启动自检）
+ *      仍然按「这是个长任务、可能超时」的契约在跑，错误分支里的
+ *      `error.updateCheckTimeout` 文案也还在 locales 里；
+ *   2. 它把「更新检查最多该花多久」这个**约束**写在了代码里。
+ *      将来若有人给检查加了网络步骤（例如校验下载地址可达性），必须重新套上这个护栏，
+ *      而不是先跑起来再说 —— 那正是 M1 时代「启动自检堵死队列」的老坑。
+ */
+export const UPDATE_CHECK_TIMEOUT_MS = 60_000
 
 /**
  * **绕开串行队列**的命令名单（D12 之外的正常旁路）。
@@ -195,6 +212,43 @@ async function moduleTransaction(host: CoreHost, folder: string, operation: () =
 }
 
 /**
+ * 校验并归一化「依赖名 → deps 下的相对路径」（M4.1 S3）。
+ *
+ * 为什么不用 `component()`：`component` 的设计目的是**单个**文件/目录名，
+ * 它禁止斜杠；而上游 manifest 里真实存在 `version/v0.106.1` 这种**带斜杠**的依赖名
+ * （斜杠就是子目录，落地成 `deps/version/v0.106.1/`）。用 `component` 会把它们全判成非法，
+ * 表现是「NW.js 装不上」——而且报的是一句让人摸不着头脑的 `Invalid dependency`。
+ *
+ * 这里放行的同时仍然挡住一切越界写法：
+ *   · 绝对路径 / 盘符（`/x`、`C:`）
+ *   · `..` 段（往 deps 外面爬）
+ *   · 空段（`a//b`、结尾斜杠）
+ *   · 反斜杠（Windows 分隔符，归一化前先拒绝，避免同一份清单在 win/mac 上跳向不同目录）
+ *   · 控制字符
+ *
+ * 返回的是**用 `/` 分隔的相对路径**，调用方自己 `path.join` 拼（这样在两边平台都对）。
+ */
+export function safeDependencyPath(name: string): string {
+  if (typeof name !== 'string' || !name) {
+    throw failure('error.invalidComponent', 'Invalid dependency', { label: 'dependency' })
+  }
+  if (name.startsWith('/') || /^[A-Za-z]:/.test(name) || name.includes(String.fromCharCode(92))) {
+    throw failure('error.invalidComponent', `Invalid dependency "${name}"`, { dependency: name })
+  }
+  // eslint-disable-next-line no-control-regex
+  if (/[\u0000-\u001f]/.test(name)) {
+    throw failure('error.invalidComponent', `Invalid dependency "${name}"`, { dependency: name })
+  }
+  const segments = name.split('/')
+  for (const segment of segments) {
+    if (!segment || segment === '.' || segment === '..') {
+      throw failure('error.invalidComponent', `Invalid dependency "${name}"`, { dependency: name })
+    }
+  }
+  return segments.join('/')
+}
+
+/**
  * openFolder 的允许范围（§3.3 #17）：数据目录内，或某个已登记游戏的目录内。
  */
 export function isPathAllowed(host: Pick<CoreHost, 'dataDir' | 'store'>, target: string): boolean {
@@ -300,7 +354,24 @@ export function createDispatcher(deps: IpcDeps): Dispatcher {
   function snapshot(): unknown {
     const manifests = host.core.readLocalManifests()
     return host.store.snapshot({
-      modules: Object.entries(manifests).map(([id, value]) => ({ ...value, id })),
+      // ⚠️ M4.1 S4 修的真 bug（M1 时代就存在，被端到端探针抓到）：
+      //
+      // 原来这里只写 `{ ...value, id }` —— manifest 的内容**摊平在顶层**，
+      // 于是 `modules[]` 里**没有 `raw` 字段**。而渲染层 `ModuleInfo` 的类型声明写的是
+      // `raw: ManifestRaw`（M1 就这么声明的），`GameEditPage` 的
+      // `manifest = module?.raw ?? null` 因此**永远是 null** →
+      // 引擎参数表单对所有引擎都显示「该引擎没有可配置参数」。
+      //
+      // 这是一个**类型声明与真实数据不符**造成的静默失败：TS 检查通过、页面不报错、
+      // 只是参数表单整块不见。单测抓不到（没人断言 snapshot 的 modules 形状），
+      // 只有端到端探针能发现。
+      //
+      // 修法：**同时**给 `raw` 和摊平字段。
+      //   · `raw` 给新代码用（`ModuleInfo` 的类型声明的就是这个）
+      //   · 摊平字段保留，因为既有代码在读它们（引擎页的 displayName / moduleVersion /
+      //     moduleDescription 都是 `module.raw` 缺失时回退到顶层 `module.name` 等）
+      // 这样两种读法都能工作，不破坏任何既有行为。
+      modules: Object.entries(manifests).map(([id, value]) => ({ ...value, id, raw: value })),
       nodeVersion: process.version,
       engineUpdates: report,
       dataDirWarning: host.dataDirWarning,
@@ -360,69 +431,103 @@ export function createDispatcher(deps: IpcDeps): Dispatcher {
     }
   }
 
-  // ===== 引擎更新检查（照 worker.cjs:112-152）=====
-
-  async function checkEngineUpdates(requestSignal: AbortSignal, forceRefresh: boolean): Promise<EngineUpdateReport> {
+  // ===== 引擎更新检查（M4.1 S2：不再有「远端清单」）=====
+  //
+  // 改了什么（D60）：
+  //
+  //   之前：`core.fetchRemoteManifestsList()` 拉 7 个模块的 manifest → 拿它的 version 比对本地
+  //   之后：**registry 的硬编码 version** 就是「远端版本」，一个网络请求都不发
+  //
+  // 语义变化（R5 已预告）：`remoteVersion` 现在是**我们维护的版本号**，不是上游此刻的版本。
+  // 好处是「检查更新」从「等 GitHub」变成「毫秒级本地比对」；
+  // 代价是上游发了新版我们不会知道 —— 那由我们手动改 registry（D60 显式接受）。
+  //
+  // `cachedRemote` 保留但**恒为 false**：它原来的含义是「这次用的是磁盘上的旧远端缓存」，
+  // 现在没有远端也就没有缓存。保留字段是为了**不破坏 Snapshot/Report 的数据结构**
+  // （渲染层还在读它，删字段会让老页面读到 undefined）。新会话看到它恒 false 是**正确的**，
+  // 不是「忘了实现」。
+  //
+  // ===== 依赖更新检查：**明确停用**（不是漏写）=====
+  //
+  // 它原来是「上游模块的 `updates.js` 说某个依赖包有新版本了」。
+  // 但 `updates.js` 是**模块文件的一部分**，而我们不再下载模块文件（S3 起只生成 manifest）：
+  // `buildManifest()` 也就不写 `updates: true` 字段，于是 core 的 `loadUpdatesProvider`
+  // 直接返回 null → `checkDependencyUpdatesForFolders` 对这四个引擎永远返回空集。
+  //
+  // 所以这里**不做那次调用**：留着它只会白扫一遍目录，还让人以为「依赖更新功能还在」。
+  // `dependencyUpdate` 字段保留（恒 false）——理由同 `cachedRemote`：不破坏既有数据结构。
+  //
+  // ⚠️ 与 `moduleTask('dependencies')` 的关系：那条命令**保留**（见 runModuleTask 的注释），
+  //    因为它对「用户目录里残留的旧版模块」仍然有效。只是我们的引擎不会再有新依赖可更。
+  async function checkEngineUpdates(requestSignal: AbortSignal): Promise<EngineUpdateReport> {
     host.emit({ event: 'progress', requestID: host.currentContext()?.id, key: 'updates.checking', detail: {} })
-    const signal = AbortSignal.any([requestSignal, AbortSignal.timeout(UPDATE_CHECK_TIMEOUT_MS)])
+    // 取消信号仍然要尊重（用户点了取消，跑完这一遍就该停）。
+    // 原来那个 60 秒超时护栏是给**网络请求**准备的；现在这一步不发网络请求，
+    // 但保留 signal 的取消语义：后面即使加了慢操作，也不会变成「取消无效」。
+    requestSignal.throwIfAborted()
     const local = host.core.readLocalManifests()
     const folders = Object.keys(local)
     const warnings: string[] = []
-    const failedManifests = new Set<string>()
-    const failedDependencies = new Set<string>()
 
-    let remote: RemoteManifest[] = []
-    let cachedRemote = !forceRefresh
-    let remoteFailed = false
-    try {
-      remote = await host.core.fetchRemoteManifestsList(undefined, {
-        forceRefresh,
-        signal,
-        onFallback: (error: Error) => {
-          cachedRemote = true
-          warnings.push(error.message)
-        },
-        onManifestError: (folder: string, error: Error) => {
-          failedManifests.add(folder)
-          warnings.push(`${folder}: ${error.message}`)
-        }
-      })
-    } catch (error) {
-      signal.throwIfAborted()
-      remoteFailed = true
-      warnings.push((error as Error).message)
+    // 本地装了什么 vs registry 认什么。两头都列，才能回答三个问题：
+    //   ① registry 里有但没装 → 「可安装」（列表已由 remoteModules 给出，这里不重复）
+    //   ② 装了但 registry 里没有 → 「这个引擎我们不再维护」（旧版留下的 ruffle/wine/macos 就是这种）
+    //   ③ 装了且 registry 里有 → 比版本号
+    const stale: string[] = []
+    for (const folder of folders) {
+      if (!findEngine(folder)) stale.push(folder)
     }
-    signal.throwIfAborted()
-
-    const dependencyFolders = await host.core.checkDependencyUpdatesForFolders(folders, {
-      forceRefresh,
-      signal,
-      strict: true,
-      onError: (folder: string, error: Error) => {
-        failedDependencies.add(folder)
-        warnings.push(`${folder}: ${error.message}`)
-      }
-    })
-    signal.throwIfAborted()
+    if (stale.length > 0) {
+      // 这是一条**普通信息**，不是错误：用户装的旧引擎我们不再支持，不需要他做什么。
+      // 用 warning 数组的通道传出去（渲染层已经会把它画成 el-alert）。
+      warnings.push(`已安装但本程序不再维护的引擎：${stale.join(' / ')}（可以卸载，不影响其它引擎）`)
+    }
 
     report = {
       checkedAt: new Date().toISOString(),
-      cachedRemote,
+      // 见上面的注释：没有远端缓存了，恒 false
+      cachedRemote: false,
       warnings,
-      remoteModules: remote.map((module) => ({ ...module, id: module.folder })),
+      // 「可安装的引擎」= registry 里那四个（**天生只有四个**，不需要过滤）
+      remoteModules: remoteModulesFromRegistry(),
       updates: folders.map((id) => {
-        const latest = remote.find((module) => module.folder === id)
+        const expected = findEngine(id)
         return {
           id,
           localVersion: local[id].version || 'N/A',
-          remoteVersion: latest?.version || 'N/A',
-          moduleUpdate: !!latest && host.core.hasUpdate(local[id].version, latest.version),
-          dependencyUpdate: dependencyFolders.has(id) && !failedDependencies.has(id),
-          checkFailed: remoteFailed || failedManifests.has(id) || failedDependencies.has(id)
+          // 我们不再维护的引擎：不报「有更新」，也没有「远端版本」
+          remoteVersion: expected?.version || 'N/A',
+          moduleUpdate: !!expected && host.core.hasUpdate(local[id].version, expected.version),
+          // 见上面的「依赖更新检查：明确停用」
+          dependencyUpdate: false,
+          checkFailed: false
         }
       })
     }
     return report
+  }
+
+  /**
+   * registry → 渲染层要的 RemoteModule 形状。
+   *
+   * 为什么还要转一层：`RemoteModule` 是渲染层的既有类型（`{id, folder, name, version,
+   * author, description, raw}`），`raw` 里装着完整 manifest。转成它**零成本**，而且：
+   *   · 引擎页的「可安装」列表一行代码都不用改（它读的就是这个形状）
+   *   · 装引擎时 `raw` 就是我们要写进磁盘的 manifest（S3 用它落盘）
+   */
+  function remoteModulesFromRegistry(): RemoteManifest[] {
+    return ENGINES.map((engine) => {
+      const raw = buildManifest(engine) as unknown as RemoteManifest['raw']
+      return {
+        folder: engine.folder,
+        id: engine.folder,
+        name: engine.name,
+        version: engine.version,
+        author: GENERATED_MANIFEST_AUTHOR,
+        description: engine.description,
+        raw
+      }
+    })
   }
 
   // ===== 模块任务（照 worker.cjs:154-170）=====
@@ -430,27 +535,118 @@ export function createDispatcher(deps: IpcDeps): Dispatcher {
   async function runModuleTask(folder: string, action: string, signal: AbortSignal): Promise<void> {
     host.modulePath(folder)
     const progress: ProgressBridge = host.progress()
-    await moduleTransaction(host, folder, async () => {
-      switch (action) {
-        case 'install':
-          await host.core.installModuleWithProgress(folder, host.core.DEFAULT_REPO, progress, { signal })
-          break
-        case 'update':
-          await host.core.updateModulePreservingMultiversionsWithProgress(folder, progress, { signal, strict: true })
-          break
-        case 'dependencies':
+
+    switch (action) {
+      // 安装 / 更新：两条路径**都走我们自己的安装**（M4.1 S3）。
+      //
+      // 为什么「更新」也走这里：上游的 update 是
+      // 「备份多版本目录 → 删模块 → 重新下载整个模块目录 → 还原多版本目录」。
+      // 我们不再下载模块目录了，所以「更新」本质上就是
+      // 「换一份新的 manifest + 补齐缺的依赖」，而多版本目录本来就不会被删（见 installEngine 的注释）。
+      // 所以 update 的语义从「重装模块」变成「刷新 manifest 到 registry 的版本」——
+      // 这正是 R5 说的「版本对比用 registry 的 version」。
+      //
+      // 例外：如果 module 里有 `updates.js`（用户从旧版升级上来、还留着上游的文件），
+      // 那 `dependencies` 动作仍然走 core（那些旧文件我们不该动，也不该假装没有）。
+      case 'install':
+      case 'update':
+        // ⚠️ **必须套 moduleTransaction**（M4.1 S3 修的真 bug）：
+        // 本鱼第一版写成 `await installEngine(folder, signal)` —— 而 installEngine 内部
+        // 因为「不能嵌套两层事务」把事务删掉了，结果两边都没有事务 → **安装失败时
+        // 磁盘上留下半个模块目录（manifest 在、依赖缺一半）**，比装不上更糟：
+        // 它会显示「已安装」，启动时却找不到二进制。
+        // 事务的责任留在这一层（installEngine 只管写 manifest + 装依赖）。
+        await moduleTransaction(host, folder, async () => {
+          await installEngine(folder, signal)
+        })
+        break
+      case 'dependencies':
+        // 只补依赖、不动 manifest。这对**旧版残留模块**仍有用（它们的 updates.js 还在）。
+        await moduleTransaction(host, folder, async () => {
           await host.core.updateDependenciesTaskWithProgress(folder, progress, { signal, strict: true })
-          break
-        case 'uninstall':
+          abortCheck(signal)
+        })
+        break
+      case 'uninstall':
+        await moduleTransaction(host, folder, async () => {
           host.core.uninstallModule(folder)
-          break
-        default:
-          throw failure('error.moduleAction', 'Unknown module action', { action })
-      }
-      abortCheck(signal)
-    })
+          abortCheck(signal)
+        })
+        break
+      default:
+        throw failure('error.moduleAction', 'Unknown module action', { action })
+    }
     host.core.invalidateDepUpdatesCache()
     if (report) report.updates = report.updates.filter((item) => item.id !== folder)
+  }
+
+  // ===== M4.1 S3：自己实现的引擎安装 / 更新（D62）=====
+  //
+  // 之前：`core.installModuleWithProgress(folder, ...)` 会
+  //   ① 从 GitHub 拉 `modules/<folder>/` 整个目录（含 launcher.js / updates.js 等）
+  //   ② 拉 manifest.json
+  //   ③ 按 manifest 装依赖
+  //
+  // 现在：我们没有「模块文件」可下载了（启动逻辑是我们自己的 launchers/，不加载 launcher.js）。
+  // 所以安装 = **写一份生成的 manifest + 按它装依赖**。三步全在我们手里：
+  //
+  //   ① 写 `<dataDir>/modules/<folder>/manifest.json`（来自 registry，D62）
+  //   ② 按 manifest 的 `dependencies` 下载 + 解压（复用 `installDependencies`）
+  //   ③ 失败时整体回滚（复用 `moduleTransaction` 的备份/还原）
+  //
+  // 顺序的讲究：**先写 manifest 再装依赖**。因为 `installDependencies` 是读磁盘上的
+  // manifest 干活的；反过来做就得把 manifest 内容当参数传进去，等于绕开它已有的校验。
+  //
+  // 为什么不在事务里「先删目录」：`moduleTransaction` 已经把旧模块整体备份了，
+  // 我们只需**覆盖 manifest**；旧版本残留在 `deps/` 里的东西保留（多版本引擎要留着，
+  // 见 `updateModulePreservingMultiversionsWithProgress` 的 preserves 语义）。
+  // 这与上游 install 的「先 rmSync 整个 localRoot」不同，是**有意**的：
+  // 用户已经装了 nwjs v0.106.1，点「更新」不该把他装好的运行时删掉。
+  async function installEngine(folder: string, signal: AbortSignal): Promise<void> {
+    const definition = findEngine(folder)
+    if (!definition) {
+      // 绝不回退、绝不猜：registry 里没有就是没有
+      throw failure('error.engineNotSupported', `Engine "${folder}" is not supported`, {
+        engine: folder,
+        supported: ENGINE_FOLDERS.join(', ')
+      })
+    }
+
+    const root = host.modulePath(folder)
+    const manifestFile = path.join(root, 'manifest.json')
+
+    // ⚠️ 这里**不再套 moduleTransaction**：调用方（runModuleTask）已经套了一层。
+    // 两层事务会各自备份/还原同一个目录，失败时还原顺序反了会把备份互相覆盖。
+    // 所以本函数只做「写 manifest + 装依赖」，回滚责任留在调用方。
+    abortCheck(signal)
+    fs.mkdirSync(root, { recursive: true })
+
+    // ① 写我们自己的 manifest（字段名与上游兼容，原版 Xenolauncher 也读得懂）
+    const manifest = buildManifest(definition)
+    fs.writeFileSync(manifestFile, JSON.stringify(manifest, null, 4), 'utf8')
+    host.emit({
+      event: 'progress',
+      requestID: host.currentContext()?.id,
+      name: 'onStep',
+      key: 'progress.prepare',
+      detail: { label: definition.name, phase: 'prepare' }
+    })
+
+    // ② 所有依赖装一遍。顺序 = registry 里 `dependencies` 的声明顺序（对象键序稳定）：
+    //    mkxpz 本体在前、RTP / kawariki / soundfont 在后 —— 用户看到进度条先动主二进制，
+    //    心理上「它在装引擎」，而不是先下 244MB 的 RTP 却不知道在装什么。
+    const wanted = Object.keys(definition.dependencies)
+    await installDependencies(folder, wanted, signal)
+
+    // ③ 收尾：清掉依赖更新缓存（manifest 变了，旧的「有没有依赖更新」结论作废）
+    abortCheck(signal)
+    host.emit({
+      event: 'progress',
+      requestID: host.currentContext()?.id,
+      name: 'onStep',
+      key: 'progress.done',
+      detail: { label: definition.name, phase: 'done' }
+    })
   }
 
   // ===== 多版本引擎 =====
@@ -464,12 +660,28 @@ export function createDispatcher(deps: IpcDeps): Dispatcher {
       .map((entry) => entry.name)
   }
 
+  /**
+   * 多版本参数的可下载列表（M4.1 S3：自己实现，不加载上游 `version-script`）。
+   *
+   * 之前：`host.loadScript(folder, 'nwjs.js')` 加载**模块目录里的脚本**再调它的 `getAvailable()`。
+   * 现在我们不再下载模块文件（`buildManifest` 只写 manifest，`nwjs.js` 不存在），
+   * 所以改走 `engines/versions.ts` 自己实现——**行为与上游一致**（都是拉 nwjs.io）。
+   *
+   * ⚠️ 方案 §3.3 说「扫 deps 目录下有哪些子目录」，那是错的：扫本地只能知道
+   * 「装了什么」，拿不到「能装什么」。照方案做的话这个弹窗的「可下载」永远是空的。
+   *
+   * `available` 失败时返回 `{}` + `warning`，**不抛错**：弹窗照常开、已装列表照常显示。
+   */
   async function versions(
     folder: string,
     argKey: string
-  ): Promise<{ installed: string[]; available: Record<string, unknown> }> {
+  ): Promise<{ installed: string[]; available: Record<string, unknown>; warning?: string | null }> {
     const root = host.modulePath(folder)
-    const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8')) as {
+    const manifestFile = path.join(root, 'manifest.json')
+    if (!fs.existsSync(manifestFile)) {
+      throw failure('error.moduleMissing', `Module "${folder}" is not installed.`, { module: folder })
+    }
+    const manifest = JSON.parse(fs.readFileSync(manifestFile, 'utf8')) as {
       gameArgs?: Record<string, { type?: string; 'version-script'?: string }>
     }
     const key = component(argKey, 'argument')
@@ -477,17 +689,21 @@ export function createDispatcher(deps: IpcDeps): Dispatcher {
     if (definition?.type !== 'multi-version') {
       throw failure('error.notMultiVersion', 'Not a multi-version parameter', { argument: key })
     }
-    const provider = definition['version-script']
-      ? (host.loadScript(folder, definition['version-script']) as {
-          getAvailable?: (input: Record<string, unknown>, ui: unknown) => Promise<Record<string, unknown>>
-        })
-      : null
-    const available =
-      (await provider?.getAvailable?.(
-        { engine: folder, argKey: key, modulesDir: host.core.getModulesDir() },
-        host.dialogs
-      )) ?? {}
-    return { installed: installedVersions(folder, key), available: available || {} }
+
+    const installed = installedVersions(folder, key)
+
+    // 目前只有一个 multi-version 参数、只有一个引擎用它（nwjs 的 version）。
+    // 不去猜「别的脚本名该调什么」——认不出来的就明确说「拿不到」，而不是装作空列表。
+    let available: Record<string, unknown> = {}
+    let warning: string | null = null
+    if (folder === 'nwjs' && key === 'version') {
+      const result = await fetchNwjsVersions(host.fetch)
+      available = result.available
+      warning = result.warning
+    } else {
+      warning = `不支持的多版本参数：${folder}.${key}`
+    }
+    return { installed, available, warning }
   }
 
   async function installVersion(
@@ -790,7 +1006,22 @@ export function createDispatcher(deps: IpcDeps): Dispatcher {
         throw failure('error.buildMissing', `No ${arch} build for dependency "${name}"`, { arch })
       }
 
-      const depDir = path.join(root, 'deps', component(name, 'dependency'))
+      // ⚠️ 依赖名**可以带斜杠**（上游就有一个叫 `version/v0.106.1` 的，斜杠 = 子目录，
+      //    落地成 `deps/version/v0.106.1/`）。所以**不能**用 `component()` 校验 ——
+      //    它禁止斜杠，会把上游合法的依赖名直接判成 error.invalidComponent。
+      //
+      //    这是 S3 把安装链路接到真实代码后才暴露的 bug：M3 写这个函数时只用
+      //    `['RTP']` 这种单段名调它，斜杠那条路径从没跑过。
+      //
+      //    仍然要挡的是「跳出 deps 目录」：
+      //      · 绝对路径、`..`、盘符、空段 → 拒绝
+      //      · 结果必须落在 `<module>/deps/` 之内（用 resolve 后的前缀判断，不靠字符串匹配）
+      const depRelative = safeDependencyPath(name)
+      const depsRoot = path.join(root, 'deps')
+      const depDir = path.join(depsRoot, depRelative)
+      if (!depDir.startsWith(path.resolve(depsRoot) + path.sep)) {
+        throw failure('error.invalidComponent', `Invalid dependency`, { dependency: name })
+      }
       fs.mkdirSync(depDir, { recursive: true })
       const archiveName = component(path.basename(new URL(spec.link).pathname), 'archive')
       const archivePath = path.join(depDir, archiveName)
@@ -1015,8 +1246,27 @@ export function createDispatcher(deps: IpcDeps): Dispatcher {
         const target = String(params.path ?? '')
         const installed = host.core.detectEngineForPath(target, host.core.readLocalManifests())
         if (installed) return { engine: installed, installed: true }
-        if (!params.includeRemote) return { engine: null, installed: false }
-        const definitions = await host.core.fetchModulesForAutodetect()
+
+        // ===== M4.1 S5：两件事都改了（D60）=====
+        //
+        // ① **不再拉远端规则**：原来这里是 `await host.core.fetchModulesForAutodetect()`
+        //    （拉 7 个模块的 autodetect）。现在规则来自 registry，本地就有，
+        //    所以这个命令变成纯同步计算、零网络。
+        //
+        // ② **修了一个反向判断的 bug**（M1 时代就存在，S5 写测试时抓到）：
+        //    原来是 `if (!params.includeRemote) return { engine: null, installed: false }` ——
+        //    调用方**不传** `includeRemote` 时它是 `undefined`，`!undefined === true`，
+        //    于是**直接返回 null，一条规则都不试**。
+        //
+        //    而渲染层 `client.ts` 的 `detect: (path, includeRemote?)` 在正常调用里
+        //    **根本不传第二个参数** → 引擎识别在这些路径上从来没有生效过
+        //    （表现是「添加游戏时认不出引擎」，但它不报错、只是返回 null，
+        //     很容易被当成「这个游戏确实认不出来」）。
+        //
+        //    修法与 `detectFolder` 保持一致：**只有显式传 false 才跳过规则**
+        //    （`detectFolder` 里写的就是 `input.includeRemote !== false`）。
+        if (params.includeRemote === false) return { engine: null, installed: false }
+        const definitions = engineDefinitionsFromRegistry()
         return { engine: host.core.detectEngineFromAutodetectMap(target, definitions) ?? null, installed: false }
       }
 
@@ -1026,12 +1276,16 @@ export function createDispatcher(deps: IpcDeps): Dispatcher {
           includeRemote: params.includeRemote as boolean | undefined
         })
 
+      // M4.1 S2（D60）：可安装的引擎**只有 registry 里那四个**，不再拉上游清单。
+      // 返回值的形状没变（RemoteModule），所以引擎页一行都不用改。
       case 'remoteModules':
-        return await host.core.fetchRemoteManifestsList(undefined, { forceRefresh: true })
+        return remoteModulesFromRegistry()
 
       case 'checkEngineUpdates': {
         try {
-          return await checkEngineUpdates(signal, params.forceRefresh !== false)
+          // `forceRefresh` 参数保留但**不再有意义**（没有远端缓存可刷）。
+          // 保留入参是为了不破坏 preload / client.ts 的既有签名（改契约要走 §协作规矩 4）。
+          return await checkEngineUpdates(signal)
         } catch (error) {
           if ((error as Error).name === 'TimeoutError') {
             throw failure('error.updateCheckTimeout', 'Engine update check timed out. Try again later.')

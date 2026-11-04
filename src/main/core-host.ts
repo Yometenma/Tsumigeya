@@ -1,7 +1,7 @@
 // core 单例宿主：数据目录策略、module.js 装载（不用裸 require，见 §3.6）、
 // getUi / getGames 桥、detectFolder 实现、模块路径安全工具。
 //
-// ⚠️ 本文件**不在顶层 import electron**：detectFolder / loadScript / 路径校验这些纯逻辑要能在
+// ⚠️ 本文件**不在顶层 import electron**：detectFolder / 自动识别规则 / 路径校验这些纯逻辑要能在
 //    vitest 里直接跑（§8「单测里 import electron」已知坑）。需要 electron 的地方走 electronModule() 懒加载。
 import fs from 'node:fs'
 import os from 'node:os'
@@ -14,6 +14,7 @@ import { createGameStore, component, failure, type GameStore } from './games-sto
 import { extractArchive } from './extract'
 import { createDlsiteService, type DlsiteService } from './dlsite'
 import { createLibraryMetaStore, type LibraryMetaStore } from './library-meta'
+import { ENGINES } from './engines/registry'
 
 // ===== 类型 =====
 
@@ -35,7 +36,12 @@ export interface ManifestRaw {
 }
 
 export interface GameArgDef {
-  type: 'boolean' | 'text' | 'int' | 'float' | 'dropdown' | 'select' | 'multi-version' | 'array'
+  /**
+   * `string` 与 `text` 是同一个控件的两个写法（M4.1 D62）：上游 manifest 一律写
+   * `"string"`（nwjs/mkxpz/easyrpg/renpy 全部如此），历史代码写 `"text"`。
+   * 这里两种都收 —— 我们生成的 manifest 用上游那种写法。
+   */
+  type: 'boolean' | 'text' | 'string' | 'int' | 'float' | 'dropdown' | 'select' | 'multi-version' | 'array'
   label?: string
   default?: unknown
   options?: Array<{ label?: string; value?: string | number }> | string[]
@@ -74,25 +80,30 @@ export interface CoreApi {
   getModulesDir(): string
   getInstalledModuleFolders(): Set<string>
   readLocalManifests(): Record<string, ManifestRaw>
-  fetchRemoteManifestsList(repo?: unknown, opts?: unknown): Promise<RemoteManifest[]>
+  // ===== M4.1 S5：这四个「拉上游清单」的 API 已从声明里删除（D60）=====
+  //
+  //   fetchRemoteManifestsList       拉 7 个模块的 manifest（含 ruffle/wine/macos）
+  //   fetchModulesForAutodetect      拉那 7 个模块的 autodetect 规则
+  //   installModuleWithProgress      下载整个模块目录（含 launcher.js/updates.js）
+  //   updateModulePreservingMultiversionsWithProgress  同上（备份→删→重下→还原）
+  //
+  // **删的是声明，不是「不调用它」**：留着声明就等于留着一条随时会被下个会话
+  // 重新接上的口子（「反正类型里有」）。真正的依据是：
+  //   · 引擎清单 → `src/main/engines/registry.ts`
+  //   · 安装 / 更新 → `ipc.ts` 的 `installEngine`（写我们自己的 manifest + 装依赖）
+  //   · 自动识别 → `engineDefinitionsFromRegistry()`（本文件导出）
+  //
+  // ⚠️ 这四个实现仍在 `resources/core/module.js` 里（那是 GPL fork 的整文件，
+  //    删 API 属于 M4.2「连 module.js 一起删」的范围，不在这里做 —— 见
+  //    docs/盘点-还留着哪些上游依赖.md）。本步只保证**我们这边不再有调用点**。
   hasUpdate(localVersion?: string, remoteVersion?: string): boolean
   compareVersions(a?: string, b?: string): number
-  installModuleWithProgress(folder: string, repo: unknown, progress: ProgressBridge, opts?: unknown): Promise<void>
   uninstallModule(folder: string): void
-  updateModulePreservingMultiversionsWithProgress(
-    folder: string,
-    progress: ProgressBridge,
-    opts?: unknown
-  ): Promise<void>
   updateDependenciesTaskWithProgress(folder: string, progress: ProgressBridge, opts?: unknown): Promise<void>
   checkDependencyUpdatesForFolders(folders: string[], opts?: unknown): Promise<Set<string>>
   invalidateDepUpdatesCache(): void
   detectEngineForPath(exe: string, manifests: Record<string, ManifestRaw>): string | null
   detectEngineFromAutodetectMap(exe: string, defsMap: Record<string, unknown>): string | null
-  fetchModulesForAutodetect(
-    repo?: unknown,
-    installedSet?: Set<string>
-  ): Promise<Record<string, unknown>>
   deleteWithEngine(game: unknown): Promise<boolean>
   reconcileAndPersistGameArgs(gameId: string): unknown
   mergeGameArgsWithSchema(current: unknown, schema: unknown): { merged: unknown; changed: boolean }
@@ -155,8 +166,6 @@ export interface CoreHost {
   replyDialog(dialogID: string, accepted: boolean): void
   modulesDir(): string
   modulePath(folder: string): string
-  scriptPath(root: string, relative: string): string
-  loadScript(folder: string, relative: string): Record<string, unknown>
   /** 修正 multi-version 参数，使其与 deps 下真实安装目录一致（见函数注释）。 */
   reconcileVersionArgs(folder: string, gameArgs: Record<string, unknown>): Record<string, unknown>
   progress(): ProgressBridge
@@ -385,37 +394,32 @@ const HELPER_EXE_NAMES = new Set([
 ])
 
 /**
- * 远端 autodetect 规则拉取的超时（毫秒）。
- * 识别是用户点一下就要有反馈的动作，不能让网络把它拖成「永远卡住」。
- * 正常一次 GitHub 往返约 250–650ms，留 3 秒余量；
- * 超时就当作「远端不可用」，直接返回本地识别结果（UI 会提示未识别，用户可手动选）。
+ * registry 的 autodetect 规则 → core 的 detectEngineFromAutodetectMap 吃的形状。
+ *
+ * ⚠️ 形状必须与旧 core.fetchModulesForAutodetect() 的返回值**完全一致**：
+ *     { <folder>: { extensions?: string[], files?: string[], all_required?: boolean } }
+ *
+ * 三个字段的语义（照抄 module.js 的实现，不要自己发明）：
+ *   · extensions 必须**不带点号且小写** —— core 的 normalizeExt 会再剥一次，
+ *     但双写 ".py" 会让它剥成 "" 然后被 filter 掉 → 这个扩展名规则静默失效
+ *   · files 是**相对游戏目录**的路径（core 用 path.join(dir, rel) 探测）
+ *   · all_required 是布尔，**不要省**：省了等于 false，会让「必须全都在」的引擎
+ *     （nwjs / mkxpz / renpy）变成「命中一个就算」，识别会张冠李戴
+ *
+ * 导出的理由（M4.1 S5）：`ipc.ts` 的 `detect` 命令也要用它。
+ * 两处各写一份等价逻辑，迟早会分叉 —— 而分叉的表现是「添加游戏时认不出引擎」。
  */
-const REMOTE_AUTODETECT_TIMEOUT_MS = 3_000
-
-/** 给不可取消的 Promise 加超时护栏（core 的 fetchModulesForAutodetect 没有 signal 参数）。 */
-function withTimeout<T>(promise: Promise<T>, ms: number, key: string): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    let settled = false
-    const timer = setTimeout(() => {
-      if (settled) return
-      settled = true
-      reject(failure(key, `Operation timed out after ${ms}ms`, { ms }))
-    }, ms)
-    promise.then(
-      (value) => {
-        if (settled) return
-        settled = true
-        clearTimeout(timer)
-        resolve(value)
-      },
-      (error) => {
-        if (settled) return
-        settled = true
-        clearTimeout(timer)
-        reject(error)
-      }
-    )
-  })
+export function engineDefinitionsFromRegistry(): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const engine of ENGINES) {
+    const rule: Record<string, unknown> = {}
+    if (engine.autodetect.extensions?.length) rule.extensions = engine.autodetect.extensions
+    if (engine.autodetect.files?.length) rule.files = engine.autodetect.files
+    // 显式写出来：这是「必须全部命中」与「打分取最高」的分水岭
+    rule.all_required = engine.autodetect.all_required === true
+    out[engine.folder] = rule
+  }
+  return out
 }
 
 function extensionOf(p: string): string {
@@ -615,23 +619,6 @@ export function createCoreHost(options: CoreHostOptions): CoreHost {
     return target
   }
 
-  /** 脚本路径必须落在模块根目录内（照 worker.cjs:62-67）。 */
-  function scriptPath(root: string, relative: string): string {
-    if (typeof relative !== 'string' || path.isAbsolute(relative)) {
-      throw failure('error.scriptPath', 'Invalid module script path')
-    }
-    let file: string
-    try {
-      file = fs.realpathSync(path.resolve(root, relative))
-    } catch {
-      throw failure('error.scriptPath', `Module script not found: ${relative}`)
-    }
-    if (!file.startsWith(fs.realpathSync(root) + path.sep)) {
-      throw failure('error.scriptEscape', 'Module script escapes its directory')
-    }
-    return file
-  }
-
   /**
    * 修正 gameArgs 里 multi-version 参数的值，使其与 deps 下真实安装目录一致。
    *
@@ -669,31 +656,6 @@ export function createCoreHost(options: CoreHostOptions): CoreHost {
       if (installed && next[key] !== installed) next[key] = installed
     }
     return next
-  }
-
-  /**
-   * 清 require 缓存后加载模块脚本。
-   *
-   * M4.0 之后**只用于 version-script**（nwjs 的可用版本清单）。
-   * `launcher.js` 不再被加载——启动改走 launchers/ 的 buildLaunchPlan + spawn（D53）。
-   *
-   * 因此这里也**没有** `execInterceptor` 这类 hook 了：那套作用域劫持是给
-   * 「上游 launcher 用 exec 起游戏、我们想拿到 PID」准备的，而我们现在自己 spawn，
-   * PID 是现成的（D55）。
-   */
-  function loadScript(folder: string, relative: string): Record<string, unknown> {
-    const root = modulePath(folder)
-    if (!fs.existsSync(root)) {
-      throw failure('error.moduleMissing', `Module "${folder}" is not installed. Install it in Game Engines first.`, {
-        module: folder
-      })
-    }
-    const file = scriptPath(root, relative)
-    const cache = createRequire(pathToFileURL(file)).cache
-    for (const key of Object.keys(cache)) {
-      if (key.startsWith(root + path.sep)) delete cache[key]
-    }
-    return createRequire(pathToFileURL(file))(file) as Record<string, unknown>
   }
 
   /** core 的进度回调 → progress 事件（§3.4）。 */
@@ -738,30 +700,29 @@ export function createCoreHost(options: CoreHostOptions): CoreHost {
       list.find((c) => c.installed && c.engine) ?? list.find((c) => c.engine) ?? null
 
     let best = pickBest(local)
-    // 只有「本地一个都没识别出来」才值得去问远端；本地已命中就别让用户等网络。
+    // M4.1 S3（D60）：**没有「远端 autodetect」这回事了**。
+    //
+    // 之前：本地一个都没识别出来 → `core.fetchModulesForAutodetect()` 拉 7 个模块的
+    // autodetect 规则再猜一轮（带 60 秒超时护栏）。
+    // 现在：四个引擎的 autodetect 就在 `engines/registry.ts` 里，**本地就有**。
+    // 所以「未装引擎也认得出是哪个引擎」这件事变成纯本地计算 —— 零网络、零超时。
+    //
+    // `includeRemote` 参数保留（契约不变），但它现在只控制「未装引擎的规则要不要用」：
+    //   includeRemote !== false → 用 registry 的规则（`installed: false`，提示「装引擎」）
+    //   includeRemote === false → 只认已装模块的 manifest
+    //
+    // ⚠️ 注意 `engineDefinitionsFromRegistry()` 返回的形状必须与 core 的
+    //    `fetchModulesForAutodetect()` 一致（`{ <folder>: {extensions?, files?, all_required?} }`），
+    //    因为 `detectEngineFromAutodetectMap` 吃的是那个形状。少一个字段就是「这个引擎永远认不出来」。
     if (!best && input.includeRemote !== false) {
-      // 未装引擎时用远端 autodetect 规则再猜一轮，命中记为 installed: false（§3.3 第 6 条）。
-      //
-      // 必须加超时：core.fetchModulesForAutodetect(repo, installedSet) 的第二个参数是
-      // 「已装模块集合」而不是 opts，**没有 signal 可传**，无法取消。
-      // 网络不通（例如 GitHub 直连 DNS 失败）时它会一直挂住，UI 就永远停在「正在识别引擎…」。
-      // 这里用 Promise.race 兜住，超时就当作「远端不可用」，本地识别结果照常返回。
-      try {
-        const definitions = await withTimeout(
-          core.fetchModulesForAutodetect(),
-          REMOTE_AUTODETECT_TIMEOUT_MS,
-          'error.remoteDetectTimeout'
-        )
-        const remote = local.map((candidate) => {
-          if (candidate.engine) return candidate
-          const engine = core.detectEngineFromAutodetectMap(candidate.path, definitions) ?? null
-          return { ...candidate, engine, installed: false }
-        })
-        for (let index = 0; index < remote.length; index += 1) local[index] = remote[index]
-        best = pickBest(remote)
-      } catch (error) {
-        emit({ event: 'log', requestID: currentContext()?.id, message: String((error as Error)?.message ?? error) })
-      }
+      const definitions = engineDefinitionsFromRegistry()
+      const byRegistry = local.map((candidate) => {
+        if (candidate.engine) return candidate
+        const engine = core.detectEngineFromAutodetectMap(candidate.path, definitions) ?? null
+        return { ...candidate, engine, installed: false }
+      })
+      for (let index = 0; index < byRegistry.length; index += 1) local[index] = byRegistry[index]
+      best = pickBest(byRegistry)
     }
 
     return { path: target, isFile, best, candidates: local }
@@ -784,8 +745,6 @@ export function createCoreHost(options: CoreHostOptions): CoreHost {
     replyDialog,
     modulesDir,
     modulePath,
-    scriptPath,
-    loadScript,
     reconcileVersionArgs,
     progress,
     detectFolder

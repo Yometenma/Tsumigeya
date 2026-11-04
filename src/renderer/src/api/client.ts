@@ -50,7 +50,12 @@ export interface Settings {
 }
 
 export interface GameArgDef {
-  type: 'boolean' | 'text' | 'int' | 'float' | 'dropdown' | 'select' | 'multi-version' | 'array'
+  /**
+   * `string` 与 `text` 是**同一个控件**的两个写法（M4.1 D62）：上游 manifest 一律写
+   * `"string"`，core-host 的历史方言写 `"text"`。两种都必须认，否则有一侧的参数
+   * 会渲染成一个空白行（不报错，只是输入框不见了）。
+   */
+  type: 'boolean' | 'text' | 'string' | 'int' | 'float' | 'dropdown' | 'select' | 'multi-version' | 'array'
   label?: string
   default?: unknown
   options?: Array<{ label?: string; value?: string | number }> | string[]
@@ -419,10 +424,17 @@ export const api = {
   installedVersions: (folder: string, argKey: string): Promise<string[]> =>
     bridge().invoke<string[]>('installedVersions', { folder, argKey }),
 
+  /**
+   * 多版本参数的可下载列表（M4.1：主进程自己实现，不再加载上游 version-script）。
+   *
+   * `warning`：拉不到版本清单时的可读原因（**此时不抛错**，弹窗照常打开、
+   * 已装列表照常显示）。渲染层要把这句显示出来，否则「可下载：无」会被误读成
+   * 「没有可装版本」。
+   */
   versions: (
     folder: string,
     argKey: string
-  ): Promise<{ installed: string[]; available: Record<string, unknown> }> =>
+  ): Promise<{ installed: string[]; available: Record<string, unknown>; warning?: string | null }> =>
     bridge().invoke('versions', { folder, argKey }),
 
   installVersion: (folder: string, argKey: string, version: string) =>

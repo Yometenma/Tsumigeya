@@ -24,6 +24,17 @@ const loading = ref(false)
 const installed = ref<string[]>([])
 const available = ref<Record<string, unknown>>({})
 const error = ref<string | null>(null)
+/**
+ * 「可下载」列表没拿到的原因（M4.1 S5）。
+ *
+ * 主进程的 `versions` 命令在**拉不到 nwjs.io 版本清单**时**不抛错**，
+ * 而是返回 `{ available: {}, warning }` —— 理由：弹窗要照常打开、已装列表照常显示，
+ * 不能因为一次网络失败让用户连「我装过什么」都看不见。
+ *
+ * 所以这里的 `warning` 必须显示出来，否则用户看到的是「可下载：无」，
+ * 会以为「这个版本不存在」，而不是「这次没查到」。
+ */
+const availableWarning = ref<string | null>(null)
 
 /** 当前架构（用于挑选构建）。与主进程 installVersion 的挑法一致。 */
 const arch = computed(() => {
@@ -45,10 +56,13 @@ async function refresh(): Promise<void> {
   if (!props.folder || !props.argKey) return
   loading.value = true
   error.value = null
+  availableWarning.value = null
   try {
     const result = await api.versions(props.folder, props.argKey)
     installed.value = result.installed
     available.value = result.available
+    // 主进程拉不到版本清单时不抛错，而是给 warning（理由见上面 ref 的注释）
+    availableWarning.value = result.warning ?? null
   } catch (caught) {
     error.value = translateError(caught, t)
   } finally {
@@ -125,6 +139,15 @@ async function remove(version: string): Promise<void> {
       </div>
 
       <h4 style="margin: 18px 0 8px">{{ t('versions.available') }}</h4>
+      <!-- 拉不到版本清单时说明原因（否则用户只看到一块空白，会以为「没有可装版本」） -->
+      <el-alert
+        v-if="availableWarning"
+        :title="availableWarning"
+        type="warning"
+        :closable="false"
+        show-icon
+        style="margin-bottom: 8px"
+      />
       <el-empty v-if="availableRows.length === 0" :description="t('versions.noAvailable')" :image-size="48" />
       <div v-else class="stack" style="gap: 6px">
         <div v-for="row in availableRows" :key="row.version" class="row">

@@ -16,31 +16,33 @@ const tab = ref<'installed' | 'remote'>('installed')
 /** 正在跑任务的引擎 folder（用按钮 loading）。 */
 const pending = ref<string | null>(null)
 
-/**
- * 能自实现启动的引擎（M4.0 D57）。
- *
- * ⚠️ 名单的唯一来源是主进程的 `src/main/launchers/index.ts` 的 LAUNCHABLE_ENGINES。
- * 渲染层不能 import 主进程代码（contextBridge 隔离），所以这里放一份镜像。
- * **两份必须一致** —— 由 `test/launchable-engines-consistency.test.ts` 直接读源码比对。
- *
- * 为什么引擎页需要它：D57 决定「不支持的引擎不回退上游 launcher」，
- * 那么配套就要求**别让用户装完才发现不能用**（装了几百 MB 的 ruffle/wine 却点不了启动）。
- */
-const LAUNCHABLE_ENGINE_IDS = ['nwjs', 'mkxpz', 'easyrpg', 'renpy']
-
-function isLaunchable(module: ModuleInfo | RemoteModule): boolean {
-  const id = 'folder' in module ? module.folder : module.id
-  return LAUNCHABLE_ENGINE_IDS.includes(id)
-}
+// ===== M4.1 S4：`LAUNCHABLE_ENGINE_IDS` 与「标灰」一并删除 =====
+//
+// 原来这里有一份镜像名单（`['nwjs','mkxpz','easyrpg','renpy']`）+ `isLaunchable()`
+// + 卡片上的「不支持启动」标灰 + `test/launchable-engines-consistency.test.ts`
+// （专门比对渲染层镜像与主进程 `LAUNCHABLE_ENGINES` 是否一致）。
+//
+// 为什么现在全删（而不是留着）：
+//   · 「可安装」列表来自主进程的 `ENGINES`，**天生只有那四个**（D60）
+//   · 用户装的旧引擎（ruffle/wine/macos）在主进程侧已经不受支持：
+//     registry 里没有它 → `checkEngineUpdates` 会把它列进 warnings，
+//     点启动会明确报 `error.engineNotLaunchable`（D57）
+//   · 于是 `isLaunchable()` 在这张页面上**恒为 true** —— 一个永远返回 true 的判断
+//     就是死代码，而「两份名单必须一致」的测试也失去了比对对象
+//
+// 换句话说：标灰是为了「别让用户装完才发现不能用」，而现在根本**装不到**不能用的引擎
+// （可安装列表里没有它们），所以这个提醒没有存在的场景了。
 
 const updateCount = computed(() => engines.updateCount)
 const warnings = computed(() => engines.engineUpdates?.warnings ?? [])
 const checkedAt = computed(() => engines.engineUpdates?.checkedAt ?? '')
-const cachedRemote = computed(() => engines.engineUpdates?.cachedRemote === true)
+// M4.1 S4：`cachedRemote` 删除。主进程侧它已恒为 false（没有远端清单也就没有远端缓存），
+// 留着它会让用户以为「列表可能来自旧缓存」——而那个场景已经不存在了。
+// 字段本身在 Snapshot/EngineUpdateReport 里保留（不破坏数据结构），只是页面不再展示。
 
 onMounted(async () => {
   if (engines.modules.length === 0) await engines.load()
-  // 远程列表单独拉；失败不崩（store 里存 remoteError）
+  // 「可安装」列表：来自主进程 registry（零网络，毫秒级；失败只 console.warn，不弹告警）
   if (engines.remoteModules.length === 0) await engines.loadRemote()
 })
 
@@ -54,7 +56,23 @@ function moduleVersion(module: ModuleInfo | RemoteModule): string {
   return (raw?.version as string | undefined) || module.version || t('common.unknown')
 }
 
+/**
+ * 引擎的一句话说明。
+ *
+ * M4.1 S4：优先用**中文**（i18n 的 `engines.desc.<folder>`），
+ * 而不是 manifest 里的英文 `description`。
+ *
+ * 为什么改：manifest 的 description 现在是 registry 里那段英文
+ * （"A module to launch NW.js native games…"）。那是一份**兼容字段**
+ * （原版 Xenolauncher 也读它），不该是展示给中文用户的文案。
+ * 中文没有对应 key 时才回退到英文（保留兜底，不让描述整块消失）。
+ */
 function moduleDescription(module: ModuleInfo | RemoteModule): string {
+  const folder = 'folder' in module ? module.folder : module.id
+  const key = `engines.desc.${folder}`
+  const translated = t(key)
+  // vue-i18n 缺 key 时会原样返回 key 本身（不是空串），据此判断有没有翻译
+  if (translated && translated !== key) return translated
   const raw = 'raw' in module ? module.raw : undefined
   return (raw?.description as string | undefined) || module.description || ''
 }
@@ -168,24 +186,10 @@ function formattedCheckedAt(): string {
     </div>
   </header>
 
-  <el-alert
-    v-if="engines.remoteError"
-    :title="t('engines.remoteUnavailable')"
-    :description="engines.remoteError"
-    type="error"
-    :closable="false"
-    show-icon
-    style="margin-bottom: 12px"
-  />
-
-  <el-alert
-    v-if="cachedRemote"
-    :title="t('engines.cachedWarning')"
-    type="warning"
-    :closable="false"
-    show-icon
-    style="margin-bottom: 12px"
-  />
+  <!-- M4.1 S4：原来的两条告警已删
+       · `engines.remoteError`（「无法获取远程引擎列表」）—— 可安装列表现在来自本地 registry，
+         不再有「远程列表拉失败」这回事
+       · `engines.cachedWarning`（「远程列表来自本地缓存」）—— 没有远端也就没有缓存 -->
 
   <div v-if="warnings.length" class="panel" style="margin-bottom: 12px">
     <h4 style="margin: 0 0 8px">{{ t('engines.warnings') }}</h4>
@@ -237,15 +241,10 @@ function formattedCheckedAt(): string {
           <el-tag v-if="updateFor(module.id)?.checkFailed" size="small" type="info">
             {{ t('engines.checkFailed') }}
           </el-tag>
-          <el-tag v-if="!isLaunchable(module)" size="small" type="warning">
-            {{ t('engines.notLaunchableBadge') }}
-          </el-tag>
         </div>
 
-        <!-- D57 的配套：装完才知道不能用是最糟的，所以在卡片上直接说清楚 -->
-        <div v-if="!isLaunchable(module)" class="hint engine-card-warn">
-          {{ t('engines.notLaunchableHint') }}
-        </div>
+        <!-- M4.1 S4：原来的「不支持启动」标灰与提示已删除（理由见 script 顶部的注释）。
+             现在能装到的引擎天生都是能启动的 —— 可安装列表只有 registry 那四个。 -->
 
         <div v-if="moduleDescription(module)" class="engine-card-desc">{{ moduleDescription(module) }}</div>
         <div class="hint">{{ module.id }}</div>
@@ -294,12 +293,7 @@ function formattedCheckedAt(): string {
     </div>
 
     <div v-else class="engine-grid">
-      <article
-        v-for="module in engines.available"
-        :key="module.folder"
-        class="engine-card"
-        :class="{ 'engine-card-unavailable': !isLaunchable(module) }"
-      >
+      <article v-for="module in engines.available" :key="module.folder" class="engine-card">
         <div class="engine-card-head">
           <span class="engine-card-name" :title="displayName(module)">{{ displayName(module) }}</span>
           <el-tag size="small">{{ moduleVersion(module) }}</el-tag>

@@ -1,6 +1,9 @@
 <script setup lang="ts">
 // 按 GameArgDef.type 动态渲染引擎参数表单（§4 DynamicArgsForm.vue）。
-// 支持：boolean / text / int / float / dropdown / select / multi-version / array。
+// 支持：boolean / string（别名 text）/ int / float / dropdown / select / multi-version / array。
+//
+// ⚠️ `string` 与 `text` 是**同一个控件**：上游 manifest 一律写 "string"，
+// core-host 的 GameArgDef 历史方言写 "text"。两处都得认，否则有一侧的参数会渲染成空白行。
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { GameArgDef, ManifestRaw } from '@/api/client'
@@ -9,6 +12,16 @@ const props = defineProps<{
   manifest: ManifestRaw | null
   /** v-model：参数键值。 */
   modelValue: Record<string, unknown>
+  /**
+   * 引擎 folder（M4.1 S4）——用来查参数的中文标签 `args.<folder>.<key>`。
+   *
+   * 为什么要显式传：manifest 里**没有 folder**（我们生成的 manifest 刻意不含 labelKey，
+   * 见 argLabel 的注释），而不同引擎有同名参数（`vsync` 在 mkxpz 与 easyrpg 都有），
+   * 所以中文文案必须按引擎分开查，不能只按参数键。
+   *
+   * 可选：老调用方不传时退回 manifest 的英文 label（不让组件直接报错）。
+   */
+  engineFolder?: string
 }>()
 
 const emit = defineEmits<{
@@ -27,14 +40,37 @@ interface Field {
   value: unknown
 }
 
+/**
+ * 参数的中文标签（M4.1 S4）。
+ *
+ * ⚠️ **不能从 manifest 里取**：我们生成的 manifest 刻意**不写** `labelKey`
+ * （那是我们自己的字段，上游只认 `label`；写了会污染与上游兼容的 schema，见 D62）。
+ * 所以中文标签只能用「引擎 folder + 参数键」在 i18n 里查：
+ *   `args.<folder>.<key>`  → 没翻译时退回 manifest 的英文 `label` → 再退回键名本身。
+ *
+ * 三级降级是有意的：宁可显示一个英文标签（用户还看得懂 "RGSS Version"），
+ * 也不能显示一个空白标题（用户不知道这一行是什么）。
+ */
+function argLabel(folder: string, key: string, definition: GameArgDef): string {
+  if (folder) {
+    const candidate = `args.${folder}.${key}`
+    const translated = t(candidate)
+    // vue-i18n 缺 key 时返回 key 本身，据此判断有没有翻译
+    if (translated && translated !== candidate) return translated
+  }
+  return definition.label?.trim() || key
+}
+
 /** manifest.gameArgs → 有序字段列表（保持 manifest 里的顺序）。 */
 const fields = computed<Field[]>(() => {
   const schema = props.manifest?.gameArgs
   if (!schema) return []
+  // 引擎 folder 从 manifest 的 name 拿不到，所以显式传进 props（见 defineProps）
+  const folder = props.engineFolder ?? ''
   return Object.entries(schema).map(([key, definition]) => ({
     key,
     definition,
-    label: definition.label?.trim() || key,
+    label: argLabel(folder, key, definition),
     type: definition.type,
     options: normalizeOptions(definition.options),
     value: props.modelValue?.[key] ?? definition.default
@@ -106,9 +142,16 @@ function selectValues(field: Field): Array<string | number> {
             @update:model-value="update(field.key, $event)"
           />
 
-          <!-- text -->
+          <!-- text / string：同一个单行输入框 -->
+          <!-- ⚠️ 两种 type 名都要认（M4.1 D62）：
+               上游 manifest 的字符串参数一律写 "type": "string"
+               （nwjs / mkxpz / easyrpg / renpy 的 manifest 全部如此），
+               而 core-host 的 GameArgDef 与历史代码用 "text"。
+               只认 'text' 的后果：我们自己生成的 manifest（用 string）里
+               所有字符串参数**渲染成一个空白行**——不报错，只是输入框不见了。
+               反过来只认 'string' 会让用户手改过的旧 games.json 里的 text 参数消失。 -->
           <el-input
-            v-else-if="field.type === 'text'"
+            v-else-if="field.type === 'text' || field.type === 'string'"
             :model-value="String(field.value ?? '')"
             style="width: 220px"
             @update:model-value="update(field.key, $event)"

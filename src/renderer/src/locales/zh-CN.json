@@ -153,7 +153,34 @@
     "installedVersions": "已安装版本",
     "addItem": "添加一项",
     "removeItem": "移除",
-    "noInstalledVersion": "尚未安装任何版本"
+    "noInstalledVersion": "尚未安装任何版本",
+    "nwjs": {
+      "version": "NW.js 版本"
+    },
+    "mkxpz": {
+      "rgssVersion": "RGSS 版本",
+      "fullscreen": "全屏启动",
+      "vsync": "垂直同步",
+      "RTP": "额外 RTP / 归档目录",
+      "windowTitle": "窗口标题",
+      "fontSub": "字体替换（原名>新名）",
+      "defScreenW": "窗口宽度（0 = 自动）",
+      "defScreenH": "窗口高度（0 = 自动）",
+      "preloadScript": "预载 Ruby 脚本",
+      "midiSoundFont": "MIDI 音源（SF2）"
+    },
+    "easyrpg": {
+      "encoding": "文本编码",
+      "language": "语言",
+      "rtpPath": "RTP 目录",
+      "soundfontPath": "音源路径",
+      "vsync": "垂直同步",
+      "showFps": "显示帧率"
+    },
+    "renpy": {
+      "savedir": "存档目录",
+      "command": "额外命令"
+    }
   },
   "engines": {
     "title": "引擎管理",
@@ -163,7 +190,6 @@
     "noneInstalled": "还没有安装任何引擎",
     "noneInstalledHint": "到「可安装」里挑一个，或添加游戏时自动安装",
     "noneRemote": "没有可安装的引擎",
-    "remoteUnavailable": "无法获取远程引擎列表",
     "install": "安装",
     "update": "更新",
     "uninstall": "卸载",
@@ -173,8 +199,6 @@
     "hasUpdate": "有新版本 {version}",
     "dependencyBadge": "依赖可更新",
     "checkFailed": "检查失败",
-    "notLaunchableBadge": "不支持启动",
-    "notLaunchableHint": "该引擎本版本不支持启动（装了也用不了）。本版本支持：NW.js、mkxp-z、EasyRPG、Ren'Py。",
     "installedToast": "已安装「{name}」",
     "updatedToast": "已更新「{name}」",
     "uninstalledToast": "已卸载「{name}」",
@@ -185,8 +209,13 @@
     "upToDate": "全部引擎都是最新版",
     "checkDone": "检查完成：{count} 个可更新",
     "checkedAt": "检查时间：{time}",
-    "cachedWarning": "远程列表来自本地缓存",
-    "warnings": "警告"
+    "warnings": "警告",
+    "desc": {
+      "nwjs": "运行 RPG Maker MV / MZ（NW.js）游戏。",
+      "mkxpz": "运行 RPG Maker XP / VX / VX Ace 游戏。",
+      "easyrpg": "运行 RPG Maker 2000 / 2003 游戏。",
+      "renpy": "运行 Ren'Py 视觉小说。"
+    }
   },
   "versions": {
     "title": "{key} 版本管理",

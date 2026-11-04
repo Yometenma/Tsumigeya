@@ -20,8 +20,11 @@
 
 ## 当前项目状态（每次收尾必须更新）
 
-- **阶段**：**M1 / M2 / M2.5 / M3 / M2.6 / M2.7 / M3.5 / M4.0 已完成**（v0.4.0 已发布）；**M4.1（自己维护引擎清单）方案已冻结待实施**
-  - M4.1 = 不再从上游拉 manifest，4 个引擎硬编码在 `src/main/engines/registry.ts`；ruffle/wine/macos **在代码里不存在**（见 `docs/M4.1-实施方案.md`，D60–D62）
+- **阶段**：**M1 / M2 / M2.5 / M3 / M2.6 / M2.7 / M3.5 / M4.0 / M4.1 已完成**（v0.4.0 已发布；M4.1 未发新版）
+  - **M4.1 = 自己维护引擎清单，彻底不再拉上游**（见 `docs/M4.1-实施方案.md`，D60–D62）——**S1–S6 已实施完毕**
+    - 4 个引擎硬编码在 `src/main/engines/registry.ts`；ruffle/wine/macos **在代码里不存在**（不是 filter、不是隐藏）
+    - `installEngine` 自己写 manifest（D62）+ `engines/versions.ts` 自己拉 NW.js 版本列表
+    - 详见下方「M4.1 全套」；**实施中发现并修掉 4 个真 bug**（其中一个 M1 就存在）
   - **M4.0 = 去掉上游 launcher，自实现启动**（见 `docs/M4.0-实施方案.md`，D53–D58）——**已实施完毕**
     - 收益：**不再修改用户游戏文件**（上游 nwjs 会改写 `js/main.js`）/ 数据目录切到 `Tsumigeya` / 清掉补丁式代码
     - 启动改走 `src/main/launchers/`（buildLaunchPlan + spawn），`launcher.js` 与 `exec-inject.ts` 全部删除
@@ -48,12 +51,12 @@
     判定依据是 DLsite 的 section（`maniax`/`books` = R18；实测同一 R18 作品在 `homepro` 返回 404），
     **只影响渲染、不影响抓取与存储**。实现在 `src/shared/age-rating.ts`（零依赖纯函数）
   - **M2.5 / M3 / M2.6 / M2.7 / M3.5 的实现细节**：见各自 `docs/M*.md`（本文档只记状态与决策，不重复实现叙述）
-- **测试 634 个全绿 / 27 个文件**（M1 的 76 + M2 的 89 + R18 打码 7 + M2.5 的 108 + M3 的 76 +
-  M2.6 的 67 + **M3.5 的 68** + **M4.0 的 127**：
-  S1 路径 21 + S2 三引擎 31 + S2 脱钩 13 + S3 mkxpz 45 + S4 分发 14 + S5 真 spawn 5 +
-  S6.5 数据目录 18 + S7 名单一致性 3。
-  ⚠️ M3.5 的 28 条 exec 注入测试随 `exec-inject.ts` 一起删除（-28），故 507 + 127 − 28 = 606
-  + 其余新增 = 634）
+- **测试 755 个全绿 / 31 个文件**（M1 的 76 + M2 的 89 + R18 打码 7 + M2.5 的 108 + M3 的 76 +
+  M2.6 的 67 + **M3.5 的 68** + **M4.0 的 127** + **M4.1 的 124**：
+  S1 registry 42 + S2 ipc 15 + S3 install 32 + S4 renderer 22 + S5 cleanup 14。
+  ⚠️ 两次净减：M3.5 的 28 条 exec 注入测试随 `exec-inject.ts` 一起删除（-28）；
+  M4.1 S4 删 `launchable-engines-consistency.test.ts`（-3，没有两份名单了）。
+  故 507 + 127 + 124 − 28 − 3 = 727，+ 其余新增 = 755）
 - **M3.5 实现**（`play-stats.ts` / `exec-inject.ts` / `process-registry.ts`）：细节见 `docs/M3.5-实施方案.md`
   探针结论：真拿到 PID、真落盘 play-stats、真杀进程（`kill(pid,0)` 复核）—— 详见该文档
 - **M3.5 端到端实测（本机 `node scripts/probe-m35.cjs`）**：探针造一个**假 mkxpz 模块**，
@@ -106,6 +109,42 @@
     - `libraryPage.cardCount=2` / `bodyHasTitle=true` / `consoleErrors=[]` → 没白屏
     - `verificationLevel="error-path only (windows)"` → **如实记录**本机验到的层次
       （真进程链路在 `test/launchers-spawn-real.test.ts` 里用系统 ping/sleep 验过）
+- **M4.1 全套**（自己维护引擎清单，彻底不拉上游）：细节见 `docs/M4.1-实施方案.md`
+  - **S1 `engines/types.ts` + `registry.ts`**（**42 条**）：四个引擎硬编码（`ENGINES`）。
+    autodetect 逐字段照抄上游实测；参数精简到 nwjs 1 / mkxpz 10 / easyrpg 6 / renpy 2。
+    **三处硬编码路径换成 `<dataDir>` 占位符**（`expandDataDirPlaceholders` 在启动时展开）
+  - **S2 `ipc.ts` 的 `remoteModules` / `checkEngineUpdates`**（**15 条**）：不再拉上游清单。
+    `remoteModules` = `registry → buildManifest` 四个；`checkEngineUpdates` 只比
+    「本地已装版本 vs registry 硬编码版本」。**判据是 `fetchCalls === 0`**（一次网络都不许发）
+  - **S3 `detectFolder` / `installEngine` / `versions.ts`**（**32 条**）：
+    识别规则改读 registry（`engineDefinitionsFromRegistry()`）；安装 = 写生成的 manifest + 装依赖；
+    **`versions.ts` 自己实现 NW.js 版本列表**（拉 `nwjs.io/versions.json`，失败给 warning 不抛错）
+  - **S4 渲染层清理**（**22 条**）：删掉 `LAUNCHABLE_ENGINE_IDS` 镜像 / 标灰 / 两条远端告警；
+    `DynamicArgsForm` 认 `string`（上游写法）与 `text`（历史方言）；参数标签中文化；
+    删 `test/launchable-engines-consistency.test.ts`（没有两份名单了）
+  - **S5 删残留**（**14 条**）：`CoreApi` 删掉 4 个上游方法声明；`loadScript` / `scriptPath` 实现删除；
+    源码扫描守护「这些调用不会回来」。**剩在 `resources/core/module.js` 的实现属 M4.2 范围**
+  - **端到端实测（`node scripts/probe-m41.cjs`，本机 Windows）**：
+    - `remoteFolders=["nwjs","mkxpz","easyrpg","renpy"]` / `remoteHasRuffle/Wine/Macos` 全 false
+    - `cachedRemote=false` / `alertTitles=[]` / `unavailableCardCount=0` / `hasNotLaunchableText=false`
+    - 装了一个旧引擎 ruffle → 它出现在「已安装」，`remoteVersion="N/A"`、`moduleUpdate=false`，
+      并给提示「已安装但本程序不再维护的引擎：ruffle…」
+    - `argForm.labels` = `RGSS 版本 / 全屏启动 / 窗口标题 / 窗口宽度（0 = 自动）/ 字体替换（原名>新名）`，
+      `inputCount=4`（`string` 参数真的渲染出输入框）
+    - `manifestProbe.mkxpzRawKeys` 六项齐全 / `pageHasNoArgsHint=false`
+    - `consoleErrors=[]` → 没白屏
+  - **⚠️ M4.1 实施中修掉的 4 个真 bug**（全部有反向验证：回退修复后测试立刻变红）：
+    1. `installDependencies` 用 `component()` 校验依赖名（**M3 引入**）→ 上游合法的
+       `version/v0.106.1`（斜杠=子目录）被判非法 → **NW.js 永远装不上**
+    2. `install`/`update` 两条路径没有事务保护（**本次引入**）→ 安装失败留
+       「manifest 在、依赖缺一半」的半成品 → 界面显示已装、启动找不到二进制
+    3. `snapshot.modules` 没有 `raw` 字段（**M1 引入**）→ `GameEditPage` 的 `manifest` 永远 null
+       → **引擎参数表单对所有引擎都是空的**（类型声明 `ModuleInfo.raw` 与实际数据不符，TS 查不出来）
+    4. `detect` 写成 `if (!params.includeRemote)`（**M1 引入**）→ 调用方不传该参数时
+       `undefined` 被判 falsy → **引擎识别从未在这条路径上生效**
+  - **仍未验证（需 mac）**：真实下载四个引擎依赖（几百 MB）的耗时与进度条观感；
+    `installVersion` 装 NW.js 版本的真实下载；mac 上 spawn 引擎二进制（与 M4.0 同一条待验证项）
+
 - **端到端探针**：`probe-m2` / `probe-m25` / `probe-m3` / `probe-m26` / `probe-m27` / `probe-m35`，
   各自的实测结论见对应 `docs/M*.md` 的「端到端实测」一节（**别重复验证**）
 - **仍未验证（必须在有桌面会话的机器上做）**：
@@ -170,7 +209,7 @@ npm run build:mac    # 出 mac 包（Windows 上只能出 zip/dir，签名需 Ma
 │   ├── M3.5-实施方案.md    ← ★ M3.5 交接稿（进程管理：追踪/关闭/游玩记录）——**已实施完毕**
 │   ├── 调研-去掉上游launcher的可行性.md ← 上游 launcher 能否自实现（**已调研并已实施**）
 │   ├── M4.0-实施方案.md    ← ★ M4.0 交接稿（去掉上游 launcher，自实现启动）——**已实施完毕**
-│   ├── M4.1-实施方案.md    ← ★ M4.1 交接稿（自己维护引擎清单，彻底不拉上游）——**待实施**
+│   ├── M4.1-实施方案.md    ← ★ M4.1 交接稿（自己维护引擎清单，彻底不拉上游）——**已实施完毕**
 │   ├── 盘点-还留着哪些上游依赖.md ← ★ **M4.0 只砍了一半**：module.js 1911 行仍在用（18 个 API）
 │   └── 技术选型-三方案对比.md
 ├── _xeno_probe/            # 上游 Xenolauncher clone，只读参考，gitignore
@@ -193,6 +232,10 @@ npm run build:mac    # 出 mac 包（Windows 上只能出 zip/dir，签名需 Ma
 │   │   │   ├── types.ts        #     LaunchContext / LaunchPlan
 │   │   │   ├── spawn.ts        #     ★ 唯一调用 spawn 的地方（detached + stdio:ignore + unref，D55）
 │   │   │   └── nwjs.ts / mkxpz.ts / easyrpg.ts / renpy.ts
+│   │   ├── engines/       #   ★ M4.1：引擎清单唯一来源（D60）
+│   │   │   ├── registry.ts     #     四个引擎的完整定义 + 占位符展开 + buildManifest
+│   │   │   ├── types.ts        #     EngineDefinition / EngineArgSpec 等形状
+│   │   │   └── versions.ts     #     NW.js 版本列表（拉 nwjs.io，失败给 warning 不抛错）
 │   │   ├── process-registry.ts # ★ M3.5：进程表（只在内存，D50）+ 存活/复用/等待工具
 │   │   ├── play-stats.ts  #   ★ M3.5：游玩记录旁挂存储（play-stats.json，D51）
 │   │   └── ipc.ts          #   IPC 命令表 + 串行队列 + 取消 + 对话框桥 + OFF_QUEUE_METHODS
@@ -416,10 +459,11 @@ Vue 组件 → Pinia store → api/client → preload(window.tsumi.invoke)
   - **端到端验收**：`node scripts/probe-m40.cjs`（结论见下方「M4.0 全套」）
   - **未验证**：mac 上四个引擎的真实二进制能否被 spawn 起来（Windows 上只能验错误路径与文案）；
     上游 nwjs 的 `chromium-args` 篡改我们不做，**是否有行为差异待 mac 真机对比**（方案 §7 R2）
-- **M4.1（方案已冻结，待实施）**：自己维护引擎清单 —— 见 [`docs/M4.1-实施方案.md`](./docs/M4.1-实施方案.md)（D60–D62）
-  - 不再调 `fetchRemoteManifestsList`；4 个引擎硬编码；安装时自己生成 manifest
-  - **参数大幅精简**（mkxpz 59→约10 / easyrpg 51→约6 / nwjs 4→2）
-  - 顺带修掉：mkxpz manifest 里硬编码的 `xenolauncher` 路径（D58 后已失效）
+- **M4.1（已完成）**：自己维护引擎清单 —— 见 [`docs/M4.1-实施方案.md`](./docs/M4.1-实施方案.md)（D60–D62）
+  - 不再调 `fetchRemoteManifestsList`；4 个引擎硬编码在 `src/main/engines/registry.ts`；安装时自己生成 manifest
+  - **参数大幅精简**（nwjs 1 / mkxpz 10 / easyrpg 6 / renpy 2）
+  - 修掉 manifest 里的 `xenolauncher` 硬编码（**方案 §1.2 漏了 renpy 的 `savedir`**）
+  - 端到端验收：`node scripts/probe-m41.cjs`（结论见下方「M4.1 全套」）
 - **M4.2（待 M4.1 完成后实施）**：连 `module.js` 一起删 —— 见 [`docs/盘点-还留着哪些上游依赖.md`](./docs/盘点-还留着哪些上游依赖.md)
   - **现状**：M4.0 只砍了 `launcher.js`；`resources/core/module.js`（1911 行）仍在用，**18 个 API 被调用**
   - **用户意图**（原话）：「做 m4.0 本来就是为了摆脱 xenolauncher 的依赖……别给我小偷小摸偷偷藏着」

@@ -17,9 +17,22 @@ export interface EngineAction {
 
 export const useEnginesStore = defineStore('engines', () => {
   const modules = ref<ModuleInfo[]>([])
+  /**
+   * 「可安装」的引擎 = 主进程 registry 里那四个（M4.1 D60）。
+   *
+   * ⚠️ 名字保留 `remoteModules` 是因为**契约不变**（IPC 命令名 / Snapshot 字段名都还叫这个），
+   * 但语义已经变了：它不再是「从 GitHub 拉回来的远端列表」，而是「本地 registry 产出的清单」。
+   * 改名的代价要动 preload / client.ts / Snapshot 三处，收益只是名字更准 —— 不值得。
+   */
   const remoteModules = ref<RemoteModule[]>([])
   const engineUpdates = ref<EngineUpdateReport | null>(null)
-  const remoteError = ref<string | null>(null)
+  /**
+   * 正在刷新「可安装」列表（刷新按钮的 loading）。
+   *
+   * M4.1 S6：原来的 `remoteError` 已删除 —— 列表现在来自本地 registry，
+   * 「远程列表拉失败」这个场景不存在了（页面也不再展示那条告警）。
+   * 拉取失败仍然 console.warn 留痕（见 loadRemote），只是不再给用户一条假警报。
+   */
   const loadingRemote = ref(false)
   const search = ref('')
 
@@ -63,11 +76,13 @@ export const useEnginesStore = defineStore('engines', () => {
 
   async function loadRemote(): Promise<void> {
     loadingRemote.value = true
-    remoteError.value = null
     try {
       remoteModules.value = await api.remoteModules()
     } catch (error) {
-      remoteError.value = (error as Error).message
+      // M4.1 S6：这条命令**理论上不会失败**（读本地 registry，零网络）。
+      // 真失败了就是代码问题，所以只留痕、不弹告警 —— 弹一条「无法获取远程引擎列表」
+      // 会误导用户去查网络，而根本没有网络参与。
+      console.warn(`[tsumigeya] 读取可安装引擎列表失败：${(error as Error).message}`)
     } finally {
       loadingRemote.value = false
     }
@@ -93,7 +108,6 @@ export const useEnginesStore = defineStore('engines', () => {
     modules,
     remoteModules,
     engineUpdates,
-    remoteError,
     loadingRemote,
     search,
     installedFolders,
