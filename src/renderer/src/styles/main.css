@@ -228,7 +228,9 @@ a {
 }
 
 .game-card-icon {
-  aspect-ratio: 1 / 1;
+  /* DLsite 封面实际是 4:3 横向（实测 naturalWidth=560，宽高比约 560×420）。
+     之前写 1/1 会把两侧切掉一大块，看起来像竖版。 */
+  aspect-ratio: 4 / 3;
   display: flex;
   align-items: center;
   justify-content: center;
