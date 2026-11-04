@@ -227,6 +227,7 @@ npm run build:mac    # 出 mac 包（Windows 上只能出 zip/dir，签名需 Ma
 │   ├── 需求-游戏内文本汉化.md ← 汉化需求记录（**暂不实现**，只沉淀格式与坑）
 │   ├── M2.7-实施方案.md    ← ★ M2.7 交接稿（编辑页重构 + 保存 bug）
 │   ├── M3.5-实施方案.md    ← ★ M3.5 交接稿（进程管理：追踪/关闭/游玩记录）——**待实施**
+│   ├── 调研-去掉上游launcher的可行性.md ← 上游 launcher 能否自实现（**已调研，待 M3.5 后实施**）
 │   └── 技术选型-三方案对比.md
 ├── _xeno_probe/            # 上游 Xenolauncher clone，只读参考，gitignore
 ├── resources/core/
@@ -438,6 +439,12 @@ Vue 组件 → Pinia store → api/client → preload(window.tsumi.invoke)
   - **关键实现**：加载 launcher 时**注入 `child_process`**（不改上游 modules 仓库），已验证可行
 - **M4**：存档管理（集中查看/备份/导出）+ 增强（Cheat 注入/变速）
 - **M5**：手柄、无边框全屏、像素缩放、dmg 公证分发
+- **排期待定：去掉上游 launcher（自实现启动）** —— 见 [`docs/调研-去掉上游launcher的可行性.md`](./docs/调研-去掉上游launcher的可行性.md)
+  - 实测：上游每模块 launcher.js 里 99% 是附加功能（作弊注入/改 main.js/DOM 保护），真正启动只有 3–5 行
+  - 引擎二进制来自第三方官方源（`dl.nwjs.io` / `ci.easyrpg.org` / `github.com`），上游只是薄封装
+  - **用户决定：只砍 launcher，保留 module.js**（引擎目录约定是老用户兼容点，砍了要重装引擎）
+  - **实施时机：M3.5 完成后再排**（用户明确）
+  - 顺带修掉的：现在上游会**改写游戏 `js/main.js`**，自实现后默认不改
 
 ## 上游参考
 
