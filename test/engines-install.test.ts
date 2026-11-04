@@ -24,7 +24,8 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
-import { createCoreHost, resolveCorePath } from '../src/main/core-host'
+import { createCoreHost } from '../src/main/core-host'
+import { readLocalManifests } from '../src/main/engines/manifest'
 import { createDispatcher, safeDependencyPath } from '../src/main/ipc'
 import { buildManifest, findEngine } from '../src/main/engines/registry'
 import { NWJS_VERSIONS_URL, fetchNwjsVersions, pickMacBuilds } from '../src/main/engines/versions'
@@ -75,7 +76,6 @@ function tempDataDir(prefix = 'tsmg-s3-'): string {
 function makeHost(dir: string, links: readonly string[]): ReturnType<typeof createCoreHost> {
   return createCoreHost({
     dataDir: dir,
-    corePath: resolveCorePath({ env: {}, appPath: process.cwd() }),
     fetchImpl: fakeFetch(links),
     onEvent: () => undefined
   })
@@ -208,7 +208,7 @@ describe('S3 安装引擎：自己生成 manifest 并装依赖（D62）', () => 
       expect(fs.existsSync(path.join(depDir, 'payload.txt')), '解压后的文件应该落地').toBe(true)
 
       // ③ core 能读回来（D62 的核心要求）
-      const local = localHost.core.readLocalManifests()
+      const local = readLocalManifests(localHost.dataDir)
       expect(local[folder]?.version).toBe(def.version)
       expect(local[folder]?.gameArgs?.savedir).toMatchObject({ type: 'string' })
     } finally {
@@ -296,7 +296,6 @@ describe('S3 更新引擎：多版本目录不被误删、失败要回滚', () =
     // 假的 host：所有下载都 500 → 安装必然失败
     const localHost = createCoreHost({
       dataDir,
-      corePath: resolveCorePath({ env: {}, appPath: process.cwd() }),
       fetchImpl: async () => new Response('', { status: 500 }),
       onEvent: () => undefined
     })
@@ -467,7 +466,6 @@ describe('S3 versions 命令：接的是我们自己的实现（不加载上游�
 
     const offlineHost = createCoreHost({
       dataDir,
-      corePath: resolveCorePath({ env: {}, appPath: process.cwd() }),
       fetchImpl: async () => {
         throw new Error('offline')
       },

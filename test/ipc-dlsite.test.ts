@@ -7,7 +7,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
-import { createCoreHost, resolveCorePath } from '../src/main/core-host'
+import { createCoreHost } from '../src/main/core-host'
 import { OFF_QUEUE_METHODS, createDispatcher } from '../src/main/ipc'
 
 /** 搜索结果结构（与 api/client.ts 的 DlsiteSearchHit 一致；测试不跨 tsconfig 工程引用渲染层类型）。 */
@@ -33,7 +33,6 @@ beforeEach(() => {
   const calls: string[] = []
   host = createCoreHost({
     dataDir,
-    corePath: resolveCorePath({ isPackaged: false, appPath: process.cwd() }),
     fetchImpl: fakeFetch({ calls }) as never
   })
 })
@@ -173,7 +172,6 @@ describe('languageGroups', () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'tsmg-lang-'))
     const host2 = createCoreHost({
       dataDir: dir,
-      corePath: resolveCorePath({ isPackaged: false, appPath: process.cwd() }),
       fetchImpl: (async () => new Response('', { status: 404 })) as never
     })
     // 种两条：日文原版在父目录，中文版在内层（用户 E:\Game\RPG 的真实布局）
@@ -272,7 +270,6 @@ const workFixture = readFileSync(path.join(__dirname, 'fixtures', 'dlsite', 'RJ2
 function lookupHost(dir: string, body = workFixture) {
   return createCoreHost({
     dataDir: dir,
-    corePath: resolveCorePath({ isPackaged: false, appPath: process.cwd() }),
     fetchImpl: (async () => new Response(body, { status: 200 })) as never
   })
 }
@@ -402,7 +399,6 @@ describe('dlsiteSearch（§A.1）', () => {
     const dataDir2 = mkdtempSync(path.join(tmpdir(), 'tsmg-ipc-search-'))
     const host2 = createCoreHost({
       dataDir: dataDir2,
-      corePath: resolveCorePath({ isPackaged: false, appPath: process.cwd() }),
       fetchImpl: (async () => new Response(searchFixture, { status: 200 })) as never
     })
     const result = (await createDispatcher({ host: host2 }).dispatch(

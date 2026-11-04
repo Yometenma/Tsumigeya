@@ -60,6 +60,7 @@ import path from 'node:path'
 import { extractArchive } from '../extract'
 import { component, failure } from '../games-store'
 import { buildManifest } from './registry'
+import { dependencyTableOf, readManifestAt } from './manifest'
 import type { EngineDefinition } from './types'
 import type { ManifestRaw } from './manifest'
 
@@ -156,24 +157,11 @@ export function isMultiVersionDependency(name: string): boolean {
   return typeof name === 'string' && name.includes('version/')
 }
 
-/** 读 `<root>/manifest.json`；不存在或坏 JSON → null（读不到的代价值得明确表达，不抛）。 */
-export function readManifestAt(root: string): ManifestRaw | null {
-  const file = path.join(root, 'manifest.json')
-  if (!fs.existsSync(file)) return null
-  try {
-    return JSON.parse(fs.readFileSync(file, 'utf8')) as ManifestRaw
-  } catch (error) {
-    console.warn(`[tsumigeya] 读 manifest 失败：${file} —— ${(error as Error).message}`)
-    return null
-  }
-}
-
-/** manifest 里的依赖表（兼容上游 `dependencies` 与老写法的 `deps`）。 */
-function dependencyTable(manifest: ManifestRaw | null): Record<string, unknown> {
-  if (!manifest) return {}
-  const table = manifest.dependencies ?? manifest.deps
-  return table && typeof table === 'object' ? (table as Record<string, unknown>) : {}
-}
+/**
+ * `readManifestAt` / `dependencyTableOf` 都定义在 `manifest.ts`（读磁盘 manifest 是那一家的职责），
+ * 这里重新导出只是让安装链路的调用方一个 import 就够（升级/更新/卸载都要读 manifest）。
+ */
+export { readManifestAt, dependencyTableOf }
 
 /** 目标架构名（`x64` → `x86_64`，与 manifest 的键一致；其余原样）。 */
 function resolveArch(options: InstallOptions): string {
@@ -249,7 +237,7 @@ export async function installDependencies(
     })
   }
 
-  const table = dependencyTable(manifest)
+  const table = dependencyTableOf(manifest)
   const arch = resolveArch(options)
   const depsRoot = path.join(root, 'deps')
   const installed: string[] = []
@@ -439,7 +427,7 @@ export async function updateEngine(
   abortCheck(options)
   const previous = readManifestAt(root)
   // ① 找出旧 manifest 里所有的多版本依赖（判据见 isMultiVersionDependency）
-  const keepNames = Object.keys(dependencyTable(previous)).filter((name) => isMultiVersionDependency(name))
+  const keepNames = Object.keys(dependencyTableOf(previous)).filter((name) => isMultiVersionDependency(name))
 
   const preserveRoot = path.join(root, '.update-preserve')
   const moved: Array<{ relative: string; from: string }> = []
@@ -524,5 +512,5 @@ export function uninstallEngine(root: string): void {
 
 /** 依赖名列表（测试断言「装了什么」用；不参与运行逻辑）。 */
 export function dependencyNames(root: string): string[] {
-  return Object.keys(dependencyTable(readManifestAt(root)))
+  return Object.keys(dependencyTableOf(readManifestAt(root)))
 }

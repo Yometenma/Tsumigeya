@@ -15,7 +15,8 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
-import { createCoreHost, resolveCorePath } from '../src/main/core-host'
+import { createCoreHost } from '../src/main/core-host'
+import { readLocalManifests } from '../src/main/engines/manifest'
 import { createDispatcher } from '../src/main/ipc'
 import { ENGINES, buildManifest, findEngine } from '../src/main/engines/registry'
 
@@ -29,7 +30,6 @@ beforeAll(() => {
   dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tsmg-s2-'))
   host = createCoreHost({
     dataDir,
-    corePath: resolveCorePath({ env: {}, appPath: process.cwd() }),
     // 会抛错 + 计数：既证明「不用网络」，也能在失败时看到「谁还在调」
     fetchImpl: async (input: string) => {
       fetchCalls += 1
@@ -257,7 +257,7 @@ describe('S2 registry 与 Snapshot 的兼容性', () => {
       JSON.stringify(buildManifest(findEngine('mkxpz')!))
     )
 
-    const local = host.core.readLocalManifests()
+    const local = readLocalManifests(host.dataDir)
     expect(local[folder]).toBeTruthy()
     // 读回来的版本 / autodetect / dependencies 都在
     expect(local[folder].version).toBe('1.1.5')
@@ -281,7 +281,7 @@ describe('S2 registry 与 Snapshot 的兼容性', () => {
       fs.mkdirSync(dir, { recursive: true })
       fs.writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify(buildManifest(engine)))
 
-      const local = host.core.readLocalManifests()
+      const local = readLocalManifests(host.dataDir)
       expect(local[folder], `${engine.folder} 读不回来`).toBeTruthy()
       expect(local[folder].version).toBe(engine.version)
       fs.rmSync(dir, { recursive: true, force: true })

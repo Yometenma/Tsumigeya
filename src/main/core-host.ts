@@ -1,52 +1,48 @@
-// core 单例宿主：数据目录策略、module.js 装载（不用裸 require，见 §3.6）、
-// getUi / getGames 桥、detectFolder 实现、模块路径安全工具。
+// core 宿主：数据目录策略、游戏库 / 元数据 / DLsite 服务接线、detectFolder、模块路径安全工具。
 //
-// ⚠️ 本文件**不在顶层 import electron**：detectFolder / 自动识别规则 / 路径校验这些纯逻辑要能在
-//    vitest 里直接跑（§8「单测里 import electron」已知坑）。需要 electron 的地方走 electronModule() 懒加载。
+// ===== M4.2 S4：这个文件不再装载 module.js（D63）=====
+//
+// 收缩前它有 752 行、装着一个 1911 行的上游 GPL 脚本（`resources/core/module.js`），
+// 通过 `loadCoreFactory()` + `new Function` 手工执行。M4.2 把那个脚本整个删了，
+// 于是这里的 `core` 字段、`loadCoreFactory`、`resolveCorePath`、`CoreApi` 的 18 个
+// 声明全部消失。
+//
+// 活都去哪了（方案 §4 的改动清单是「谁接手」的权威版本）：
+//   · 引擎定义          → `engines/registry.ts`（M4.1 就有）
+//   · 引擎 / 依赖安装   → `engines/install.ts`
+//   · 引擎识别          → `engines/detect.ts`
+//   · 读写 manifest     → `engines/manifest.ts`
+//   · 版本比较          → `engines/semver.ts`
+//   · 启动              → `launchers/`（M4.0 就是）
+//
+// 这里**只留宿主自己的职责**：数据目录（含降级）、games-store / library-meta / dlsite 接线、
+// 对话框桥、事件出口、请求上下文、模块路径校验、detectFolder 的候选扫描与排序。
+//
+// ⚠️ 本文件**不在顶层 import electron**：detectFolder / 数据目录策略 / 路径校验这些纯逻辑要能在
+//    vitest 里直接跑（§8「单测里 import electron」已知坑）。需要 electron 的地方走懒加载。
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { randomUUID } from 'node:crypto'
-import { createRequire } from 'node:module'
-import { pathToFileURL } from 'node:url'
 import { createGameStore, component, failure, type GameStore } from './games-store'
-import { extractArchive } from './extract'
 import { createDlsiteService, type DlsiteService } from './dlsite'
 import { createLibraryMetaStore, type LibraryMetaStore } from './library-meta'
 import { ENGINES } from './engines/registry'
+import {
+  definitionsFromRegistry,
+  detectEngineForPath,
+  detectEngineFromDefinitions,
+  getInstalledModuleFolders,
+  type DetectRule
+} from './engines/detect'
+import { readLocalManifests, readManifest, modulesDirOf, type ManifestRaw } from './engines/manifest'
 
 // ===== 类型 =====
 
-export interface ManifestAutodetect {
-  extensions?: string[]
-  extension?: string
-  files?: string[]
-  all_required?: boolean
-}
-
-export interface ManifestRaw {
-  name?: string
-  version?: string
-  author?: string
-  description?: string
-  autodetect?: ManifestAutodetect
-  gameArgs?: Record<string, GameArgDef>
-  [key: string]: unknown
-}
-
-export interface GameArgDef {
-  /**
-   * `string` 与 `text` 是同一个控件的两个写法（M4.1 D62）：上游 manifest 一律写
-   * `"string"`（nwjs/mkxpz/easyrpg/renpy 全部如此），历史代码写 `"text"`。
-   * 这里两种都收 —— 我们生成的 manifest 用上游那种写法。
-   */
-  type: 'boolean' | 'text' | 'string' | 'int' | 'float' | 'dropdown' | 'select' | 'multi-version' | 'array'
-  label?: string
-  default?: unknown
-  options?: Array<{ label?: string; value?: string | number }> | string[]
-  'version-script'?: string
-}
+// 这两个类型的**定义**在 engines/manifest.ts（磁盘 manifest 的形状归那边管），
+// 这里重新导出是为了不破坏既有 import（渲染层契约、测试、ipc 都在用 `core-host` 的名字）。
+export type { ManifestAutodetect, GameArgDef, ManifestRaw } from './engines/manifest'
 
 export interface DialogBridge {
   alert(message: string, title?: string): Promise<boolean>
@@ -72,45 +68,6 @@ export interface CoreEvent {
   startedAt?: string
   exitCode?: number | null
   signal?: NodeJS.Signals | null
-}
-
-/** core 的公开 API（只声明本项目用到的部分，其余按需 as any）。 */
-export interface CoreApi {
-  DEFAULT_REPO: { owner: string; repo: string; branch: string }
-  getModulesDir(): string
-  getInstalledModuleFolders(): Set<string>
-  readLocalManifests(): Record<string, ManifestRaw>
-  // ===== M4.1 S5：这四个「拉上游清单」的 API 已从声明里删除（D60）=====
-  //
-  //   fetchRemoteManifestsList       拉 7 个模块的 manifest（含 ruffle/wine/macos）
-  //   fetchModulesForAutodetect      拉那 7 个模块的 autodetect 规则
-  //   installModuleWithProgress      下载整个模块目录（含 launcher.js/updates.js）
-  //   updateModulePreservingMultiversionsWithProgress  同上（备份→删→重下→还原）
-  //
-  // **删的是声明，不是「不调用它」**：留着声明就等于留着一条随时会被下个会话
-  // 重新接上的口子（「反正类型里有」）。真正的依据是：
-  //   · 引擎清单 → `src/main/engines/registry.ts`
-  //   · 安装 / 更新 → `ipc.ts` 的 `installEngine`（写我们自己的 manifest + 装依赖）
-  //   · 自动识别 → `engineDefinitionsFromRegistry()`（本文件导出）
-  //
-  // ⚠️ 这四个实现仍在 `resources/core/module.js` 里（那是 GPL fork 的整文件，
-  //    删 API 属于 M4.2「连 module.js 一起删」的范围，不在这里做 —— 见
-  //    docs/盘点-还留着哪些上游依赖.md）。本步只保证**我们这边不再有调用点**。
-  hasUpdate(localVersion?: string, remoteVersion?: string): boolean
-  compareVersions(a?: string, b?: string): number
-  uninstallModule(folder: string): void
-  updateDependenciesTaskWithProgress(folder: string, progress: ProgressBridge, opts?: unknown): Promise<void>
-  checkDependencyUpdatesForFolders(folders: string[], opts?: unknown): Promise<Set<string>>
-  invalidateDepUpdatesCache(): void
-  detectEngineForPath(exe: string, manifests: Record<string, ManifestRaw>): string | null
-  detectEngineFromAutodetectMap(exe: string, defsMap: Record<string, unknown>): string | null
-  deleteWithEngine(game: unknown): Promise<boolean>
-  reconcileAndPersistGameArgs(gameId: string): unknown
-  mergeGameArgsWithSchema(current: unknown, schema: unknown): { merged: unknown; changed: boolean }
-  hasDependencyUpdates(folder: string): boolean
-  getDependencyUpdates(folder: string): unknown
-  clearDepUpdateFlag(folder: string): void
-  isAppBundlePath(p?: string): boolean
 }
 
 export interface RemoteManifest {
@@ -147,7 +104,6 @@ export interface RequestContext {
 
 export interface CoreHost {
   readonly dataDir: string
-  readonly corePath: string
   /** 数据目录被降级时非 null（透传到 snapshot，设置页展示）。 */
   readonly dataDirWarning: { requested: string; switchedTo: string; code: string } | null
   readonly store: GameStore
@@ -155,7 +111,6 @@ export interface CoreHost {
   readonly meta: LibraryMetaStore
   /** DLsite 抓取服务（M2 §4；复用注入的 fetch，即 net.fetch + 系统代理）。 */
   readonly dlsite: DlsiteService
-  readonly core: CoreApi
   /** 注入的 fetch（生产是 net.fetch，走系统代理；D9）。 */
   readonly fetch: (input: string, init?: unknown) => Promise<Response>
   readonly onEvent: (listener: (event: CoreEvent) => void) => () => void
@@ -165,7 +120,10 @@ export interface CoreHost {
   readonly dialogs: DialogBridge
   replyDialog(dialogID: string, accepted: boolean): void
   modulesDir(): string
+  /** 模块目录；符号链接模块直接拒绝（照 worker.cjs:56-61）。 */
   modulePath(folder: string): string
+  /** 已安装引擎目录名（列表，不是 Set —— 渲染层 / 测试用起来更直白）。 */
+  installedModules(): string[]
   /** 修正 multi-version 参数，使其与 deps 下真实安装目录一致（见函数注释）。 */
   reconcileVersionArgs(folder: string, gameArgs: Record<string, unknown>): Record<string, unknown>
   progress(): ProgressBridge
@@ -174,7 +132,6 @@ export interface CoreHost {
 
 export interface CoreHostOptions {
   dataDir: string
-  corePath: string
   /** 数据目录被降级时的信息（resolveDataDirWithFallback 返回），透传到 snapshot 供设置页展示。 */
   dataDirWarning?: { requested: string; switchedTo: string; code: string }
   /** 注入 fetch（Electron 里传 net.fetch，测试里传全局 fetch），默认懒加载 electron 的 net.fetch。 */
@@ -226,44 +183,6 @@ export function resolveDataDir(options: DataDirOptions = {}): string {
   }
   if (options.userData) return path.resolve(options.userData)
   return path.join(home, 'AppData', 'Roaming', 'tsumigeya')
-}
-
-export interface CorePathOptions {
-  env?: NodeJS.ProcessEnv
-  isPackaged?: boolean
-  appPath?: string
-  resourcesPath?: string
-}
-
-/**
- * core 脚本路径（§3.1 末行）：`TSUMIGEYA_CORE_PATH` > 打包 `resourcesPath/core/module.js` > dev 向上探测。
- *
- * 注意 dev 下 `app.getAppPath()` 并不可靠：用 `electron <目录>` 启动时它等于项目根，
- * 但用 `electron out/main/index.js`（文件入口，本机唯一不 segfault 的启动方式）启动时它等于 `out/main`。
- * 所以这里不只拼一层，而是从 appPath 与 cwd 出发逐级向上探测，找到含 `resources/core/module.js` 的根。
- */
-export function resolveCorePath(options: CorePathOptions = {}): string {
-  const env = options.env ?? process.env
-  const override = env.TSUMIGEYA_CORE_PATH
-  if (override && override.trim()) return path.resolve(override.trim())
-  if (options.isPackaged && options.resourcesPath) {
-    return path.join(options.resourcesPath, 'core', 'module.js')
-  }
-
-  const relative = path.join('resources', 'core', 'module.js')
-  const starts = [options.appPath, process.cwd()].filter((dir): dir is string => !!dir)
-  for (const start of starts) {
-    let dir = path.resolve(start)
-    for (let depth = 0; depth < 6; depth += 1) {
-      const candidate = path.join(dir, relative)
-      if (fs.existsSync(candidate)) return candidate
-      const parent = path.dirname(dir)
-      if (parent === dir) break
-      dir = parent
-    }
-  }
-  // 都没找到就退回旧行为，让调用方拿到明确的不存在路径（错误信息更有指向性）
-  return path.join(options.appPath ?? process.cwd(), relative)
 }
 
 /**
@@ -335,26 +254,6 @@ export function resolveDataDirWithFallback(options: DataDirOptions = {}): DataDi
   }
 }
 
-
-/**
- * 装载 core 工厂（§3.6）：读源码 + new Function 手工执行。
- * 不能 `require(corePath)`——Vite/rollup 会改写或外置它。
- */
-export function loadCoreFactory(corePath: string): (services: Record<string, unknown>) => CoreApi {
-  const source = fs.readFileSync(corePath, 'utf8')
-  const mod: { exports: unknown } = { exports: {} }
-  const nodeRequire = createRequire(pathToFileURL(corePath))
-  const run = new Function('module', 'exports', 'require', '__filename', '__dirname', source) as (
-    module: { exports: unknown },
-    exports: unknown,
-    require: NodeRequire,
-    filename: string,
-    dirname: string
-  ) => void
-  run(mod, mod.exports, nodeRequire, corePath, path.dirname(corePath))
-  return mod.exports as (services: Record<string, unknown>) => CoreApi
-}
-
 // ===== detectFolder 的候选扫描（纯函数，可单测）=====
 
 const SCAN_EXTENSIONS = ['exe', 'app', 'msi', 'bat', 'sh', 'command']
@@ -394,32 +293,24 @@ const HELPER_EXE_NAMES = new Set([
 ])
 
 /**
- * registry 的 autodetect 规则 → core 的 detectEngineFromAutodetectMap 吃的形状。
+ * registry 的 autodetect 规则 → 「规则表」形状（`{ <folder>: {extensions?, files?, all_required?} }`）。
  *
- * ⚠️ 形状必须与旧 core.fetchModulesForAutodetect() 的返回值**完全一致**：
+ * ⚠️ 形状必须与旧 core 的 `fetchModulesForAutodetect()` 返回值**完全一致**：
  *     { <folder>: { extensions?: string[], files?: string[], all_required?: boolean } }
  *
- * 三个字段的语义（照抄 module.js 的实现，不要自己发明）：
- *   · extensions 必须**不带点号且小写** —— core 的 normalizeExt 会再剥一次，
+ * 三个字段的语义（照抄 `module.js`，不要自己发明）：
+ *   · extensions 必须**不带点号且小写** —— `normalizeExt` 会再剥一次，
  *     但双写 ".py" 会让它剥成 "" 然后被 filter 掉 → 这个扩展名规则静默失效
- *   · files 是**相对游戏目录**的路径（core 用 path.join(dir, rel) 探测）
+ *   · files 是**相对游戏目录**的路径（`.app` 包则相对包本身，见 detect.ts 的 R1 注释）
  *   · all_required 是布尔，**不要省**：省了等于 false，会让「必须全都在」的引擎
  *     （nwjs / mkxpz / renpy）变成「命中一个就算」，识别会张冠李戴
  *
- * 导出的理由（M4.1 S5）：`ipc.ts` 的 `detect` 命令也要用它。
- * 两处各写一份等价逻辑，迟早会分叉 —— 而分叉的表现是「添加游戏时认不出引擎」。
+ * 保留这个导出（而不是让调用方直接 `definitionsFromRegistry(ENGINES)`）的理由：
+ * 它是**本文件与 ipc 的唯一共同入口**，两处各拼一次规则表迟早分叉 ——
+ * 而分叉的表现是「添加游戏时认不出引擎」。
  */
-export function engineDefinitionsFromRegistry(): Record<string, unknown> {
-  const out: Record<string, unknown> = {}
-  for (const engine of ENGINES) {
-    const rule: Record<string, unknown> = {}
-    if (engine.autodetect.extensions?.length) rule.extensions = engine.autodetect.extensions
-    if (engine.autodetect.files?.length) rule.files = engine.autodetect.files
-    // 显式写出来：这是「必须全部命中」与「打分取最高」的分水岭
-    rule.all_required = engine.autodetect.all_required === true
-    out[engine.folder] = rule
-  }
-  return out
+export function engineDefinitionsFromRegistry(): Record<string, DetectRule> {
+  return definitionsFromRegistry(ENGINES)
 }
 
 function extensionOf(p: string): string {
@@ -552,7 +443,7 @@ export function createCoreHost(options: CoreHostOptions): CoreHost {
 
   const currentContext = (): RequestContext | undefined => requestContext.getStore()
 
-  /** core 的 ui.alert / ui.confirm → 事件 + 等待渲染层应答（§3.4）。 */
+  /** 对话框桥 → 事件 + 等待渲染层应答（§3.4）。 */
   function prompt(kind: 'alert' | 'confirm', message: string, title?: string): Promise<boolean> {
     const { id, signal } = currentContext() ?? {}
     signal?.throwIfAborted()
@@ -598,19 +489,14 @@ export function createCoreHost(options: CoreHostOptions): CoreHost {
     ...(options.dlsiteOptions ?? {})
   })
 
-  const factory = loadCoreFactory(options.corePath)
-  const core = factory({
-    getAppSupportDir: () => dataDir,
-    getGames: () => ({ loadGames: store.loadGames, saveGames: store.saveGames }),
-    getUi: () => dialogs,
-    extractArchive: (archive: string, destination: string, opts?: { signal?: AbortSignal }) =>
-      extractArchive(archive, destination, opts ?? {}),
-    fetch: (input: string, init?: unknown) => fetchImpl(input, init)
-  })
+  const modulesDir = (): string => modulesDirOf(dataDir)
 
-  const modulesDir = (): string => path.join(dataDir, 'modules')
-
-  /** 模块目录；符号链接模块直接拒绝（照 worker.cjs:56-61）。 */
+  /**
+   * 模块目录；符号链接模块直接拒绝（照 worker.cjs:56-61）。
+   *
+   * 为什么必须拒绝：引擎目录是我们**会往里写文件**的地方（manifest、deps、临时解压）。
+   * 一个指向 `/` 或用户重要目录的符号链接会让「安装引擎」变成「覆盖那些目录」。
+   */
   function modulePath(folder: string): string {
     const target = path.join(modulesDir(), component(folder, 'module'))
     if (fs.existsSync(target) && fs.lstatSync(target).isSymbolicLink()) {
@@ -619,10 +505,13 @@ export function createCoreHost(options: CoreHostOptions): CoreHost {
     return target
   }
 
+  /** 已安装引擎目录名（读的是 `modules/` 下的目录，不看 manifest，理由见 detect.ts）。 */
+  const installedModules = (): string[] => getInstalledModuleFolders(dataDir)
+
   /**
    * 修正 gameArgs 里 multi-version 参数的值，使其与 deps 下真实安装目录一致。
    *
-   * 为什么需要（实测踩坑）：上游 nwjs/launcher.js 在 user 没选版本时兜底
+   * 为什么需要（实测踩坑）：上游 nwjs 在 user 没选版本时兜底
    * `gameArgs = { version: "0.106.1" }`，然后拼路径
    * `deps/version/<version>/nwjs-sdk-<version>-osx-<arch>/nwjs.app/...`。
    * 但依赖清单的 key 是 `version/v0.106.1`（**带 v**），真实目录叫 `v0.106.1`。
@@ -631,10 +520,13 @@ export function createCoreHost(options: CoreHostOptions): CoreHost {
    *
    * 这里不改上游模块：启动前探测真实目录名，把它写进 gameArgs。
    * 目录带不带 v 都能对上；上游将来修了也不冲突。
+   *
+   * ⚠️ M4.2 S4：schema 的来源从 `core.readLocalManifests()` 换成
+   * `readManifest(dataDir, folder)` —— 原来为了拿**一个**引擎的 gameArgs
+   * 要把整个 modules 目录扫一遍并 JSON.parse 所有 manifest，启动路径上纯属浪费。
    */
   function reconcileVersionArgs(folder: string, gameArgs: Record<string, unknown>): Record<string, unknown> {
-    const manifests = core.readLocalManifests()
-    const schema = (manifests[folder] as { gameArgs?: Record<string, { type?: string }> } | undefined)?.gameArgs
+    const schema = readManifest(dataDir, folder)?.gameArgs
     if (!schema) return gameArgs
 
     const next: Record<string, unknown> = { ...gameArgs }
@@ -658,7 +550,7 @@ export function createCoreHost(options: CoreHostOptions): CoreHost {
     return next
   }
 
-  /** core 的进度回调 → progress 事件（§3.4）。 */
+  /** 进度回调 → progress 事件（§3.4）。 */
   function progress(): ProgressBridge {
     const phases = ['listing', 'extracting', 'done', 'prepare', 'preserve', 'update', 'restore', 'cleanup', 'finalize']
     const bridge: ProgressBridge = {}
@@ -690,9 +582,9 @@ export function createCoreHost(options: CoreHostOptions): CoreHost {
     }
     const target = path.resolve(input.path)
     const { isFile, candidates } = scanCandidates(target)
-    const manifests = core.readLocalManifests()
+    const manifests = readLocalManifests(dataDir)
     const local: DetectCandidate[] = candidates.map((candidate) => {
-      const engine = core.detectEngineForPath(candidate, manifests) ?? null
+      const engine = detectEngineForPath(candidate, manifests) ?? null
       return { path: candidate, engine, installed: engine !== null }
     })
 
@@ -700,25 +592,22 @@ export function createCoreHost(options: CoreHostOptions): CoreHost {
       list.find((c) => c.installed && c.engine) ?? list.find((c) => c.engine) ?? null
 
     let best = pickBest(local)
-    // M4.1 S3（D60）：**没有「远端 autodetect」这回事了**。
+    // M4.1 S3（D60）→ M4.2 S4（D63）：**没有「远端 autodetect」这回事了**。
     //
-    // 之前：本地一个都没识别出来 → `core.fetchModulesForAutodetect()` 拉 7 个模块的
-    // autodetect 规则再猜一轮（带 60 秒超时护栏）。
-    // 现在：四个引擎的 autodetect 就在 `engines/registry.ts` 里，**本地就有**。
-    // 所以「未装引擎也认得出是哪个引擎」这件事变成纯本地计算 —— 零网络、零超时。
+    // 之前：本地一个都没识别出来 → 拉 7 个模块的 autodetect 规则再猜一轮（带超时护栏）。
+    // M4.1：规则来自 registry，零网络。
+    // M4.2：识别函数从 `core.detectEngineFromAutodetectMap` 换成 `engines/detect.ts`，
+    //       语义逐条搬过来（同一份打分算法，两个入口共用）。
     //
-    // `includeRemote` 参数保留（契约不变），但它现在只控制「未装引擎的规则要不要用」：
+    // `includeRemote` 参数保留（契约不变，渲染层还在传），它现在只控制
+    // 「未装引擎的规则要不要用」：
     //   includeRemote !== false → 用 registry 的规则（`installed: false`，提示「装引擎」）
     //   includeRemote === false → 只认已装模块的 manifest
-    //
-    // ⚠️ 注意 `engineDefinitionsFromRegistry()` 返回的形状必须与 core 的
-    //    `fetchModulesForAutodetect()` 一致（`{ <folder>: {extensions?, files?, all_required?} }`），
-    //    因为 `detectEngineFromAutodetectMap` 吃的是那个形状。少一个字段就是「这个引擎永远认不出来」。
     if (!best && input.includeRemote !== false) {
       const definitions = engineDefinitionsFromRegistry()
       const byRegistry = local.map((candidate) => {
         if (candidate.engine) return candidate
-        const engine = core.detectEngineFromAutodetectMap(candidate.path, definitions) ?? null
+        const engine = detectEngineFromDefinitions(candidate.path, definitions)
         return { ...candidate, engine, installed: false }
       })
       for (let index = 0; index < byRegistry.length; index += 1) local[index] = byRegistry[index]
@@ -730,12 +619,10 @@ export function createCoreHost(options: CoreHostOptions): CoreHost {
 
   return {
     dataDir,
-    corePath: options.corePath,
     dataDirWarning: options.dataDirWarning ?? null,
     store,
     meta,
     dlsite,
-    core,
     fetch: fetchImpl,
     emit,
     onEvent,
@@ -745,8 +632,13 @@ export function createCoreHost(options: CoreHostOptions): CoreHost {
     replyDialog,
     modulesDir,
     modulePath,
+    installedModules,
     reconcileVersionArgs,
     progress,
     detectFolder
   }
 }
+
+// 这两个「读磁盘 manifest」的能力在这里重新导出：渲染层契约 / 测试 / ipc 都在
+// `core-host` 这个名字下找它们（定义在 engines/manifest.ts）。
+export { readLocalManifests, readManifest, modulesDirOf }

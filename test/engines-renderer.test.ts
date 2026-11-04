@@ -15,7 +15,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
-import { createCoreHost, resolveCorePath } from '../src/main/core-host'
+import { createCoreHost } from '../src/main/core-host'
 import { createDispatcher } from '../src/main/ipc'
 import { ENGINES, ENGINE_FOLDERS, findEngine } from '../src/main/engines/registry'
 
@@ -60,7 +60,6 @@ beforeAll(() => {
   created.push(dataDir)
   host = createCoreHost({
     dataDir,
-    corePath: resolveCorePath({ env: {}, appPath: process.cwd() }),
     fetchImpl: async () => {
       throw new Error('S4 不该联网')
     },
@@ -301,7 +300,6 @@ describe('S4 snapshot 的 modules 必须带 raw（修一个 M1 就存在的真 b
 
     const localHost = createCoreHost({
       dataDir: localDir,
-      corePath: resolveCorePath({ env: {}, appPath: process.cwd() }),
       fetchImpl: async () => {
         throw new Error('S4 不该联网')
       },
@@ -346,7 +344,6 @@ describe('S4 端到端：旧引擎残留时的表现', () => {
 
     const legacyHost = createCoreHost({
       dataDir: localDir,
-      corePath: resolveCorePath({ env: {}, appPath: process.cwd() }),
       fetchImpl: async () => {
         throw new Error('S4 不该联网')
       },

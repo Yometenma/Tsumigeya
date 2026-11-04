@@ -19,7 +19,7 @@ import path from 'node:path'
 import { EventEmitter } from 'node:events'
 import type { ChildProcess } from 'node:child_process'
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
-import { createCoreHost, resolveCorePath, type CoreEvent } from '../src/main/core-host'
+import { createCoreHost, type CoreEvent } from '../src/main/core-host'
 import { createDispatcher, type ProcessDeps } from '../src/main/ipc'
 import { createPlayStatsStore } from '../src/main/play-stats'
 import { createProcessRegistry, type ProcessRegistry } from '../src/main/process-registry'
@@ -138,7 +138,6 @@ beforeEach(() => {
   events = []
   host = createCoreHost({
     dataDir,
-    corePath: resolveCorePath({ isPackaged: false, appPath: process.cwd() }),
     fetchImpl: (async () => {
       throw new Error('offline')
     }) as never,

@@ -117,20 +117,40 @@ export function readLocalManifests(dataDir: string): Record<string, ManifestRaw>
 }
 
 /**
- * 读**单个**引擎的 manifest（不存在返回 null，不抛）。
+ * 读**某个模块目录**的 manifest（`root` 是 `<dataDir>/modules/<folder>` 绝对路径）。
  *
- * 与 `readLocalManifests()` 的区别：这个是「我知道我要哪个引擎」的场景（更新、
- * 启动前读 schema），不必把整个 modules 目录扫一遍。
+ * 与 `readManifest(dataDir, folder)` 的区别只在入参形态：安装/更新链路手里已经有
+ * `root`（`modulePath()` 校验过符号链接的那个），不必再拆一次。
+ * 不存在或坏 JSON → null（**不抛**）：调用方要能区分「没装」与「装坏了」，
+ * 那由调用方自己看目录在不在。
  */
-export function readManifest(dataDir: string, folder: string): ManifestRaw | null {
-  const file = path.join(modulesDirOf(dataDir), folder, 'manifest.json')
+export function readManifestAt(root: string): ManifestRaw | null {
+  const file = path.join(root, 'manifest.json')
   if (!fs.existsSync(file)) return null
   try {
     return JSON.parse(fs.readFileSync(file, 'utf8')) as ManifestRaw
   } catch (error) {
-    console.warn(`[tsumigeya] 读 manifest 失败：modules/${folder}/manifest.json —— ${(error as Error).message}`)
+    console.warn(`[tsumigeya] 读 manifest 失败：${file} —— ${(error as Error).message}`)
     return null
   }
+}
+
+/** 读**单个**引擎的 manifest（不存在返回 null，不抛）。 */
+export function readManifest(dataDir: string, folder: string): ManifestRaw | null {
+  return readManifestAt(path.join(modulesDirOf(dataDir), folder))
+}
+
+/**
+ * manifest 里的依赖表（兼容上游 `dependencies` 与老写法的 `deps`）。
+ *
+ * 两种写法都收的理由：上游早期 manifest 用 `deps`，后来改成 `dependencies`，
+ * 而用户目录里可能还留着旧版的 manifest（M4.2 之前装过的引擎）。
+ * 少读一种，那些用户的引擎页就会显示「没有依赖」。
+ */
+export function dependencyTableOf(manifest: ManifestRaw | null): Record<string, unknown> {
+  if (!manifest) return {}
+  const table = manifest.dependencies ?? manifest.deps
+  return table && typeof table === 'object' ? (table as Record<string, unknown>) : {}
 }
 
 // ===== 合并缺省值 =====

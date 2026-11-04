@@ -5,7 +5,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { app, BrowserWindow, net, protocol, session, shell } from 'electron'
-import { createCoreHost, resolveCorePath, resolveDataDirWithFallback, type CoreHost } from './core-host'
+import { createCoreHost, resolveDataDirWithFallback, type CoreHost } from './core-host'
 import { registerIpc } from './ipc'
 
 /** 图片扩展名白名单（§3.7）。 */
@@ -157,15 +157,8 @@ void app.whenReady().then(async () => {
   // 并把这个事实通过 dialog 告诉用户（否则用户只看到「窗口没弹出来」，毫无线索）。
   const { dataDir, warning } = resolveDataDirWithFallback()
 
-  const corePath = resolveCorePath({
-    isPackaged: app.isPackaged,
-    appPath: app.getAppPath(),
-    resourcesPath: process.resourcesPath
-  })
-
   host = createCoreHost({
     dataDir,
-    corePath,
     dataDirWarning: warning,
     // 显式注入 Electron 的 net.fetch，**不要依赖 core-host 里的懒加载兜底**。
     // 兜底逻辑在拿不到 electron.net 时会退回全局 fetch，而全局 fetch 完全不读系统代理，

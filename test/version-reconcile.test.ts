@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
-import { createCoreHost, resolveCorePath } from '../src/main/core-host'
+import { createCoreHost } from '../src/main/core-host'
 
 let dataDir: string
 let host: ReturnType<typeof createCoreHost>
@@ -32,7 +32,6 @@ beforeAll(() => {
 
   host = createCoreHost({
     dataDir,
-    corePath: resolveCorePath({ env: {}, appPath: process.cwd() }),
     fetchImpl: async () => {
       throw new Error('network disabled in tests')
     },

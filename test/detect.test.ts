@@ -1,41 +1,20 @@
-// detect 单测（§6）：真实装载 resources/core/module.js，不依赖网络与 GUI。
-// 模块 manifest 用上游 Xenolauncher-Modules 的 autodetect 规则（写进临时数据目录）。
+// detect 单测（§6）：不依赖网络与 GUI。
+//
+// ===== M4.2 S4 改了什么 =====
+//
+// 这个文件原来「真实装载 resources/core/module.js」来验识别 —— 那个脚本已经在
+// M4.2 删掉了（D63）。现在它验的是**我们自己的实现**：
+//   · 识别规则本身由 test/engines-detect.test.ts 直接钉（38 条，含 .app 包与子目录，R1）
+//   · 这个文件留下的是**宿主层**该管的部分：候选扫描 / 排序 / detectFolder 的接线
+//   · 原先那组 resolveCorePath 测试随 module.js 一起删除：没有 core 脚本可解析了，
+//     留着它只会永远绿、而且没有任何东西再调它 —— 那种测试比没有更糟
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
-import { createCoreHost, resolveCorePath, scanCandidates, compareCandidates } from '../src/main/core-host'
-
-describe('resolveCorePath（dev 入口路径探测）', () => {
-  test('appPath 是项目根时直接命中', () => {
-    const resolved = resolveCorePath({ env: {}, appPath: process.cwd() })
-    expect(resolved).toBe(path.join(process.cwd(), 'resources', 'core', 'module.js'))
-  })
-
-  // 回归：用 `electron out/main/index.js`（文件入口）启动时 app.getAppPath() 是 out/main，
-  // 旧实现会拼出 out/main/resources/core/module.js 并抛 ENOENT。
-  test('appPath 是 out/main（文件入口）时向上探测到项目根', () => {
-    const resolved = resolveCorePath({ env: {}, appPath: path.join(process.cwd(), 'out', 'main') })
-    expect(resolved).toBe(path.join(process.cwd(), 'resources', 'core', 'module.js'))
-  })
-
-  test('TSUMIGEYA_CORE_PATH 覆盖优先', () => {
-    const resolved = resolveCorePath({
-      env: { TSUMIGEYA_CORE_PATH: 'D:/custom/core/module.js' },
-      appPath: process.cwd()
-    })
-    expect(resolved).toBe(path.resolve('D:/custom/core/module.js'))
-  })
-
-  test('打包态用 resourcesPath/core/module.js', () => {
-    const resolved = resolveCorePath({
-      env: {},
-      isPackaged: true,
-      resourcesPath: '/Applications/Tsumigeya.app/Contents/Resources'
-    })
-    expect(resolved).toBe(path.join('/Applications/Tsumigeya.app/Contents/Resources', 'core', 'module.js'))
-  })
-})
+import { createCoreHost, scanCandidates, compareCandidates } from '../src/main/core-host'
+import { detectEngineForPath } from '../src/main/engines/detect'
+import { readLocalManifests } from '../src/main/engines/manifest'
 
 /** 与上游模块仓库一致的 autodetect 规则（§6 要求）。 */
 const MANIFESTS: Record<string, Record<string, unknown>> = {
@@ -84,7 +63,6 @@ beforeAll(() => {
   }
   host = createCoreHost({
     dataDir,
-    corePath: resolveCorePath({ env: {}, appPath: process.cwd() }),
     // 测试绝不触网：显式给一个会失败的 fetch
     fetchImpl: async () => {
       throw new Error('network disabled in tests')
@@ -104,7 +82,6 @@ describe('detectFolder 的远端兜底不能挂死', () => {
     const slowDir = mkdtempSync(path.join(tmpdir(), 'tsmg-slow-'))
     const slowHost = createCoreHost({
       dataDir: slowDir,
-      corePath: resolveCorePath({ env: {}, appPath: process.cwd() }),
       // 永不 resolve：模拟 DNS 卡死 / 连接挂起
       fetchImpl: () => new Promise<Response>(() => undefined),
       onEvent: () => undefined
@@ -154,7 +131,7 @@ describe('四个 fixtures 的引擎识别', () => {
   for (const item of cases) {
     test(`${item.dir} 的可执行文件 → ${item.engine}`, () => {
       const exe = path.join(FIXTURES, item.dir, item.exe)
-      const engine = host.core.detectEngineForPath(exe, host.core.readLocalManifests())
+      const engine = detectEngineForPath(exe, readLocalManifests(dataDir))
       expect(engine).toBe(item.engine)
     })
   }
@@ -165,7 +142,7 @@ describe('all_required 与打分', () => {
     const lonely = path.join(dataDir, 'lonely')
     mkdirSync(lonely, { recursive: true })
     writeFileSync(path.join(lonely, 'Game.exe'), '')
-    expect(host.core.detectEngineForPath(path.join(lonely, 'Game.exe'), MANIFESTS)).toBeNull()
+    expect(detectEngineForPath(path.join(lonely, 'Game.exe'), MANIFESTS)).toBeNull()
   })
 
   test('MV 目录缺 www/nw.dll 时也不算命中（all_required 要求全部文件）', () => {
@@ -174,7 +151,7 @@ describe('all_required 与打分', () => {
     writeFileSync(path.join(partial, 'Game.exe'), '')
     writeFileSync(path.join(partial, 'www', 'package.json'), '{}')
     // 缺 www/nw.dll
-    expect(host.core.detectEngineForPath(path.join(partial, 'Game.exe'), MANIFESTS)).toBeNull()
+    expect(detectEngineForPath(path.join(partial, 'Game.exe'), MANIFESTS)).toBeNull()
   })
 
   test('VX Ace 目录若缺 System.rvdata2 则不命中', () => {
@@ -182,12 +159,12 @@ describe('all_required 与打分', () => {
     mkdirSync(path.join(partial, 'Data'), { recursive: true })
     writeFileSync(path.join(partial, 'Game.exe'), '')
     writeFileSync(path.join(partial, 'Game.ini'), '')
-    expect(host.core.detectEngineForPath(path.join(partial, 'Game.exe'), MANIFESTS)).toBeNull()
+    expect(detectEngineForPath(path.join(partial, 'Game.exe'), MANIFESTS)).toBeNull()
   })
 
   test('非 exe 扩展名不命中（autodetect.extensions 限制）', () => {
     const script = path.join(FIXTURES, 'rpg-vxace', 'Game.ini')
-    expect(host.core.detectEngineForPath(script, MANIFESTS)).toBeNull()
+    expect(detectEngineForPath(script, MANIFESTS)).toBeNull()
   })
 })
 

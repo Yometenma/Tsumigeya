@@ -22,7 +22,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, test } from 'vitest'
-import { createCoreHost, resolveCorePath } from '../src/main/core-host'
+import { createCoreHost } from '../src/main/core-host'
 import { createDispatcher } from '../src/main/ipc'
 import { ENGINES, ENGINE_FOLDERS } from '../src/main/engines/registry'
 
@@ -165,7 +165,6 @@ describe('S5 三个引擎相关命令的最终行为', () => {
     created.push(dir)
     const host = createCoreHost({
       dataDir: dir,
-      corePath: resolveCorePath({ env: {}, appPath: process.cwd() }),
       fetchImpl: async () => {
         throw new Error('S5 不该联网')
       },

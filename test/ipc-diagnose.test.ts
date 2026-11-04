@@ -9,7 +9,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
-import { createCoreHost, resolveCorePath } from '../src/main/core-host'
+import { createCoreHost } from '../src/main/core-host'
 import { OFF_QUEUE_METHODS, createDispatcher } from '../src/main/ipc'
 
 let dataDir: string
@@ -19,7 +19,6 @@ beforeEach(() => {
   dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tsmg-ipc-m3-'))
   host = createCoreHost({
     dataDir,
-    corePath: resolveCorePath({ isPackaged: false, appPath: process.cwd() }),
     fetchImpl: (async () => {
       throw new Error('offline')
     }) as never
@@ -389,7 +388,6 @@ describe('repairGame', () => {
     const fetched: string[] = []
     const fakeHost = createCoreHost({
       dataDir,
-      corePath: resolveCorePath({ isPackaged: false, appPath: process.cwd() }),
       fetchImpl: (async (input: string) => {
         fetched.push(input)
         return new Response(archive, {
@@ -442,7 +440,6 @@ describe('repairGame', () => {
     host.store.saveGame({ game: { gameTitle: 'm', gamePath: gameDir, gameEngine: 'mkxpz' } })
     const failHost = createCoreHost({
       dataDir,
-      corePath: resolveCorePath({ isPackaged: false, appPath: process.cwd() }),
       fetchImpl: (async () => new Response('', { status: 404 })) as never
     })
     // 这个 host 与上面那个共用同一个 dataDir（也共用 games.json），所以游戏已经在库里了：
@@ -488,7 +485,6 @@ describe('repairGame', () => {
 
     const fakeHost = createCoreHost({
       dataDir,
-      corePath: resolveCorePath({ isPackaged: false, appPath: process.cwd() }),
       fetchImpl: (async () =>
         new Response(archive, {
           status: 200,
