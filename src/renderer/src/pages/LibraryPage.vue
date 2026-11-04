@@ -87,7 +87,7 @@ async function toggleView(next: boolean): Promise<void> {
       <h1 class="page-title">{{ t('library.title') }}</h1>
       <p class="page-subtitle">
         {{ t('library.count', { count: library.filtered.length }) }}
-        <template v-if="library.tagFilter"> · {{ t('library.tagFilterActive', { tag: library.tagFilter }) }}</template>
+        <template v-if="library.onlyUnbound"> · {{ t('library.onlyUnboundActive') }}</template>
       </p>
     </div>
     <el-button type="primary" @click="router.push('/library/new')">{{ t('library.addGame') }}</el-button>
@@ -100,22 +100,19 @@ async function toggleView(next: boolean): Promise<void> {
       clearable
       style="width: 260px"
     />
-    <el-select
-      :model-value="library.tagFilter ?? ''"
-      :placeholder="t('library.filterTag')"
-      clearable
-      style="width: 180px"
-      @update:model-value="library.tagFilter = $event || null"
-    >
-      <el-option :label="t('library.allTags')" value="" />
-      <el-option v-for="tag in library.tags" :key="tag" :label="tag" :value="tag" />
-    </el-select>
-
-    <el-button v-if="library.search || library.tagFilter || library.onlyWithMeta" text @click="library.clearFilters()">
+    <el-button v-if="library.search || library.onlyUnbound" text @click="library.clearFilters()">
       {{ t('library.clearFilter') }}
     </el-button>
 
-    <el-checkbox v-model="library.onlyWithMeta" :label="t('dlsite.onlyWithMeta')" />
+    <!-- M5.0 U3：「按标签筛选」下拉已删。
+         DLsite 拿不到 genre（D19/D40），标签全靠手工填 → 下拉常年空着或一两个，
+         选出来什么都筛不到。tags 字段与编辑页的标签复用下拉**保留**（D10 上游 schema）。 -->
+    <!-- M5.0 U4：只看「未绑定」——把筛选从装饰性的「看有封面的」变成待办清单：
+         哪些游戏还没去绑 DLsite 商品。数量挂在标签上，一眼知道还有几件要做。 -->
+    <el-checkbox v-model="library.onlyUnbound">
+      {{ t('library.onlyUnbound') }}
+      <span v-if="library.unboundTotal > 0" class="unbound-count">{{ t('library.unboundTip', { count: library.unboundTotal }) }}</span>
+    </el-checkbox>
 
     <div class="toolbar-spacer" />
 

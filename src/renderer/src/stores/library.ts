@@ -24,15 +24,26 @@ import {
 // 过 contextBridge 前必须把 Vue 的响应式 Proxy 剥成纯值，否则 structured clone 抛
 // `An object could not be cloned.`（症状：点保存没反应，只弹一句英文）。见 plain.ts 注释。
 import { toPlain } from '../../../shared/plain'
+import {
+  filterGames,
+  unboundCount,
+  type FilterableMeta,
+  type LibraryFilter
+} from '../../../shared/library-filter'
 
 export const useLibraryStore = defineStore('library', () => {
   const games = ref<GameRecord[]>([])
   const meta = ref<Record<string, GameMeta>>({})
   const loading = ref(false)
-  const search = ref('')
-  const tagFilter = ref<string | null>(null)
-  /** 只看有封面的游戏（纯本地筛选，不新增 settings 键，方案 §6.3）。 */
-  const onlyWithMeta = ref(false)
+  const search = ref('')  /**
+   * M5.0 U4：只看未绑定（还没关联 DLsite 作品的游戏）。
+   *
+   * 原先是 `onlyWithMeta`（只看**有**封面的）—— 那是个装饰性筛选：
+   * 有封面的游戏没什么要做的，找它们没有目的。
+   * 现在的语义反转成**待办清单**：哪些游戏还没去绑 DLsite 商品。
+   * 判据见 shared/library-filter.ts 的 isBoundMeta（必须真有 rj，不能只看键存在）。
+   */
+  const onlyUnbound = ref(false)
   /** M2.5-C：每个游戏识别出的语言（来自 languageGroups）。 */
   const languageOf = ref<Record<string, GameLanguage>>({})
   /** M2.5-C：每个游戏同组的**其他**语言版本（用于「也有 zh 版」标记）。 */
@@ -94,6 +105,14 @@ export const useLibraryStore = defineStore('library', () => {
     }
   }
 
+  /**
+   * 已知标签集合（供编辑页/向导的标签下拉用）。
+   *
+   * M5.0 U3：**库页的「按标签筛选」下拉已删**（DLsite 拿不到 genre，D19/D40，
+   * 标签是纯手工的、几乎没人填 → 筛选下拉永远空着或一两个，没有意义）。
+   * 但这个计算本身留着：编辑页要给用户列出「库里已有的标签」方便复用，
+   * `tags` 字段也保留（上游 schema，D10）。
+   */
   const tags = computed(() => {
     const set = new Set<string>()
     for (const game of games.value) {
@@ -102,22 +121,15 @@ export const useLibraryStore = defineStore('library', () => {
     return [...set].sort((a, b) => a.localeCompare(b))
   })
 
-  const filtered = computed(() => {
-    const keyword = search.value.trim().toLowerCase()
-    return games.value.filter((game) => {
-      const gameMeta = meta.value[game.id]
-      if (onlyWithMeta.value && !gameMeta) return false
-      if (tagFilter.value && !(game.tags ?? []).includes(tagFilter.value)) return false
-      if (!keyword) return true
-      if (game.gameTitle.toLowerCase().includes(keyword)) return true
-      if ((game.tags ?? []).some((tag) => tag.toLowerCase().includes(keyword))) return true
-      // M2：日文原名 / 社团名也可搜——用户库里存的常是中文译名，想搜原名就靠这条
-      if (gameMeta?.title?.toLowerCase().includes(keyword)) return true
-      if (gameMeta?.circle?.toLowerCase().includes(keyword)) return true
-      if (gameMeta?.rj?.toLowerCase().includes(keyword)) return true
-      return false
-    })
-  })
+  /** M5.0 S2：筛选条件（判据在 shared/library-filter.ts，有单测）。 */
+  const filter = computed<LibraryFilter>(() => ({ keyword: search.value, onlyUnbound: onlyUnbound.value }))
+
+  const filtered = computed(() =>
+    filterGames(games.value, meta.value as Record<string, FilterableMeta | undefined>, filter.value)
+  )
+
+  /** M5.0 U4：「未绑定」有多少个（工具栏显示待办规模）。 */
+  const unboundTotal = computed(() => unboundCount(games.value, meta.value))
 
   function byId(id: string): GameRecord | undefined {
     return games.value.find((game) => game.id === id)
@@ -275,8 +287,7 @@ export const useLibraryStore = defineStore('library', () => {
 
   function clearFilters(): void {
     search.value = ''
-    tagFilter.value = null
-    onlyWithMeta.value = false
+    onlyUnbound.value = false
   }
 
   return {
@@ -285,10 +296,10 @@ export const useLibraryStore = defineStore('library', () => {
     running,
     loading,
     search,
-    tagFilter,
-    onlyWithMeta,
+    onlyUnbound,
     tags,
     filtered,
+    unboundTotal,
     byId,
     metaFor,
     isRunning,

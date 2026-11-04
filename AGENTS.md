@@ -237,6 +237,12 @@ Vue → Pinia → api/client → preload(window.tsumi.invoke)
   - U1 批量管理 / U2 自定义分类 / U3 去标签筛选 / U4「只看未绑定」/ U5 只留选文件 / U6 去跳过+可改引擎
   - U9 设置页分组 / U10 引擎页「全部安装」
   - N1 详情页游玩时间 / N2 存档管理 / N3 汉化作弊（参考 RPGMakerUtils）
+- **M5.5 动态图标**（`docs/M5.5-动态图标.md`，方案已就绪，**M5.0 完成后做**）：
+  接入 [Morphicons](https://www.morphicons.com/)（**MIT**，gzip 10 KB，零依赖）做状态切换的图标变形。
+  - 用户已拍板：**图标体系换成 Lucide**（Morphicons 原生支持它的 IconNode 格式）
+  - 现状成本很低：Element Plus 图标只有 **2 个文件 5 个图标**；侧边栏用的是 emoji（顺带换掉）
+  - **只在「同一按钮有两种状态」处用 morph**（菜单←→X、播放←→停止、展开←→收起）；
+    一次性动作按钮（添加/删除）不该变形 —— 硬塞是滥用
 - **M4**：存档管理（查看/备份/导出）+ 增强（Cheat 注入/变速）
 - **M5**：手柄、无边框全屏、像素缩放、dmg 公证分发
 
