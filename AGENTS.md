@@ -11,22 +11,28 @@
 - 开发机 Windows，**目标平台 macOS（arm64/x86_64）**
 - 核心链路：添加游戏 → 按文件结构自动识别引擎 → 未装引擎一键安装 → 调原生播放器启动
 
-**不复用上游代码**（`resources/core/module.js` 是最后一处待删，见路线图 M4.2）。
+**零上游**：M4.2 删掉了最后一处上游代码（`resources/core/module.js`，D63）。
+`resources/core/` 只剩 `FORK-NOTES.md`（GPL 来源说明 + 历史补丁登记）。
+有测试守着它不会偷偷回来（`test/no-upstream-module.test.ts`）。
 
 ## 当前状态
 
 - **已完成**：M1（游戏库/识别/装引擎/启动）、M2（DLsite 元数据）、M2.5（搜索/可编辑元数据/多语言）、
   M3（故障自愈）、M2.6（海报墙与详情页）、M2.7（编辑页重构）、M3.5（进程管理）、M4.0（自实现启动）、
-  M4.1（引擎清单自己维护）
-- **已发布**：v0.4.1（GitHub `Yometenma/Tsumigeya`）
-- **测试**：**755 个 / 31 文件**全绿；`typecheck` / `test` / `build` 三绿
-- **下一步**：M4.2（删 `module.js`）—— **方案已就绪**：`docs/M4.2-实施方案.md`
+  M4.1（引擎清单自己维护）、**M4.2（彻底零上游）**
+- **已发布**：v0.4.1（GitHub `Yometenma/Tsumigeya`）；**M4.2 = v0.5.0，代码已就绪、待打 tag 发版**
+- **测试**：**859 个 / 35 文件**全绿；`typecheck` / `test` / `build` 三绿
+- **下一步**：M4（存档管理 + 增强）或 M5（手柄/全屏/缩放/公证分发）
 
 ### 各模块在哪（一句话）
 
 | 模块 | 文件 | 关键点 |
 |---|---|---|
 | 引擎定义 | `src/main/engines/registry.ts` | **4 个引擎唯一来源**（D60）；ruffle/wine/macos 不存在 |
+| 引擎清单读写 | `src/main/engines/manifest.ts` | 读本地 manifest + 合并 gameArgs 缺省值（M4.2） |
+| 引擎识别 | `src/main/engines/detect.ts` | 打分算法**只有一份**；R1：`.app` 包与子目录 |
+| 版本比较 | `src/main/engines/semver.ts` | `compareVersions` / `hasUpdate`（M4.2 自实现） |
+| 装/更新/卸载 | `src/main/engines/install.ts` | `updateEngine` 保住多版本依赖（D66） |
 | 启动 | `src/main/launchers/` | `buildLaunchPlan` + `spawn.ts`（唯一起进程处，D55 三件套） |
 | 诊断 | `src/main/diagnose.ts` | 纯本地特征，不调 mkxp-z（D32） |
 | 进程表 | `src/main/process-registry.ts` | 只在内存（D50）；`stopGame` 两段式（D52） |
@@ -49,9 +55,12 @@ npm run build:mac  # 出 mac 包（Windows 上只能 zip/dir；正式包走 CI�
 
 ```
 Vue → Pinia → api/client → preload(window.tsumi.invoke)
-  → ipcMain('tsumi:invoke') → 串行队列 → core 或 games-store
+  → ipcMain('tsumi:invoke') → 串行队列 → ipc 处理器或 games-store
   → 结果返回；进度/对话框经 'tsumi:event' 推回渲染进程
 ```
+
+> M4.2 之前这里是「→ core（module.js）或 games-store」。`core` 那层已经不存在了：
+> 引擎相关的一切现在在 `src/main/engines/`（见上表）。
 
 - **数据目录**：macOS `~/Library/Application Support/Tsumigeya`（D58；**不迁移旧 `Xenolauncher`**）
 - **引擎 = 目录**：`<数据目录>/modules/<引擎>/`（`manifest.json` 由我们生成，D62）
@@ -78,7 +87,6 @@ Vue → Pinia → api/client → preload(window.tsumi.invoke)
 | **用「目录」入口启动 Electron 必 segfault**（exit 139） | `npm run dev` 走 `scripts/dev.cjs`（文件入口）。**别改回 `electron-vite dev`** |
 | `electron --version` 直接崩 | 清 `ELECTRON_RUN_AS_NODE` / `NODE_OPTIONS` |
 | **顶层 `app.setName()` → 直接 segfault** | 数据目录用 `resolveDataDirWithFallback()` 显式决定 |
-| **文件入口下 `app.getAppPath()` = `out/main`** | `resolveCorePath` 要向上探测 6 级（4 条回归测试守着） |
 | 文件入口下 `getPath('userData')` = `%APPDATA%\Electron` | 不要传给 `resolveDataDir` |
 | **`net.fetch` 不自动走系统代理** | 必须 `session.setProxy({ mode:'system' })`（D9）。症状：浏览器能上网、引擎下载报连接关闭 |
 | 主进程没注入 `fetchImpl` → 静默降级全局 fetch | `index.ts` 必须显式传 `net.fetch` |
@@ -197,18 +205,35 @@ Vue → Pinia → api/client → preload(window.tsumi.invoke)
 | D64 | 「检查依赖更新」**删除**；「检查引擎更新」降级为「本地 vs registry 版本」 | 不再有远端清单，依赖更新检查没有比较对象 |
 | D65 | `deleteWithEngine` **删除**，删游戏直接走 `store.removeGame` | 它调模块里的 `postdelete.js`，而我们生成的 manifest 不含该文件 → 现在等于空操作，且钩子抛错会拦住删游戏（是 bug） |
 | D66 | `updateEngine` 的多版本保留用「识别 `version/` 前缀 + 原样搬回」，不重写上游那套临时目录流转 | 引擎只有 4 个，多版本只有 nwjs 一种形态；简化实现 + 3 条不变量测试足够 |
+| D67 | `dependencyUpdate` 字段**保留但恒 false**；渲染层的「依赖可更新」徽标与「更新依赖」按钮**删除** | 一个恒 false 的字段配一套永远不出现的 UI，正是 D63 说的「偷偷藏着」。字段留着是为了不破坏跨边界契约（主进程仍在返回它） |
+| D68 | 删掉的东西**必须有测试守着**（`test/no-upstream-module.test.ts`） | 只删不守 = 迟早复发：下个会话遇到「这里缺个能力」会顺手从 `_xeno_probe/` 抄回来，而测试全绿 |
 
 ## 里程碑路线图
 
-- **M1–M4.1（已完成）**：见「当前状态」。实现细节与探针结论在 `docs/M*.md`
-- **M4.2（下一步，方案已就绪）**：删 `module.js` —— `docs/M4.2-实施方案.md`（D63–D66）
-  - `resources/core/module.js`（1911 行）仍在用，**18 个 API**：自实现 7 / 替换 2（已有代码）/ 删除 4 / 已删 3
-  - 新增 `src/main/engines/` 下 4 个文件（manifest / detect / semver / install）
-  - **唯一真正复杂的是「多版本 deps 保留更新」**（nwjs 的 `deps/version/v0.106.1` 不能被删）
-  - 顺带删掉 `deleteWithEngine`（它调的 `postdelete.js` 我们根本不生成 → 现在是空操作，且失败会拦住删游戏）
-  - `FORK-NOTES.md` 保留作历史记录
+- **M1–M4.2（已完成）**：见「当前状态」。实现细节与探针结论在 `docs/M*.md`
 - **M4**：存档管理（查看/备份/导出）+ 增强（Cheat 注入/变速）
 - **M5**：手柄、无边框全屏、像素缩放、dmg 公证分发
+
+### M4.2 做了什么（归档，2026-11-04）
+
+按 `docs/M4.2-实施方案.md` §5 的 S1–S7 顺序，每步一个 commit：
+
+| 步 | 内容 | 落点 |
+|---|---|---|
+| S1 | 版本比较自实现 | `engines/semver.ts` + `test/engines-semver.test.ts`（26 条） |
+| S2 | 读 manifest + 引擎识别 | `engines/manifest.ts` / `engines/detect.ts` + `test/engines-detect.test.ts`（38 条） |
+| S3 | 装/更新/卸载 + 依赖下载 | `engines/install.ts` + `test/engines-install-update.test.ts`（35 条，含 3 条不变量） |
+| S4 | ipc/core-host 全量换源 | `core-host.ts` 752 → 约 300 行；`host.core` 调用点归零 |
+| S5 | 删 `module.js` | + `test/no-upstream-module.test.ts`（9 条守「不许偷偷回来」） |
+| S6 | 端到端探针 | `scripts/probe-m42*.cjs`（30 条判据全绿） |
+| S7 | i18n 收尾 + 本文档 | 砍掉 `dependencyUpdate` 那整套永不出现在 UI 里的空壳 |
+
+**实施中发现并修掉的三个真 bug**（都有回归测试）：
+1. `updateEngine` 更新普通依赖时不清理旧目录 → 旧文件残留，变成
+   「新 manifest + 旧二进制叠加」（界面显示已更新、启动却加载旧二进制）
+2. `updateEngine` 失败路径不把保留目录搬回 → 用户的多版本运行时留在 `.update-preserve/` 里等于全坏
+3. `reconcileGameArgsAndPersist` 的 catch 只打 message、不打印 `translationKey`，
+   而 `error.staleGame` 的真实原因（id 不是数字）藏在 key 里 → 排障看不出为什么没写进去
 
 ## 仍未人眼验收（只能在有画面的机器上做）
 
@@ -216,6 +241,8 @@ Vue → Pinia → api/client → preload(window.tsumi.invoke)
 - M2.5 UI 手感：搜索候选滚动、字段编辑框位置、语言确认措辞
 - M2.6：卡片 hover、菜单浮出、简介 2 行截断、窄窗口塌陷、R18 模糊强度
 - **M3/M4.1 真实下载**：244MB RTP 与引擎依赖的耗时、进度条、取消是否及时
+- **M4.2 引擎页 UI 改动**：更新按钮合并成一个（原来「更新 / 更新依赖 / 兜底更新」三个分支），
+  需要在有画面的机器上确认按钮的显隐与配色仍然合理
 - **mac 上真引擎能否 spawn 起来**（Windows 只验到错误路径与中文文案）
 - 不做 chromium-args 篡改后，NW.js 行为是否与之前一致（待 mac 真机对比）
 
@@ -223,4 +250,5 @@ Vue → Pinia → api/client → preload(window.tsumi.invoke)
 
 - https://github.com/m5kro/Xenolauncher ；模块仓库 `m5kro/Xenolauncher-Modules`
 - 本地 clone `_xeno_probe/`（只读参考，gitignore）
-- M4.2 完成后只剩考古价值
+- M4.2 已完成，只剩考古价值（`_xeno_probe/` 里那份 `module.js` 仍是理解
+  `deps/RTP/RTP/` 双层目录、`version/v0.106.1` 命名等历史形态的最快入口）

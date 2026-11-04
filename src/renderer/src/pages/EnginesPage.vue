@@ -107,13 +107,7 @@ async function install(module: RemoteModule): Promise<void> {
 }
 
 async function update(module: ModuleInfo): Promise<void> {
-  const entry = updateFor(module.id)
-  const action = entry?.moduleUpdate === false && entry.dependencyUpdate ? 'dependencies' : 'update'
-  await runModule(module.id, action, displayName(module))
-}
-
-async function updateDependencies(module: ModuleInfo): Promise<void> {
-  await runModule(module.id, 'dependencies', displayName(module))
+  await runModule(module.id, 'update', displayName(module))
 }
 
 async function uninstall(module: ModuleInfo): Promise<void> {
@@ -133,7 +127,7 @@ async function checkUpdates(): Promise<void> {
   try {
     const report = await task.run(t('engines.checkUpdates'), engines.checkUpdates())
     engines.engineUpdates = report
-    const count = report.updates.filter((item) => item.moduleUpdate || item.dependencyUpdate).length
+    const count = report.updates.filter((item) => item.moduleUpdate).length
     ElMessage.success(count === 0 ? t('engines.upToDate') : t('engines.checkDone', { count }))
   } catch (error) {
     if (!task.isCancelled(error)) ElMessage.error(translateError(error, t))
@@ -235,9 +229,6 @@ function formattedCheckedAt(): string {
           <el-tag v-if="updateFor(module.id)?.moduleUpdate" size="small" type="danger">
             {{ t('engines.hasUpdate', { version: updateFor(module.id)?.remoteVersion ?? '' }) }}
           </el-tag>
-          <el-tag v-else-if="updateFor(module.id)?.dependencyUpdate" size="small" type="warning">
-            {{ t('engines.dependencyBadge') }}
-          </el-tag>
           <el-tag v-if="updateFor(module.id)?.checkFailed" size="small" type="info">
             {{ t('engines.checkFailed') }}
           </el-tag>
@@ -250,26 +241,13 @@ function formattedCheckedAt(): string {
         <div class="hint">{{ module.id }}</div>
 
         <div class="engine-card-actions">
+          <!-- M4.2 S7（D64）：原来这里有三个分支（更新 / 更新依赖 / 兜底更新）。
+               现在只剩一个：没有远端清单之后「依赖更新」没有比较对象，
+               `dependencyUpdate` 恒为 false，「更新依赖」按钮永远不出现 —— 留着就是空壳。
+               「更新」按钮本身无条件显示：它的语义是「把引擎刷新到 registry 的版本」（D66）。 -->
           <el-button
-            v-if="updateFor(module.id)?.moduleUpdate"
             size="small"
-            type="primary"
-            :loading="pending === module.id"
-            @click="update(module)"
-          >
-            {{ t('engines.update') }}
-          </el-button>
-          <el-button
-            v-if="updateFor(module.id)?.dependencyUpdate"
-            size="small"
-            :loading="pending === module.id"
-            @click="updateDependencies(module)"
-          >
-            {{ t('engines.dependencies') }}
-          </el-button>
-          <el-button
-            v-if="!updateFor(module.id)?.moduleUpdate && !updateFor(module.id)?.dependencyUpdate"
-            size="small"
+            :type="updateFor(module.id)?.moduleUpdate ? 'primary' : 'default'"
             :loading="pending === module.id"
             @click="update(module)"
           >

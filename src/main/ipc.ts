@@ -502,7 +502,9 @@ export function createDispatcher(deps: IpcDeps): Dispatcher {
           // 我们不再维护的引擎：不报「有更新」，也没有「远端版本」
           remoteVersion: expected?.version || 'N/A',
           moduleUpdate: !!expected && hasUpdate(local[id].version, expected.version),
-          // 见上面的「依赖更新检查：明确停用」
+          // 见上面的「依赖更新检查：明确停用」（D64）。
+          // M4.2 S7 也随之砍掉了渲染层的「依赖可更新」徽标与「更新依赖」按钮 ——
+          // 一个恒 false 的字段配一套永远不出现的 UI，正是 D63 说的「偷偷藏着」。
           dependencyUpdate: false,
           checkFailed: false
         }

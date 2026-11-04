@@ -103,6 +103,10 @@ export interface EngineUpdate {
   localVersion: string
   remoteVersion: string
   moduleUpdate: boolean
+  /**
+   * **恒为 false**（M4.2 / D64）：没有远端清单之后，「依赖有更新吗」没有比较对象。
+   * 字段保留是为了不破坏跨边界契约（主进程仍在返回它），但 UI 已经不再读它。
+   */
   dependencyUpdate: boolean
   checkFailed: boolean
 }

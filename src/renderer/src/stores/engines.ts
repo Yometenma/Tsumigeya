@@ -57,7 +57,7 @@ export const useEnginesStore = defineStore('engines', () => {
   })
 
   const updateCount = computed(
-    () => (engineUpdates.value?.updates ?? []).filter((item) => item.moduleUpdate || item.dependencyUpdate).length
+    () => (engineUpdates.value?.updates ?? []).filter((item) => item.moduleUpdate).length
   )
 
   function match(name: string | undefined, folder: string | undefined, keyword: string): boolean {
