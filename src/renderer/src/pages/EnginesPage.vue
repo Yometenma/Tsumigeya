@@ -7,6 +7,13 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { translateError, type ModuleInfo, type RemoteModule } from '@/api/client'
 import { useEnginesStore } from '@/stores/engines'
 import { useTaskStore } from '@/stores/task'
+import {
+  installAllCount,
+  installAllOutcome,
+  pendingInstalls,
+  runInstallAll,
+  type InstallTarget
+} from '../../../shared/install-all'
 
 const { t, d } = useI18n()
 const engines = useEnginesStore()
@@ -163,6 +170,103 @@ function formattedCheckedAt(): string {
   const value = new Date(checkedAt.value)
   return Number.isNaN(value.getTime()) ? checkedAt.value : d(value, 'long')
 }
+
+// ===== M5.0 S8（U10）：全部安装 =====
+//
+// 与「全部更新」对称，但**失败策略刻意不同**（方案 §10 的「必须逐个 + 进度」）：
+// `updateAllEngines` 是第一个失败就 throw，而这里**失败不中断**。
+// 理由见 shared/install-all.ts 顶部 —— 一句话：四个引擎相互独立，
+// 一次几百 MB 断在某一个是常态，不该把装好的那几个一起废掉。
+
+/** 还没装的引擎数（按钮上的数字与 disabled 判据）。 */
+const installAllPending = computed(() =>
+  installAllCount(engines.available, new Set(engines.modules.map((module) => module.id)))
+)
+
+/** 全部安装的进度（null = 没在跑）。 */
+const installAllProgress = ref<{ done: number; total: number } | null>(null)
+/** 正在装的是哪个（卡片按钮的 loading）。 */
+const installingNow = ref<string | null>(null)
+
+/**
+ * 「全部安装」。
+ *
+ * ===== 取消权交给进度浮层（不做第二套「停止」按钮）=====
+ *
+ * ProgressOverlay 已经有一个取消按钮，它走 `task.cancel()` → 主进程的 AbortController，
+ * **正在下载的那一个也能立刻打断**。本鱼一开始想自己搞一个 `installAllCancelled` 标志，
+ * 但那套只能在「引擎之间」生效 —— 用户在下一个 244MB 的 RTP 时点「停止」，
+ * 得等到它下完才有反应，比浮层那个明显更差。
+ *
+ * 两套取消并存还会互相矛盾：浮层取消了一个、外层标志仍是 false，
+ * 后面几个会接着装，用户以为停不了。
+ *
+ * 所以：**只保留浮层那一个入口**。这里的 `isCancelled` 检查的是 `task.isCancelled` 的
+ * 语义 —— 即「上一层任务被用户取消了」。见下方 install 回调里的判断。
+ */
+async function installAll(): Promise<void> {
+  const targets = pendingInstalls(engines.available, new Set(engines.modules.map((module) => module.id)))
+  if (targets.length === 0) {
+    ElMessage.info(t('engines.noneToInstall'))
+    return
+  }
+  try {
+    await ElMessageBox.confirm(
+      t('engines.installAllConfirmMessage', { count: targets.length }),
+      t('engines.installAllConfirmTitle'),
+      { type: 'info', confirmButtonText: t('engines.installAll'), cancelButtonText: t('common.cancel') }
+    )
+  } catch {
+    return
+  }
+
+  /** 用户在浮层点了取消（某个 install 抛 error.cancelled 时置位）。 */
+  let userCancelled = false
+  installAllProgress.value = { done: 0, total: targets.length }
+  const result = await runInstallAll(targets, {
+    install: async (target: InstallTarget) => {
+      installingNow.value = target.folder
+      try {
+        const snapshot = await task.run(
+          target.name,
+          engines.runTask({ folder: target.folder, action: 'install', label: target.name })
+        )
+        engines.applySnapshot(snapshot)
+      } catch (error) {
+        // 用户取消不是"失败"：要让 runInstallAll 停下来而不是继续装下一个
+        if (task.isCancelled(error)) userCancelled = true
+        throw error
+      }
+    },
+    onProgress: (done, total) => {
+      installAllProgress.value = { done, total }
+    },
+    isCancelled: () => userCancelled
+  })
+  installingNow.value = null
+  installAllProgress.value = null
+
+  // 「可安装」列表要随已装数变化而刷新（引擎页靠它画卡片）
+  await engines.loadRemote()
+
+  const outcome = installAllOutcome(result)
+  if (outcome === 'all-success') {
+    ElMessage.success(t('engines.installAllDone', { count: result.installed.length }))
+  } else if (outcome === 'partial') {
+    // ⚠️ warning 而不是 error：有一部分**真的装上了**，报红会让用户去重装一遍已装好的
+    ElMessage.warning(
+      t('engines.installAllPartial', { installed: result.installed.length, failed: result.failed.length })
+    )
+    console.warn(
+      `[tsumigeya] 全部安装部分失败：${result.failed.map((item) => item.folder).join(' / ')}`,
+      result.failed.map((item) => item.error)
+    )
+  } else if (outcome === 'all-failed') {
+    ElMessage.error(t('engines.installAllFailed', { count: result.failed.length }))
+  } else {
+    ElMessage.info(t('engines.installAllCancelled', { count: result.installed.length }))
+  }
+}
 </script>
 
 <template>
@@ -172,8 +276,16 @@ function formattedCheckedAt(): string {
       <p class="page-subtitle">{{ t('engines.checkedAt', { time: formattedCheckedAt() }) }}</p>
     </div>
     <div class="row">
-      <el-button :loading="task.running" @click="checkUpdates">{{ t('engines.checkUpdates') }}</el-button>
-      <el-button type="primary" :disabled="updateCount === 0" @click="updateAll">
+      <el-button :loading="task.running" :disabled="!!installAllProgress || task.running" @click="checkUpdates">
+        {{ t('engines.checkUpdates') }}
+      </el-button>
+      <!-- M5.0 S8：与「全部安装」互斥 —— 两套批量任务同时跑会往同一个队列里塞，
+           进度浮层也会互相覆盖。 -->
+      <el-button
+        type="primary"
+        :disabled="updateCount === 0 || !!installAllProgress"
+        @click="updateAll"
+      >
         {{ t('engines.updateAll') }}
         <el-badge v-if="updateCount" :value="updateCount" type="danger" style="margin-left: 6px" />
       </el-button>
@@ -208,6 +320,28 @@ function formattedCheckedAt(): string {
       style="width: 240px"
     />
     <div class="toolbar-spacer" />
+
+    <!-- M5.0 S8（U10）：可安装标签页的「全部安装」——与已安装页的「全部更新」对称。
+         只在可安装标签下出现：已装的那个页签里"全部安装"没有意义（都已经装了）。
+
+         ⚠️ 这里**没有自建的「停止」按钮**：取消走 ProgressOverlay 那个（`task.cancel()`），
+         它能打断**正在下载的那一个**；自建一套只能在引擎之间生效，
+         用户在下一个 244MB 的 RTP 时点停止要等它下完，明显更差，而且两套并存会互相矛盾。 -->
+    <template v-if="tab === 'remote'">
+      <span v-if="installAllProgress" class="hint">
+        {{ t('engines.installAllProgress', { done: installAllProgress.done, total: installAllProgress.total }) }}
+      </span>
+      <el-button
+        v-else
+        type="primary"
+        :disabled="installAllPending === 0 || task.running"
+        @click="installAll"
+      >
+        {{ t('engines.installAll') }}
+        <el-badge v-if="installAllPending" :value="installAllPending" type="info" style="margin-left: 6px" />
+      </el-button>
+    </template>
+
     <el-button text :loading="engines.loadingRemote" @click="engines.loadRemote()">
       {{ t('common.refresh') }}
     </el-button>
@@ -279,7 +413,15 @@ function formattedCheckedAt(): string {
         <div v-if="moduleDescription(module)" class="engine-card-desc">{{ moduleDescription(module) }}</div>
         <div class="hint">{{ module.folder }}</div>
         <div class="engine-card-actions">
-          <el-button size="small" type="primary" :loading="pending === module.folder" @click="install(module)">
+          <!-- M5.0 S8：单卡的 loading 也要认「全部安装」的当前项（installingNow），
+               否则「全部安装」跑起来时单卡按钮看起来是空闲的，用户可以再点一下把同一任务起两遍。 -->
+          <el-button
+            size="small"
+            type="primary"
+            :loading="pending === module.folder || installingNow === module.folder"
+            :disabled="!!installAllProgress || task.running"
+            @click="install(module)"
+          >
             {{ t('engines.install') }}
           </el-button>
         </div>

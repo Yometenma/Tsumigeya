@@ -21,7 +21,7 @@
   M3（故障自愈）、M2.6（海报墙与详情页）、M2.7（编辑页重构）、M3.5（进程管理）、M4.0（自实现启动）、
   M4.1（引擎清单自己维护）、**M4.2（彻底零上游）**
 - **已发布**：**v0.5.3**（含 M4.2 + 两个启动修复；GitHub `Yometenma/Tsumigeya`）
-- **测试**：**1086 个 / 47 文件**全绿；`typecheck` / `test` / `build` 三绿
+- **测试**：**1106 个 / 48 文件**全绿；`typecheck` / `test` / `build` 三绿
 - **M5.0 进行中**（`docs/M5.0-实施方案.md`）：12 项体验优化，**逐条提交**（用户拍板）
   - 顺序见方案 §12：B1 版本号 → U3+U4 筛选 → U5 选文件 → U6 去跳过 → N1 游玩时间
     → U1 批量 → U2 分类 → U10 全部安装 → U9 设置页 → U7 抽组件 → U8 编辑页重构
@@ -39,6 +39,8 @@
     （判据抽到 `shared/bulk-select.ts`，22 条单测；**顺带修掉删游戏不清 play-stats 的真 bug**）
   - ✅ **S7 / U2 已提交**：自定义分类（多归属 / 扁平）：数据层 + 侧边栏 + 批量归入
     （判据抽到 `shared/categories.ts`，46 条单测；**修掉删游戏不清分类归属的真 bug**）
+  - ✅ **S8 / U10 已提交**：引擎页「可安装」加「全部安装」（与「全部更新」对称）
+    （判据抽到 `shared/install-all.ts`，20 条单测）
 
 ### 各模块在哪（一句话）
 
@@ -60,6 +62,7 @@
 | 游玩时间展示 | `src/shared/play-time.ts` | 时长分级 + 「无记录」vs「0 秒」的区分；`snapshot.playStats` 供详情页读 |
 | 批量选择/确认 | `src/shared/bulk-select.ts` | 选中集∩可见集（防误删）；确认弹窗列前 3 + 等 N；三态全选 |
 | 自定义分类 | `src/main/category-store.ts` + `src/shared/categories.ts` | **分离式存储**（顶层 categories/assignments，不改条目形状）；删分类绝不删游戏 |
+| 全部安装编排 | `src/shared/install-all.ts` | **失败不中断**（与 `updateAllEngines` 的 throw 策略刻意不同）；逐个 + 进度 |
 
 ## 开发命令
 
