@@ -58,7 +58,7 @@
 
 | 模块 | 文件 | 关键点 |
 |---|---|---|
-| 引擎定义 | `src/main/engines/registry.ts` | **6 个引擎唯一来源**（D60/D87）；另有 `DETECT_ONLY`（**只认不跑**，D88）；ruffle/wine/macos 不存在 |
+| 引擎定义 | `src/main/engines/registry.ts` | **9 个引擎唯一来源**（D60/D87/D91）；另有 `DETECT_ONLY`（**只认不跑**，D88）；ruffle/wine/macos 不存在 |
 | 引擎清单读写 | `src/main/engines/manifest.ts` | 读本地 manifest + 合并 gameArgs 缺省值（M4.2） |
 | 引擎识别 | `src/main/engines/detect.ts` | 打分算法**只有一份**；R1：`.app` 包与子目录；`definitionsWithDetectOnly()` 合并两张表 |
 | 版本比较 | `src/main/engines/semver.ts` | `compareVersions` / `hasUpdate`（M4.2 自实现） |
@@ -325,6 +325,9 @@ Vue → Pinia → api/client → preload(window.tsumi.invoke)
 | D88 | **识别范围 > 启动范围**：新增 `DETECT_ONLY`（Unity / RPGBakin / ウディタ），**只认不跑**；可启动引擎与仅识别引擎**分两张表** | 用户要「范围尽可能广」，但**「认得出」和「跑得动」是两件事**。塞进 `ENGINES` → 引擎页列成「可安装」但下载地址空 → 点了必失败（D60 的「不起作用的开关」教训）。完全不认 → 用户得到「未知引擎」，而「未知」与「需要 Windows 兼容层」是**两种不同处境**（前者像程序坏了）。所以合并参与打分、但仅识别条目**一律 `all_required:false`（走打分）**，靠 `pickBestRule` 的「强命中永远压过打分命中」保证**绝不抢走可启动引擎的游戏**（`test/detect-priority.test.ts` 12 条钉死）。⚠️ **实测抓到过一个真 bug**：给 Unity 规则加了 `extensions:['exe']` 后，一个只有 readme 的空目录都被判成 Unity —— 判据只能靠**专有文件名**，宁可认不出也不能乱认 |
 | D89 | **不做 Windows 兼容层（Wine/CrossOver 一类）**，跑不动的引擎交给用户在 CrossOver 里跑（用户 2026-11-05 拍板：「windows兼容的游戏有CrossOver嘛，不做也可以的」） | 技术诱因之外还有**政策风险**：Apple 官方文档（support.apple.com/en-us/102527，2026-09）写明 Rosetta 只在 **macOS 27 及更早**可用，**macOS 28 起只对「某些老旧无人维护的游戏」保留**；而 CrossOver 官方承认「其他基于 Wine 的模拟器**一直依赖 Rosetta 2** 跑 x86 Windows 游戏」。DLsite 的 Windows 游戏几乎全是 x86/32 位 → 那条路铺在一条会变短的政策上。**但识别仍要做**（D88）：用户添加这类游戏时应得到「需要 Windows 兼容层，Tsumigeya 不代跑」，而不是「未知引擎」 |
 | D90 | 吉里吉里**标「实验性」**（`EngineDefinition.experimental`），但它**照常可用**；不因上游声明做任何检测或拒绝 | 运行时 krkrsdl2（MIT，有 macOS 预编译包）官方页**明写**：「Running **unmodified commercial games** using this project is **not supported**. Please use Wine or GameNative instead.」（krkrsdl2.github.io/krkrsdl2/en/）。用户 2026-11-05 接受这条限制，所以我们做它。但那是**上游的立场声明，不是技术闸门**（它并不会真的拦住）——所以我们**如实转达**（引擎页标「实验性」+ 卡片写明是上游限制），**不替用户挡**，也不让用户以为这是本项目官方承诺的能力 |
+| D91 | **引擎扩到 9 个**：新增 `nscripter`（ONScripter）/ `siglus`（siglus_rs）/ `godot`。判据仍是 D87 的「资源跨平台 + 有 macOS 运行时」 | **NScripter**：`nscript.dat`/`arc.nsa` 是数据；ONScripter 是本体的开源兼容实现。⚠️ **许可证已核到源头**：Debian 官方版权文件写的是 **`GPL-2+`**（「or (at your option) any later version」），**不是 `GPL-2.0-only`** → 允许按 GPL-3.0 使用，**与本项目兼容**。（研究员按普通法理判「GPLv2-only 与 GPLv3 不兼容」是对的，但这个包带 `+`，结论反过来；本鱼起初也按 2.0-only 判，同样错。）**Siglus**：siglus_rs（MPL-2.0）**一个引擎覆盖 UK2/AVG32/RealLive/SiglusEngine 四种格式**，macOS 有官方预编译 → 性价比最高。**Godot**：pck 跨平台**只对 GDScript 项目成立**（C# 与 GDExtension 不行，见 D92） |
+| D92 | **Godot 用「编辑器二进制」当运行时，不用 export template**；且**存档位置不实现**（返回 null） | ① **4.6 起 `--main-pack` 在 export template 里被默认禁用**（PR #111909，实测 issue #119376 报 `compiled without support for path overrides. Aborting.`；4.5.2 正常）。而**编辑器二进制仍支持** → 用它可以**避免要求每个用户自己编译 Godot**，代价是 154 MiB 运行时。② **pck 跨平台有三个前提**：GDScript 项目（C# 在 mac 上加载不了，issue #72159 实测 `class could not be found`）+ 不用 GDExtension（含平台专用 dylib）+ **引擎版本匹配**。③ **存档改不了**：官方明确「导出的工程不支持 self-contained mode」，而默认路径依赖要从 pck 里读的 `project_name` → **不自己解析 pck**（格式有 v0–v4 五个版本、Godot 又每年升级，自己解析等于赌它不变），直接返回 null（与 tyrano/kirikiri 同一取向，**宁可显示「不知道」也不猜**） |
+| D93 | **不做 rlvm**（RealLive 的 GPL-3.0 重实现），因为 **siglus_rs 已覆盖 RealLive**；**不做 GameMaker**（押后），因为 Butterscotch 是 **AGPL-3.0** 且 DLsite 量级未确认 | rlvm 的**许可证全文、macOS 存档路径、arm64 支持全都未核实**，风险高于「已有官方 mac 预编译」的 siglus_rs → RealLive 游戏优先走 siglus。**GameMaker**：Butterscotch 的 AGPL 对 GPL-3.0 项目有传导义务；若将来要做，**必须把「判定」与「运行」拆成两套依赖**（判定用 **LibGM**（GPL-3.0-only，可直接进仓库），运行只调**外部** Butterscotch 可执行文件，独立进程非链接）。判 VM/YYC 的本地判据已有：读 `data.win` 的 **`CODE` chunk**（有且非空 = VM 可跑；为空/缺失 = YYC 出局），另需排除 GMRT、WAD v8 之前、非 FMOD 扩展 |
 
 ## 里程碑路线图
 
