@@ -152,7 +152,9 @@ describe('S2 detectEngineFromDefinitions：未装引擎也能认（零网络）'
 
   test('规则表形状与 module.js 的 fetchModulesForAutodetect 完全一致', () => {
     // 形状错了就没有引擎能认出来 —— 这是「静默失效」的典型
-    expect(Object.keys(definitions).sort()).toEqual(['easyrpg', 'mkxpz', 'nwjs', 'renpy'])
+    // 规则表必须**恰好**覆盖 ENGINES 的每个引擎（不多不少）——
+    // 但引擎数量会增长，所以拿 registry 自己当基准，而不是写死名单。
+    expect(Object.keys(definitions).sort()).toEqual(ENGINES.map((e) => e.folder).sort())
     for (const [folder, rule] of Object.entries(definitions)) {
       const engine = findEngine(folder)!
       // all_required 必须显式是布尔（省了 → undefined → 判据 === true 失效）

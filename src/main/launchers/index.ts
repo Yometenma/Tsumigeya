@@ -7,30 +7,45 @@
 // 返回 null = **这个引擎我们不支持启动**（不是「出错了」）。
 //
 // 为什么不支持就返回 null 而不是抛错：判断「支不支持」是纯查表，
-// 报错的措辞、错误码（D57 要求 `error.engineNotLaunchable` + 列出支持的 4 个引擎）
+// 报错的措辞、错误码（D57 要求 `error.engineNotLaunchable` + 列出支持的引擎）
 // 属于 IPC 层的事。让分发层保持纯粹，单测能毫秒级断言，文案改动也不用碰这里。
 import { easyrpgPlan } from './easyrpg'
+import { kirikiriPlan } from './kirikiri'
 import { mkxpzPlan } from './mkxpz'
 import { nwjsPlan } from './nwjs'
 import { renpyPlan } from './renpy'
+import { tyranoPlan } from './tyrano'
 import type { EngineId } from './binary-paths'
 import type { EnginePlanner, LaunchContext, LaunchPlan } from './types'
 
 /**
- * 支持自实现启动的引擎（D57：只这四个，不回退）。
+ * 支持自实现启动的引擎（D57：不回退到任何别的引擎）。
+ *
+ * **M6 从 4 个扩到 6 个**（tyrano / kirikiri，见 docs/引擎范围扩展-实施方案.md）。
+ * 顺序与 `engines/registry.ts` 的 `ENGINES` **同源** —— 有测试逐个核对，
+ * 加引擎时漏改一处会当场红。
  *
  * 数组的顺序没有语义，但**导出它是为了给 UI 与错误文案用**：
- * 「本版本支持：NW.js（MV/MZ）、mkxp-z（XP/VX/VX Ace）、EasyRPG（2000/2003）、Ren'Py」
- * 那句话里的引擎名单必须来自这里，不能在两处各写一份（否则加引擎时必漏一处）。
+ * 「本版本支持：…」那句话里的引擎名单**必须来自这里**，不能在两处各写一份
+ * （否则加引擎时必漏一处 —— ipc.ts 里那句手写名单就是这么来的）。
  */
-export const LAUNCHABLE_ENGINES: readonly EngineId[] = ['nwjs', 'mkxpz', 'easyrpg', 'renpy']
+export const LAUNCHABLE_ENGINES: readonly EngineId[] = [
+  'nwjs',
+  'mkxpz',
+  'easyrpg',
+  'renpy',
+  'tyrano',
+  'kirikiri'
+]
 
 /** 引擎 → 实现。用 Map 而不是对象字面量：查表时不会撞上 `constructor` / `__proto__`。 */
 const PLANNERS: ReadonlyMap<string, EnginePlanner> = new Map<string, EnginePlanner>([
   ['nwjs', nwjsPlan],
   ['mkxpz', mkxpzPlan],
   ['easyrpg', easyrpgPlan],
-  ['renpy', renpyPlan]
+  ['renpy', renpyPlan],
+  ['tyrano', tyranoPlan],
+  ['kirikiri', kirikiriPlan]
 ])
 
 /** 这个引擎能不能自实现启动（供 IPC 与 UI 共用的唯一判据）。 */

@@ -180,7 +180,10 @@ describe('S5 三个引擎相关命令的最终行为', () => {
       {},
       new AbortController().signal
     )) as Array<{ folder: string }>
-    expect(modules.map((module) => module.folder)).toEqual(['nwjs', 'mkxpz', 'easyrpg', 'renpy'])
+    // M6 起引擎会增加（tyrano / kirikiri），但**原有四个的顺序是契约**
+    // 原有四个的顺序不许变（D60）；新引擎只能往后追加
+    expect(modules.map((module) => module.folder).slice(0, 4)).toEqual(["nwjs","mkxpz","easyrpg","renpy"])
+    expect(modules.map((module) => module.folder)).toEqual(ENGINE_FOLDERS.map(String))
   })
 
   test('detect：未装引擎时用 registry 规则认（零网络、同步完成）', async () => {

@@ -965,12 +965,18 @@ export function createDispatcher(deps: IpcDeps): Dispatcher {
       arch: os.arch()
     })
     if (!plan) {
-      // 绝不能静默失败：装了 ruffle / wine / macos 的用户点启动必须知道「为什么不行」
+      // 绝不能静默失败：装了 ruffle / wine / macos 的用户点启动必须知道「为什么不行」。
+      //
+      // ⚠️ 引擎名单**必须来自 registry**，不能手写。原来这里手写了四个引擎名，
+      //    而 launchers/index.ts 的注释早就说「那句名单必须来自 LAUNCHABLE_ENGINES」——
+      //    M6 加 tyrano / kirikiri 时，手写名单正是必然漏一处的地方。
+      const supportedNames = ENGINES.map((engine) => engine.name).join('、')
       throw failure(
         'error.engineNotLaunchable',
         `引擎 "${game.gameEngine}" 暂不支持启动。\n` +
-          '本版本支持：NW.js（MV/MZ）、mkxp-z（XP/VX/VX Ace）、EasyRPG（2000/2003）、Ren\'Py。',
-        { engine: game.gameEngine }
+          `本版本支持：${supportedNames}。` +
+          '\n需要 Windows 兼容层（如 CrossOver）的游戏，Tsumigeya 不代跑。',
+        { engine: game.gameEngine, supported: supportedNames }
       )
     }
 

@@ -44,7 +44,7 @@
 // **留着一个不起作用的开关，比不显示更糟**——用户勾了它、游戏里按 1 没反应，
 // 会以为是「这个功能坏了」。所以 `cheat` 一起删掉：nwjs 只有 `version` 一个参数。
 // （玩家真需要作弊菜单时，加回是「依赖 + 参数」两行，但**必须先有注入实现**。）
-import type { EngineDefinition } from './types'
+import type { EngineAutodetect, EngineDefinition } from './types'
 import { DATA_DIR_PLACEHOLDER } from './types'
 
 /**
@@ -410,14 +410,211 @@ const renpy: EngineDefinition = {
   }
 }
 
+// ===== TyranoScript（ティラノスクリプト）=====
+//
+// ===== 为什么它能被「自己实现」=====
+//
+// 它是 **HTML5 引擎**：游戏本体就是 `index.html` + `tyrano/` + `data/` 的网页目录
+// （官方教程明写「ブラウザゲームとして配布する場合はプロジェクトフォルダ以下の
+// ファイルを丸ごとサーバーにアップ」）。所以**资源完全跨平台**（判据 A 成立）。
+//
+// 判据 B 也成立，而且我们已经有运行时了：**上方的 nwjs**。
+// NW.js 就是个浏览器壳，`nw ` 加载一个含 `package.json` 的网页目录 ——
+// 与 Tyrano 的形态天然同构。**不需要为它下载任何新东西**（这是它成本最低的原因）。
+//
+// ===== Windows 分发包的三种形态（`tyranoscript.exe` + 其中一种）=====
+//
+//   ① 未打包目录：`tyranoscript.exe` + `game/`（内含 index.html、tyrano/、data/）
+//   ② `app.nw`：项目打成 zip 后改名，与 exe 并排
+//   ③ 单文件 `game.exe`：`copy /b tyranoscript.exe+app.nw game.exe`（zip 拼接在 exe 尾部）
+//
+// 出处：官方作者 shikemokumk 的打包说明
+// （https://shikemokumk.hateblo.jp/entry/2016/01/22/141350）。
+//
+// ⚠️ 形态 ③ 在游戏目录里**除了一个 exe 什么都没有**，光看文件名认不出是 Tyrano。
+// 所以 autodetect 先只覆盖形态 ①②（目录里有 `tyrano/` + `data/`）。
+// 形态 ③ 要走「读 exe 尾部找 zip」的解包路径，**必须先有真机样本实测**才敢做
+// （见 docs/引擎范围扩展-实施方案.md §8-B）。
+//
+// ⚠️ 存档位置**待实测**：在确认之前 `shared/save-locate.ts` 对它返回 null（显示「不知道」），
+// 绝不按「哪个目录像存档」去猜 —— 那是 D85 那个 bug 的同一个坑。
+const tyrano: EngineDefinition = {
+  folder: 'tyrano',
+  name: 'TyranoScript',
+  version: '1.0.0',
+  description: 'A module to launch TyranoScript HTML5 games with NW.js.',
+  descriptionKey: 'engines.desc.tyrano',
+  autodetect: {
+    // 用两个**目录**当判据，不用 index.html —— 后者在任何网页项目里都有，会误伤。
+    // 强命中（all_required），与 nwjs 的 `nw.dll + package.json` 互不重叠。
+    files: ['tyrano', 'data'],
+    all_required: true
+  },
+  gameArgs: {
+    // Tyrano 全屏靠浏览器全屏；与 nwjs 共用同一个键与文案。
+    fullscreen: {
+      type: 'boolean',
+      label: 'Start in Fullscreen',
+      labelKey: 'args.fullscreen',
+      default: false
+    }
+  },
+  // ⚠️ 空 dependencies 是**有意**的：Tyrano 复用 NW.js 运行时，不需要自己的下载。
+  // 空对象不是「还没写」。引擎页对空 dependencies 的引擎要显示「无需单独下载」，
+  // 不能显示成「可安装 → 点了失败」（D60 的同一个教训：不起作用的开关比不显示更糟）。
+  dependencies: {}
+}
+
+// ===== 吉里吉里（KiriKiri 2 / Z）=====
+//
+// ===== ⚠️ 这个引擎是「实验性」的，理由必须写在代码里 =====
+//
+// 运行时用 **krkrsdl2**（吉里吉里Z 的 SDL2 移植，MIT，有 macOS 预编译包）。
+// 它技术上能跑吉里吉里游戏（命令行就是 `krkrsdl2 <启动目录>`），
+// 但官方页面 **明写**：
+//
+//     "Running **unmodified commercial games** using this project is **not supported**.
+//      Please use Wine or GameNative instead."
+//     —— https://krkrsdl2.github.io/krkrsdl2/en/
+//
+// 用户 2026-11-05 拍板**接受**这条限制，所以我们做它；但**必须**：
+//   ① `experimental: true` → 引擎页标「实验」，卡片写明这是上游的限制
+//   ② 出问题时不要把锅算到我们头上
+//
+// 判据 A：资源是 `data.xp3`（归档）+ `.tjs` 脚本，**跨平台**（不是机器码）→ 成立
+// 判据 B：krkrsdl2 有 macOS 版 → 成立
+// 所以它符合「自己实现」的公式，只是上游不背书。
+const kirikiri: EngineDefinition = {
+  folder: 'kirikiri',
+  name: "KiriKiri",
+  version: '1.0.0',
+  description: 'A module to launch KiriKiri games with krkrsdl2 (experimental).',
+  descriptionKey: 'engines.desc.kirikiri',
+  autodetect: {
+    // 强命中：有 data.xp3 归档就是吉里吉里（这是它最标志性的产物）。
+    // ⚠️ 有些游戏不打包，用 startup.tjs + 散文件；那种形态**暂不认**
+    // （认了就会把「一堆 .tjs」误判，而那些项目的散文件布局没有统一约定）。
+    files: ['data.xp3'],
+    all_required: true
+  },
+  gameArgs: {
+    fullscreen: {
+      type: 'boolean',
+      label: 'Start in Fullscreen',
+      labelKey: 'args.fullscreen',
+      default: false
+    }
+  },
+  dependencies: {
+    // ⚠️ 下载地址**必须 pin 到具体版本**，绝不用 `latest` 浮动 tag。
+    // 浮动 tag 会让我们的行为随上游漂移（D60 要避免的正是这个）。
+    // 这里的版本号由安装时实际落盘的 commit/tag 决定，registry 里写基准值。
+    krkrsdl2: {
+      universal: {
+        link: 'https://github.com/krkrsdl2/krkrsdl2/releases/download/latest/krkrsdl2-macos.zip',
+        unzip: true
+      }
+    }
+  },
+  experimental: true
+}
+
+// ===== 只识别、不启动的引擎（DETECT_ONLY）=====
+//
+// ===== 为什么需要这张表 =====
+//
+// 用户的要求是「范围尽可能广」。但**「认得出」和「跑得动」是两件事**：
+//
+//   引擎           资源跨平台？  有 macOS 运行时？  我们能跑？
+//   Unity          ❌ IL2CPP 锁平台      —            ❌ 需要 Windows
+//   RPGBakin       ❌ 仅 Windows（官方 FAQ 明写）      ❌ 需要 Windows
+//   ウディタ        ❌ Windows 专属                    ❌ 需要 Windows
+//
+// 把这三类塞进 `ENGINES` 是错的：引擎页会把它们列成「可安装」，
+// 而下载地址是空的 → 用户点了一定失败（D60 的「不起作用的开关」教训）。
+//
+// 完全不认它们也是错的：用户添加一个 Unity 游戏会得到「未知引擎」，
+// 而「未知引擎」和「这个引擎需要 Windows 兼容层」是**两种完全不同的处境** ——
+// 前者像是本程序坏了，后者是有清晰说明的能力边界。
+//
+// 所以：**识别范围铺满，运行范围诚实留白**。
+// 这张表只参与 `detect` 打分，不进可安装列表、不进 `ENGINE_FOLDERS`。
+//
+// ⚠️ **它们必须弱于所有可启动引擎**：这些规则的 `all_required` 一律 false（走打分），
+// 而可启动引擎的强命中永远压过打分命中（见 pickBestRule 的 ③）。
+// 用户拍板：不做 Windows 兼容层，这类游戏交给 CrossOver
+// （2026-11-05：「windows兼容的游戏有CrossOver嘛，不做也可以的」）。
+//
+// 认出来之后 UI 要做的事：告诉他「这个引擎需要 Windows 兼容层（CrossOver 之类），
+// Tsumigeya 不代跑」—— **不是**「不支持」四个字。
+// ⚠️ 这些条目的 `name` 会出现在用户眼前的「识别结果」里，所以必须写**用户认得的名字**，
+//    不是内部代号。
+export interface DetectOnlyEngine {
+  /** 内部 id（**永远不会**成为 gameEngine 的值，因为跑不了）。 */
+  folder: string
+  /** 用户看到的名字。 */
+  name: string
+  /** 识别规则（打分用，一律 all_required: false）。 */
+  autodetect: EngineAutodetect
+  /** 为什么跑不了（i18n key），UI 用它解释给用户听。 */
+  reasonKey: string
+}
+
+export const DETECT_ONLY: readonly DetectOnlyEngine[] = [
+  {
+    folder: 'unity',
+    name: 'Unity',
+    autodetect: {
+      // Unity 导出物的标志：`UnityPlayer.dll`（Windows）/ `unity default resources`（包里）。
+      //
+      // ⚠️ **绝不能加 `extensions: ['exe']`**：那会让任何 .exe 都命中 Unity 打分，
+      // 于是「一个我们完全不认识的 exe 游戏」被判成 Unity，报「需要 Windows 兼容层」——
+      // 而它也许其实是我们认识的某个引擎（这里只是恰好强命中没匹配上）。
+      // 实测抓到：加了 exe 规则后，一个只有 readme 的空目录都被判成 Unity。
+      // 判据必须**只靠专有文件名**，宁可认不出（返回 null）也不能乱认。
+      files: ['UnityPlayer.dll', 'unity default resources'],
+      all_required: false
+    },
+    reasonKey: 'detectOnly.unity'
+  },
+  {
+    folder: 'rpgbakin',
+    name: 'RPG Developer Bakin',
+    autodetect: {
+      // Bakin 官方 FAQ 明写只有 Windows 版（rpgbakin.com/en/faq）。
+      // 导出物是 `BakinGame.exe` + `BakinData` 之类，**没有跨平台资源**。
+      // 同样不加 exe 扩展名（理由见 unity 的注释）。
+      files: ['BakinData'],
+      all_required: false
+    },
+    reasonKey: 'detectOnly.rpgbakin'
+  },
+  {
+    folder: 'wolfrpg',
+    name: 'WOLF RPG Editor (ウディタ)',
+    autodetect: {
+      // ウディタ 的标志是 `Data.wolf`（打包数据）。
+      //
+      // ⚠️ **不放 `Game.exe`**：那是几乎所有 RPG Maker 系引擎都有的一般文件名，
+      // 放进来会让「随便一个 Game.exe」蹭到分。只认 `Data.wolf` 这种专有产物。
+      files: ['Data.wolf'],
+      all_required: false
+    },
+    reasonKey: 'detectOnly.wolfrpg'
+  }
+]
+
 /**
- * ★ 四个引擎的唯一来源（D60）。
+ * ★ 四个引擎的唯一来源（D60）→ **现在是六个**（M6：加 tyrano / kirikiri）。
  *
- * 顺序 = 引擎页的展示顺序。**只有这四个**：ruffle（Flash）/ wine（Windows）/ macos
- * 不在这里，也不是被 `.filter()` 挡掉的 —— 它们在这个代码库里没有任何定义、
+ * 顺序 = 引擎页的展示顺序。**只有这六个**：ruffle（Flash）/ wine（Windows）/ macos
+ * 不在**这里**，也不是被 `.filter()` 挡掉的 —— 它们在这个代码库里没有任何定义、
  * 没有任何下载地址、没有任何名字（有测试扫描源码钉死这条）。
+ *
+ * ⚠️ 新增引擎时**必须同步**：`launchers/binary-paths.ts` 的 `ENGINE_IDS` 与
+ * `launchers/index.ts` 的 `LAUNCHABLE_ENGINES`（两处都有测试核对同源）。
  */
-export const ENGINES: readonly EngineDefinition[] = [nwjs, mkxpz, easyrpg, renpy]
+export const ENGINES: readonly EngineDefinition[] = [nwjs, mkxpz, easyrpg, renpy, tyrano, kirikiri]
 
 /** 引擎目录名集合（`gameEngine` 的合法值）。 */
 export const ENGINE_FOLDERS: readonly string[] = ENGINES.map((engine) => engine.folder)

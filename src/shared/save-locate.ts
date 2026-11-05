@@ -319,6 +319,22 @@ export function detectSaveLocation(input: {
       return detectEasyrpg(input.saveDir ?? null)
     case 'renpy':
       return detectRenpy(input.external ?? null)
+    // ===== M6 新增的两个引擎：**故意返回 null（不知道在哪）** =====
+    //
+    // 它们的存档位置**还没在真机上实测**，而猜错的代价比「不知道」大得多：
+    //   · 「不知道」（location: null）→ UI 显示 unknown 态，用户去排障，可接受
+    //   · 「猜错了」→ 用户看到的是**别人的残留档**或一个空目录，
+    //     以为自己的存档丢了 —— 这正是 D85 那个 bug 的同一个坑
+    //
+    // 所以这里**宁可留空也不猜**。等有真实游戏样本实测出确切位置后再补：
+    //   · TyranoScript：待查（可能 <游戏>/save/，也可能走 Web Storage）
+    //   · 吉里吉里（KAG）：业界惯例是 <游戏>/savedata/，但**未经实测不写进来**
+    //
+    // ⚠️ 别把这两条换成「按后缀猜」（比如「哪个目录有 .sav 就用哪个」）——
+    //    那正是 save-locate.ts 开头反对的做法（作者塞进包里的残留档会骗过它）。
+    case 'tyrano':
+    case 'kirikiri':
+      return null
     default:
       return null
   }

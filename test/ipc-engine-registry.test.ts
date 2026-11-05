@@ -18,7 +18,7 @@ import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 import { createCoreHost } from '../src/main/core-host'
 import { readLocalManifests } from '../src/main/engines/manifest'
 import { createDispatcher } from '../src/main/ipc'
-import { ENGINES, buildManifest, findEngine } from '../src/main/engines/registry'
+import { ENGINES, ENGINE_FOLDERS, buildManifest, findEngine } from '../src/main/engines/registry'
 
 let dataDir: string
 let host: ReturnType<typeof createCoreHost>
@@ -60,8 +60,9 @@ describe('S2 remoteModules：只有 registry 里那四个，且不发网络请�
     const modules = (await makeDispatcher().dispatch('remoteModules', {}, new AbortController().signal)) as Array<
       Record<string, unknown>
     >
-    expect(modules.length).toBe(4)
-    expect(modules.map((module) => module.folder)).toEqual(['nwjs', 'mkxpz', 'easyrpg', 'renpy'])
+        // 原有四个的顺序不许变（D60）；新引擎只能往后追加
+    expect(modules.map((module) => module.folder).slice(0, 4)).toEqual(["nwjs","mkxpz","easyrpg","renpy"])
+    expect(modules.map((module) => module.folder)).toEqual(ENGINE_FOLDERS.map(String))
     expect(fetchCalls, 'remoteModules 一个网络请求都不该发').toBe(0)
   })
 

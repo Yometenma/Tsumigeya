@@ -85,8 +85,10 @@ describe('S4 可安装列表：天生只有四个引擎', () => {
       new AbortController().signal
     )) as Array<{ folder: string; name: string; version: string }>
 
-    expect(modules.map((module) => module.folder)).toEqual(['nwjs', 'mkxpz', 'easyrpg', 'renpy'])
-    expect(modules).toHaveLength(4)
+        // 原有四个的顺序不许变（D60）；新引擎只能往后追加
+    expect(modules.map((module) => module.folder).slice(0, 4)).toEqual(["nwjs","mkxpz","easyrpg","renpy"])
+    // 整体必须与 ENGINE_FOLDERS 同源（渲染层不许维护第二份名单）
+    expect(modules.map((module) => module.folder)).toEqual(ENGINE_FOLDERS.map(String))
     for (const module of modules) {
       expect(findEngine(module.folder)?.name).toBe(module.name)
       expect(findEngine(module.folder)?.version).toBe(module.version)
@@ -160,8 +162,14 @@ describe('S4 引擎页：不再有「不支持启动」的标灰与提示', () =
     const locales = JSON.parse(fs.readFileSync(LOCALES, 'utf8')) as Record<string, Record<string, unknown>>
     const errors = locales.error as Record<string, unknown>
     expect(errors).toHaveProperty('engineNotLaunchable')
-    // 而且这句话里要列出支持的引擎
-    expect(String(errors.engineNotLaunchable)).toContain('NW.js')
+
+    const message = String(errors.engineNotLaunchable)
+    // ⚠️ M6 起引擎名单**不再写死在文案里**，改用 `{supported}` 占位符，
+    //    由主进程用 ENGINES 拼出来（原本文案写死四个引擎名，加引擎时必漏一处）。
+    expect(message).toContain('{supported}')
+    expect(message).toContain('{engine}')
+    // 而且必须解释「为什么」—— 用户看到「不支持」需要知道这需要 Windows 兼容层
+    expect(message).toContain('CrossOver')
   })
 
   test('引擎页不再展示「远程列表来自本地缓存」（没有远端也就没有缓存）', () => {
@@ -372,6 +380,7 @@ describe('S4 端到端：旧引擎残留时的表现', () => {
   })
 
   test('四个引擎的 folder 集合就是 ENGINE_FOLDERS（渲染层与主进程只有这一个来源）', () => {
-    expect(ENGINE_FOLDERS).toEqual(['nwjs', 'mkxpz', 'easyrpg', 'renpy'])
+        // 原有四个的顺序不许变（D60）；新引擎只能往后追加
+    expect(ENGINE_FOLDERS.slice(0, 4)).toEqual(["nwjs","mkxpz","easyrpg","renpy"])
   })
 })

@@ -278,3 +278,39 @@ describe('边界：不是目录的条目不该被当成目录', () => {
     ).toBeNull()
   })
 })
+
+// ===== M6：两个新引擎的存档位置「还没实测」=====
+//
+// 这一组测的不是"功能"，而是**「不知道」必须诚实地表达为 null**。
+//
+// 意义在于：`location: null`（不知道在哪）与 `empty: true`（还没存档）在
+// `saveSectionView()` 里导向两种完全不同的 UI。前者是故障（用户该去排障），
+// 后者是正常（该继续玩到存档点）。糊成一句不会崩溃，只会让用户永远查不出问题。
+describe('M6 新引擎：没实测过存档位置时返回 null（不猜）', () => {
+  test('tyrano → null（位置待实测）', () => {
+    // 即使传进去一堆看起来像存档的目录快照，也不许猜
+    const loc = detectSaveLocation({
+      engine: 'tyrano',
+      gameSave: dir(['file1.rpgsave']),
+      root: dir(['save']),
+      saveDir: dir(['file1.rpgsave'])
+    })
+    expect(loc).toBeNull()
+  })
+
+  test('kirikiri → null（位置待实测）', () => {
+    // 业界惯例是 savedata/，但**未经实测不写死** —— 猜错会让用户看到别人的档
+    const loc = detectSaveLocation({
+      engine: 'kirikiri',
+      gameSave: dir(['syodata']),
+      saveDir: dir(['savedata']),
+      root: dir([])
+    })
+    expect(loc).toBeNull()
+  })
+
+  test('这两个引擎不抛错（不会因为新 case 让调用方崩）', () => {
+    expect(() => detectSaveLocation({ engine: 'tyrano' })).not.toThrow()
+    expect(() => detectSaveLocation({ engine: 'kirikiri' })).not.toThrow()
+  })
+})

@@ -86,7 +86,10 @@ describe('S4：四个支持的引擎被正确路由', () => {
     const ctx = makeCtx({ gameArgs: { version: 'v0.106.1' } })
     const binaries = LAUNCHABLE_ENGINES.map((engine) => buildLaunchPlan(engine, ctx)?.binary)
     // 四个引擎的 binary 互不相同
-    expect(new Set(binaries).size).toBe(4)
+    // 每个引擎的 binary 互不相同 —— 但 tyrano **有意复用 nwjs 的运行时**，
+    // 所以「数量相等」不再是判据；改成「除 tyrano 外互不相同」。
+    const distinct = new Set(binaries.filter((_, i) => LAUNCHABLE_ENGINES[i] !== 'tyrano'))
+    expect(distinct.size).toBe(binaries.length - 1)
   })
 })
 
@@ -136,8 +139,9 @@ describe('S4：引擎名的归一化（脏值不该被误判成未知）', () =>
 })
 
 describe('S4：LAUNCHABLE_ENGINES 是唯一名单', () => {
-  test('正好四个，顺序与我们声明的一致', () => {
-    expect([...LAUNCHABLE_ENGINES]).toEqual(['nwjs', 'mkxpz', 'easyrpg', 'renpy'])
+  test('原有四个在前，顺序与我们声明的一致（M6 起允许追加）', () => {
+        // 原有四个的顺序不许变（D60）；新引擎只能往后追加
+    expect([...LAUNCHABLE_ENGINES].slice(0, 4)).toEqual(["nwjs","mkxpz","easyrpg","renpy"])
   })
 
   test('名单里的每一个都真的能分发（没有「声明支持但没实现」）', () => {

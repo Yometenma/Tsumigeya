@@ -58,9 +58,9 @@
 
 | 模块 | 文件 | 关键点 |
 |---|---|---|
-| 引擎定义 | `src/main/engines/registry.ts` | **4 个引擎唯一来源**（D60）；ruffle/wine/macos 不存在 |
+| 引擎定义 | `src/main/engines/registry.ts` | **6 个引擎唯一来源**（D60/D87）；另有 `DETECT_ONLY`（**只认不跑**，D88）；ruffle/wine/macos 不存在 |
 | 引擎清单读写 | `src/main/engines/manifest.ts` | 读本地 manifest + 合并 gameArgs 缺省值（M4.2） |
-| 引擎识别 | `src/main/engines/detect.ts` | 打分算法**只有一份**；R1：`.app` 包与子目录 |
+| 引擎识别 | `src/main/engines/detect.ts` | 打分算法**只有一份**；R1：`.app` 包与子目录；`definitionsWithDetectOnly()` 合并两张表 |
 | 版本比较 | `src/main/engines/semver.ts` | `compareVersions` / `hasUpdate`（M4.2 自实现） |
 | 装/更新/卸载 | `src/main/engines/install.ts` | `updateEngine` 保住多版本依赖（D66） |
 | 启动 | `src/main/launchers/` | `buildLaunchPlan` + `spawn.ts`（唯一起进程处，D55 三件套） |
@@ -321,6 +321,10 @@ Vue → Pinia → api/client → preload(window.tsumi.invoke)
 | D84 | **分类是库页的筛选器，不是侧边栏的导航**（推翻了 S7 的初始位置） | S7 把分类放侧边栏的出发点是「它是用户的整理体系」（与标签相对的语义区分），那个语义仍然成立。但**位置错了**：侧边栏同时装着「游戏库 / 引擎 / 设置」三个真正的导航，分类越攒越多，导航就被挤得越远；更糟的是在引擎页/设置页时，那一长条分类**点不动也没意义**。用户 2026-11-05 实测后拍板改成库页顶部的横向 chip 栏。判据落在 `shared/sidebar-collapse.ts` 的 `SIDEBAR_PARTS`（**不许再有 'categories'**，有反向单测）+ `test/category-filter-bar.test.ts`（库页必须渲染、App.vue 不许残留分类代码） |
 | D85 | **nwjs 的存档位置由 `package.json` 的 `main` 决定，不是「哪个目录有 `.rpgsave`」**：MV 的 `StorageManager.localFileDirectoryPath()` = `dirname(process.mainModule.filename) + '/save'`。`main` 在 `www/index.html` → **`www/save/`**；`main` 就在根 → `save/`。读不到 `main` 才退回目录启发式 | ⚠️ **这条是本鱼判断错误的更正**：2026-11-05 在 Mac 真机上看到 `苍蓝星/save/` 里有 5 个 `.rpgsave`，就断言「MV 也可能把存档放根 `save/`」并据此加了判据。用户一句「我没存过档」把整条推翻。核实事实：`save/` 目录**出生时间 = 解压那一刻**、里面文件内容时间戳是 **2022 年**、`debug.log` 是 **2021 年**、而 `main = www/index.html` —— 那几个是**作者打包时塞进去的残留档**，游戏运行时根本不读它们。后果比"列表为空"更糟：用户真存了档（写到 `www/save`）之后，详情页仍显示别人的 2022 年旧档，他自己的一个都看不到 —— **空列表只是没有，错的列表会让人以为档丢了**。判据 `test/save-locate.test.ts` 4 条（残留档不被误认 / main 在根时确实在 `save/` / 读不到 main 退回启发式 / www/save 不存在也指向它） |
 | D86 | **存档目录里的点开头文件一律跳过**（`isNoiseFile`：`._*` AppleDouble / `.DS_Store`），列表与导出**两条路径都要过** | 逻辑上"整个目录都打"（D81），但那只针对**用户看得见的存档数据**。`._file1.rpgsave` 是 macOS 资源分叉镜像（163B），跨机后是垃圾且让包体积翻倍。⚠️ 更关键的是**列表这条**：MV 的槽判据是「任意 `.rpgsave` 但排除 config/global」，所以 `._file1.rpgsave` **会命中槽判据** → 用户看到一个点「在访达中显示」指向 163 字节元数据的幽灵存档。判据**只排除"点开头"**，绝不按扩展名白名单收窄（那正是 D81 拒绝的做法）。实测记录：Mac 的 `readdirSync` 不返回 `._*`（那些是 tar 传输途中生成的），所以这是**防御性**判据，不是当前故障 |
+| D87 | **引擎从 4 个扩到 6 个**（加 `tyrano` / `kirikiri`），判据是**「资源跨平台 + 有 macOS 运行时」**，**不是「DLsite 标没标支持 Mac」** | ⚠️ **这条修正了本鱼的一个判断错误**：最初拿「DLsite 标注支持 Mac 的 695 部里只有 19 部 RPG Maker」当论据，得出「加引擎救不了 Mac」。**整个反了**——这个启动器的存在理由恰恰是「游戏只发 Windows 包、我们用自己装的 mac 运行时跑它的资源」（用户当场指出：他自己在玩的几个没标 mac 的游戏就是这么跑的）。正确判据只有一个：资源是不是数据（跨平台）+ 有没有能自己实现的运行时。**跟作者发不发 mac 版完全无关**。据此：TyranoScript（HTML5，复用 NW.js，**零新运行时**）、吉里吉里（`data.xp3` + krkrsdl2）满足；Unity（IL2CPP 平台锁定）、RPGBakin（官方 FAQ 明写只有 Windows 版）、ウディタ（Windows 专属）不满足 |
+| D88 | **识别范围 > 启动范围**：新增 `DETECT_ONLY`（Unity / RPGBakin / ウディタ），**只认不跑**；可启动引擎与仅识别引擎**分两张表** | 用户要「范围尽可能广」，但**「认得出」和「跑得动」是两件事**。塞进 `ENGINES` → 引擎页列成「可安装」但下载地址空 → 点了必失败（D60 的「不起作用的开关」教训）。完全不认 → 用户得到「未知引擎」，而「未知」与「需要 Windows 兼容层」是**两种不同处境**（前者像程序坏了）。所以合并参与打分、但仅识别条目**一律 `all_required:false`（走打分）**，靠 `pickBestRule` 的「强命中永远压过打分命中」保证**绝不抢走可启动引擎的游戏**（`test/detect-priority.test.ts` 12 条钉死）。⚠️ **实测抓到过一个真 bug**：给 Unity 规则加了 `extensions:['exe']` 后，一个只有 readme 的空目录都被判成 Unity —— 判据只能靠**专有文件名**，宁可认不出也不能乱认 |
+| D89 | **不做 Windows 兼容层（Wine/CrossOver 一类）**，跑不动的引擎交给用户在 CrossOver 里跑（用户 2026-11-05 拍板：「windows兼容的游戏有CrossOver嘛，不做也可以的」） | 技术诱因之外还有**政策风险**：Apple 官方文档（support.apple.com/en-us/102527，2026-09）写明 Rosetta 只在 **macOS 27 及更早**可用，**macOS 28 起只对「某些老旧无人维护的游戏」保留**；而 CrossOver 官方承认「其他基于 Wine 的模拟器**一直依赖 Rosetta 2** 跑 x86 Windows 游戏」。DLsite 的 Windows 游戏几乎全是 x86/32 位 → 那条路铺在一条会变短的政策上。**但识别仍要做**（D88）：用户添加这类游戏时应得到「需要 Windows 兼容层，Tsumigeya 不代跑」，而不是「未知引擎」 |
+| D90 | 吉里吉里**标「实验性」**（`EngineDefinition.experimental`），但它**照常可用**；不因上游声明做任何检测或拒绝 | 运行时 krkrsdl2（MIT，有 macOS 预编译包）官方页**明写**：「Running **unmodified commercial games** using this project is **not supported**. Please use Wine or GameNative instead.」（krkrsdl2.github.io/krkrsdl2/en/）。用户 2026-11-05 接受这条限制，所以我们做它。但那是**上游的立场声明，不是技术闸门**（它并不会真的拦住）——所以我们**如实转达**（引擎页标「实验性」+ 卡片写明是上游限制），**不替用户挡**，也不让用户以为这是本项目官方承诺的能力 |
 
 ## 里程碑路线图
 

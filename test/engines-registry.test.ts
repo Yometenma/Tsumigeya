@@ -25,8 +25,10 @@ import type { EngineDefinition } from '../src/main/engines/types'
 // ===== 1. 清点：只有四个 =====
 
 describe('S1 清点：ENGINES 只有四个引擎', () => {
-  test('恰好四个，顺序与展示顺序一致', () => {
-    expect(ENGINES.map((engine) => engine.folder)).toEqual(['nwjs', 'mkxpz', 'easyrpg', 'renpy'])
+  test('原有四个在前，顺序与展示顺序一致（M6 起允许追加）', () => {
+    // 顺序是契约：引擎页按这个顺序展示。新引擎只能**往后追加**，不能插队。
+        // 原有四个的顺序不许变（D60）；新引擎只能往后追加
+    expect(ENGINES.map((engine) => engine.folder).slice(0, 4)).toEqual(["nwjs","mkxpz","easyrpg","renpy"])
   })
 
   test('ENGINE_FOLDERS 与 ENGINES 同源（不多不少）', () => {
@@ -103,7 +105,10 @@ describe('S1 参数：精简后的数量与必须保留项', () => {
     nwjs: 2,
     mkxpz: 12,
     easyrpg: 8,
-    renpy: 2
+    renpy: 2,
+    // M6 新增：Tyrano 几乎无用户可调参数（只有 fullscreen），吉里吉里同理
+    tyrano: 1,
+    kirikiri: 1
   }
 
   const REQUIRED: Record<string, string[]> = {
@@ -111,7 +116,9 @@ describe('S1 参数：精简后的数量与必须保留项', () => {
     nwjs: ['version'],
     mkxpz: ['rgssVersion', 'fullscreen', 'vsync', 'RTP', 'preloadScript', 'midiSoundFont'],
     easyrpg: ['encoding', 'language', 'rtpPath', 'soundfontPath', 'vsync', 'showFps'],
-    renpy: ['savedir', 'command']
+    renpy: ['savedir', 'command'],
+    tyrano: ['fullscreen'],
+    kirikiri: ['fullscreen']
   }
 
   test('每个引擎的参数数量不超上限（防「59 个全倒回来」）', () => {

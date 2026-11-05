@@ -293,6 +293,38 @@ export function ruleFromManifestAutodetect(autodetect: ManifestAutodetect | unde
   return rule
 }
 
+/**
+ * 把「可启动引擎」与「只识别引擎」两套规则合成一张表（M6）。
+ *
+ * ===== 为什么识别范围要比启动范围大 =====
+ *
+ * 用户要的是「范围尽可能广」。而**「认得出」和「跑得动」是两件事**：
+ * Unity / RPG Bakin / ウディタ 的游戏我们认得出，但它们只有 Windows 二进制，
+ * 本版本不做兼容层（用户拍板交给 CrossOver）。
+ *
+ * 若完全不认它们，用户添加这类游戏会得到「未知引擎」——而「未知引擎」和
+ * 「这需要 Windows 兼容层」是**两种完全不同的处境**：前者像是本程序坏了。
+ * 若把它们塞进 `ENGINES`，引擎页会把它们列成「可安装」但下载地址是空的 → 点了必失败。
+ *
+ * 所以：识别表 = 两者合并，**但顺序与强度不同**：
+ *
+ *   ① **可启动引擎排在前**，且它们多数是强命中（`all_required: true`）
+ *   ② 仅识别引擎排在后，且**一律走打分**（`all_required: false`）
+ *
+ * `pickBestRule` 的规则 ③「强命中永远压过打分命中」，于是**仅识别规则绝不可能
+ * 抢走一个本该属于可启动引擎的游戏**。这条有单测钉着（`detect-priority.test.ts`）。
+ *
+ * ⚠️ 若某天有人给 `DETECT_ONLY` 的条目写了 `all_required: true`，这条保证就破了
+ * （两个强命中撞车时按「文件命中数多」排序，可能选错）。**别那么写。**
+ */
+export function definitionsWithDetectOnly(
+  engines: ReadonlyArray<{ folder: string; autodetect: { extensions?: string[]; files?: string[]; all_required?: boolean } }>,
+  detectOnly: ReadonlyArray<{ folder: string; autodetect: { extensions?: string[]; files?: string[]; all_required?: boolean } }>
+): Record<string, DetectRule> {
+  // 顺序有意义：可启动的先进表（对称时它先被选上），仅识别的后进
+  return { ...definitionsFromRegistry(engines), ...definitionsFromRegistry(detectOnly) }
+}
+
 // ===== 已装引擎目录 =====
 
 /**

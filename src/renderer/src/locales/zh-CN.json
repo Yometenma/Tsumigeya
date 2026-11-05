@@ -222,6 +222,12 @@
     "renpy": {
       "savedir": "存档目录",
       "command": "额外命令"
+    },
+    "tyrano": {
+      "fullscreen": "全屏启动"
+    },
+    "kirikiri": {
+      "fullscreen": "全屏启动"
     }
   },
   "engines": {
@@ -263,8 +269,12 @@
       "nwjs": "运行 RPG Maker MV / MZ（NW.js）游戏。",
       "mkxpz": "运行 RPG Maker XP / VX / VX Ace 游戏。",
       "easyrpg": "运行 RPG Maker 2000 / 2003 游戏。",
-      "renpy": "运行 Ren'Py 视觉小说。"
-    }
+      "renpy": "运行 Ren'Py 视觉小说。",
+      "tyrano": "运行 TyranoScript（ティラノスクリプト）HTML5 游戏。复用 NW.js 运行时，无需单独下载。",
+      "kirikiri": "运行吉里吉里（KiriKiri）游戏。⚠️ 实验性：所用运行时 krkrsdl2 的作者声明不承诺商用游戏兼容。"
+    },
+    "experimental": "实验性",
+    "noDependencies": "无需单独下载"
   },
   "versions": {
     "title": "{key} 版本管理",
@@ -462,7 +472,7 @@
     "download": "下载失败：{status}",
     "gameNotFound": "找不到该游戏",
     "gamePath": "游戏路径已不存在：{path}",
-    "engineNotLaunchable": "引擎「{engine}」暂不支持启动。本版本支持：NW.js（MV/MZ）、mkxp-z（XP/VX/VX Ace）、EasyRPG（2000/2003）、Ren'Py。",
+    "engineNotLaunchable": "引擎「{engine}」暂不支持启动。本版本支持：{supported}。\n需要 Windows 兼容层（如 CrossOver）的游戏，Tsumigeya 不代跑。",
     "launchFailed": "启动失败：{reason}",
     "launchPrepareFailed": "启动前置失败（{engine}）：{reason}",
     "cleanup": "引擎清理失败，游戏记录已保留",

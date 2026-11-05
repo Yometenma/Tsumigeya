@@ -26,8 +26,13 @@ import path from 'node:path'
 /** 模块目录的子目录名（与上游 module.js 的约定一致）。 */
 export const MODULES_DIR_NAME = 'modules'
 
-/** 引擎文件夹名（= manifest / 数据目录里的目录名，也是 gameEngine 字段的值）。 */
-export const ENGINE_IDS = ['nwjs', 'mkxpz', 'easyrpg', 'renpy'] as const
+/**
+ * 引擎文件夹名（= manifest / 数据目录里的目录名，也是 gameEngine 字段的值）。
+ *
+ * ⚠️ **M6 加到六个**：tyrano 复用 nwjs 的二进制（没有自己的），kirikiri 用 krkrsdl2。
+ * 顺序与 `engines/registry.ts` 的 `ENGINES` **必须同源** —— 有测试逐个核对。
+ */
+export const ENGINE_IDS = ['nwjs', 'mkxpz', 'easyrpg', 'renpy', 'tyrano', 'kirikiri'] as const
 
 export type EngineId = (typeof ENGINE_IDS)[number]
 
@@ -195,6 +200,43 @@ export function renpyInstalledSdks(dataDir: string): string[] {
   } catch {
     return []
   }
+}
+
+// ===== 吉里吉里（krkrsdl2）=====
+
+/** 吉里吉里的依赖根目录（`deps/krkrsdl2`）。 */
+export function kirikiriDepsDir(dataDir: string): string {
+  return depsDir(dataDir, 'kirikiri', 'krkrsdl2')
+}
+
+/**
+ * 找 krkrsdl2 的可执行文件。
+ *
+ * 上游发布两种包（见 https://krkrsdl2.github.io/krkrsdl2/en/ 的 Download 段）：
+ *   1. `krkrsdl2-macos.zip`            → 裸二进制 `krkrsdl2`（解压后可能直放）
+ *   2. `krkrsdl2-macos-appbundle.zip`  → `krkrsdl2.app/Contents/MacOS/krkrsdl2`
+ *
+ * **两种布局都认**（与 `renpyBinaryPath` 同一个取向：不猜、不造路径，找不到返回 null）。
+ * 顺序上先找 app bundle（它是更完整的形态，带 Info.plist），再退回裸二进制。
+ *
+ * ⚠️ 裸二进制没有 `.app` 外壳时**没有 Info.plist**，macOS 上双击/某些环境下
+ * 会被 Gatekeeper 拦；但我们是 `spawn` 直接执行的，只要执行位在就能跑。
+ * 执行位由安装链路保证（zip 解压会保留权限位）。
+ */
+export function krkrsdl2BinaryPath(dataDir: string): string | null {
+  const root = kirikiriDepsDir(dataDir)
+  const bundled = path.join(root, 'krkrsdl2.app', 'Contents', 'MacOS', 'krkrsdl2')
+  if (isFileSafe(bundled)) return bundled
+
+  const direct = path.join(root, 'krkrsdl2')
+  if (isFileSafe(direct)) return direct
+
+  return null
+}
+
+/** krkrsdl2 的「本该在那」的路径（找不到时用它拼可读错误，让用户知道装到哪了）。 */
+export function krkrsdl2ExpectedPath(dataDir: string): string {
+  return path.join(kirikiriDepsDir(dataDir), 'krkrsdl2.app', 'Contents', 'MacOS', 'krkrsdl2')
 }
 
 /** 存在且是文件（不抛）。 */

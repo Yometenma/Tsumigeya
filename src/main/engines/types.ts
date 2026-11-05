@@ -138,4 +138,15 @@ export interface EngineDefinition {
   gameArgs: Record<string, EngineArgSpec>
   /** 二进制与资源下载地址。 */
   dependencies: Record<string, EngineDependency>
+  /**
+   * 标记为「实验性」引擎（引擎页显示提示，卡片上说明风险）。
+   *
+   * 目前只有吉里吉里用：它的 macOS 运行时 krkrsdl2 **技术上能跑**，但上游
+   * 明确表态「不支援运行未修改的商用游戏」（见 docs/引擎范围扩展-实施方案.md §3.2）。
+   * 我们把它做进来（用户拍板接受），但不能让用户以为它是「官方承诺支持」的，
+   * 所以显示层必须给出这句警告。
+   *
+   * ⚠️ 缺省（undefined）就是「正常引擎」，绝大多数引擎都是这样。
+   */
+  experimental?: true
 }
