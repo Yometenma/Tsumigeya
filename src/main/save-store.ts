@@ -75,15 +75,56 @@ export interface SaveListing {
 
 // ===== 目录快照 =====
 
-/** 读一个目录的条目；不存在 / 不是目录 / 无权限 → 一律 null。 */
-function snapshot(dirPath: string): DirSnapshot | null {
+/** `snapshot()` 的结果：目录状态 + 条目（拿不到条目时 why 说明原因）。 */
+type SnapshotResult =
+  | { kind: 'dir'; entries: string[] }
+  /** 路径不存在（ENOENT）—— **正常**：用户还没存过档，游戏还没创建那个目录。 */
+  | { kind: 'missing' }
+  /** 不是目录（存在但是个文件）—— 异常但罕见。 */
+  | { kind: 'not-dir' }
+  /** 存在但这个进程读不了（EACCES / EPERM / 磁盘错误）—— **故障**。 */
+  | { kind: 'unreadable' }
+
+/**
+ * 读一个目录的状态与条目。
+ *
+ * ⚠️ **必须把「不存在」与「读不了」分开**（2026-11-05 真机审查时发现）：
+ * 返回 `DirSnapshot | null` 那种写法把两件事糊成一个 null，于是下游
+ * 「目录里没有存档」和「目录访问不了」也糊成一句。
+ *
+ *   · ENOENT（不存在）→ `missing` = **正常**（用户还没玩到存档点，目录还没建）
+ *   · EACCES/EPERM/其他 → `unreadable` = **故障**（该去查权限）
+ *
+ * 实测例子：`苍蓝星` 的 `www/save/` 压根没创建（用户没存过档）。
+ * 如果把它报成「目录读不进来，请检查权限」，用户会去查一个根本不存在的权限问题。
+ */
+function inspectDir(dirPath: string): SnapshotResult {
   try {
     const st = fs.statSync(dirPath)
-    if (!st.isDirectory()) return { entries: [], isDir: false }
-    return { entries: fs.readdirSync(dirPath), isDir: true }
-  } catch {
-    return null
+    if (!st.isDirectory()) return { kind: 'not-dir' }
+    try {
+      return { kind: 'dir', entries: fs.readdirSync(dirPath) }
+    } catch {
+      // stat 成功但 readdir 失败 → 权限/磁盘问题（**故障**，不是"不存在"）
+      return { kind: 'unreadable' }
+    }
+  } catch (error) {
+    // ENOENT = 不存在（正常）；其余（EACCES/EPERM/ELOOP…）一律当读不了
+    const code = (error as NodeJS.ErrnoException)?.code
+    if (code === 'ENOENT' || code === 'ENOTDIR') return { kind: 'missing' }
+    return { kind: 'unreadable' }
   }
+}
+
+/**
+ * 旧形状的适配器：把 `SnapshotResult` 收成 `DirSnapshot | null`
+ * （探测判据 `detectSaveLocation` 只关心"能不能拿到条目"，它的契约没变）。
+ */
+function snapshot(dirPath: string): DirSnapshot | null {
+  const result = inspectDir(dirPath)
+  if (result.kind === 'dir') return { entries: result.entries, isDir: true }
+  if (result.kind === 'not-dir') return { entries: [], isDir: false }
+  return null
 }
 
 /**
@@ -148,21 +189,25 @@ export function listSaves(gamePath: string, engine: string, gameTitle = ''): Sav
     return { location: null, dir: null, slots: [], configs: [], empty: false }
   }
 
-  const snap = snapshot(dir)
-  if (!snap?.isDir) {
-    // ===== ⚠️ 「位置知道，但目录读不到」必须与「不知道在哪」分开 =====
+  // 位置判出来了，现在看那个目录的实际状态。**三种情况必须分开**：
+  const state = inspectDir(dir)
+  if (state.kind === 'missing' || state.kind === 'not-dir') {
+    // ① 目录还不存在（或路径指向一个文件）—— **正常**：用户还没玩到存档点。
+    //    这必须落在 `empty`（"玩到存档点后会出现"），**不能**报成读不了。
+    //    真机例子：苍蓝星的 www/save/ 压根没创建（用户没存过档）。
+    return {
+      location: { layout: location.layout, relativeDir: location.relativeDir },
+      dir,
+      slots: [],
+      configs: [],
+      empty: true
+    }
+  }
+  if (state.kind === 'unreadable') {
+    // ② 目录在，但读不进来（权限 / 磁盘错误）—— **故障**，与"不知道在哪"分开。
     //
-    // 这里能走到，说明 detectSaveLocation **已经成功**判出了位置（location 非 null、
-    // dir 也拼出来了），只是那个目录现在读不到 —— 权限不足 / 被删 / 磁盘错误。
-    //
-    // 原来的写法返回 `location: null`，注释还写着「当作没找到」。那就是把两件事糊了：
-    //   · `location: null` 的 UI 文案是「没找到这个游戏的存档位置（引擎还没识别出来）」
-    //     → 把用户引向**完全错误的方向**：引擎识别得好好的，目录就是访问不了。
-    //   · 而这正是 `shared/save-view.ts` 开篇明确反对的：「三种没有存档被糊成一句，
-    //     用户就永远查不出问题」。
-    //
-    // 现在返回 `location` **照实给出**（位置是知道的），slots/configs 空，
-    // 并带上 `dirReadable: false` 让 UI 说第四种话：「位置找到了（就在这），但读不进」。
+    // 原来的写法把它返回 `location: null`，而那个 UI 文案是
+    // 「没找到存档位置（引擎还没识别出来）」→ 把用户引向完全错误的方向。
     return {
       location: { layout: location.layout, relativeDir: location.relativeDir },
       dir,
@@ -173,7 +218,7 @@ export function listSaves(gamePath: string, engine: string, gameTitle = ''): Sav
     }
   }
 
-  const { slots, configs } = classifySaveEntries(snap.entries, location)
+  const { slots, configs } = classifySaveEntries(state.entries, location)
   return {
     // ⚠️ **绝不能直接返回 location**：它含 `slotPattern` / `configPattern`
     //   （正则或函数），过 contextBridge 会抛
