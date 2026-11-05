@@ -495,7 +495,17 @@
     "repairUnknownFix": "不认识的修复动作：{action}",
     "dependencyMissing": "引擎「{module}」的清单里没有依赖「{dependency}」，无法补装",
     "gameNotRunning": "这个游戏没有在运行。",
-    "gameAlreadyRunning": "这个游戏已经在运行了。"
+    "gameAlreadyRunning": "这个游戏已经在运行了。",
+    "saveExportRunning": "请先关闭游戏再导出存档：游戏运行中存档可能正在写，导出的包会是半截文件，带着它换机会丢档。",
+    "saveImportRunning": "请先关闭游戏再导入存档：运行中覆盖同名文件会让两边都不是完整的一档。",
+    "saveExportNoLocation": "找不到这个游戏的存档位置，无法导出或导入。",
+    "saveArchiveEmpty": "这个游戏还没有存档，没有可导出的内容。",
+    "saveArchiveMissing": "没有指定要导入的存档包。",
+    "saveArchiveNotZip": "这个文件不是有效的 zip 包。",
+    "saveArchiveNoManifest": "这个压缩包里没有 manifest.json —— 它不是 Tsumigeya 导出的存档包。",
+    "saveArchiveBadManifest": "存档包的 manifest.json 格式不对。",
+    "saveArchiveVerifyFailed": "存档包校验失败：{detail}（包可能被改过或在传输中损坏）。",
+    "saveBackupFailed": "无法备份现有的「{name}」，已中止导入（没有退路就不写）。"
   },
   "detail": {
     "backToLibrary": "返回游戏库",
@@ -536,6 +546,11 @@
     "savesEmpty": "存档会出现在这里：玩到能存档的地方就有了",
     "savesConfigsTitle": "配置文件（不是存档，删掉会丢设置）",
     "revealInFinder": "在访达中显示",
+    "exportSaves": "导出存档",
+    "importSaves": "导入存档",
+    "exportDone": "已导出：{name}",
+    "importDone": "已导入 {count} 个存档文件",
+    "importDoneWithBackup": "已导入，原有 {count} 个文件已备份为 .tsumigeya-bak",
     "workType": {
       "ACN": "动作",
       "QIZ": "问答",

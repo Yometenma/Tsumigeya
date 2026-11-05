@@ -48,6 +48,14 @@ import {
 } from '../shared/categories'
 import { diagnoseGame, type Diagnosis, type DiagnosisFix } from './diagnose'
 import { listSaves } from './save-store'
+import { exportBlocked } from '../shared/save-archive'
+import {
+  defaultExportDir,
+  exportSaveArchive,
+  importSaveArchive,
+  type ExportSaveResult,
+  type ImportSaveResult
+} from './save-archive-io'
 import { DATA_DIR_NOTICE_KEY, DATA_DIR_NOTICE_TEXT, shouldShowDataDirNotice } from './data-dir-notice'
 import { createPlayStatsStore, sessionSeconds, type PlayStatsStore } from './play-stats'
 import { engineDefinitionsFromRegistry } from './core-host'
@@ -1611,6 +1619,104 @@ export function createDispatcher(deps: IpcDeps): Dispatcher {
         if (!game) throw failure('error.gameNotFound', 'Game not found', { id: String(params.id ?? '') })
         return listSaves(game.gamePath ?? '', game.gameEngine ?? '', game.gameTitle ?? '')
       }
+      /**
+       * M4 S3：把一个游戏的**整个存档目录**导出成 zip。
+       *
+       * 拒绝路径（各有独立的 i18n 键，UI 才能给不同的下一步动作）：
+       * ① 游戏运行中                → error.saveExportRunning（"请先关闭游戏"）
+       * ② 不知道存档在哪            → error.saveExportNoLocation（"去查目录"）
+       * ③ 位置在但还没存档          → error.saveArchiveEmpty（"没什么可导的"）
+       * ④ 写盘失败                  → 原样抛（带 detail，用户可去查磁盘）
+       *
+       * ===== 为什么这条**必须**进队列 =====
+       *
+       * 它**写盘**（用户选一个目录，我们把 zip 写进去），并且可能很大
+       * （整个存档目录，含插件写的 .autobak/.rpgsave）。这与
+       * `listSaves` 的"只读、绕队列"是两回事 —— 准入标准的第一条就是
+       * "只读，或只写自己的独立目录"：这里写的是**用户选的任意目录**，
+       * 不在我们自己的目录范围里，必须与其它写操作排队。
+       */
+      case 'exportSaves': {
+        const id = String(params.id ?? '')
+        const game = host.store.loadGames()[id]
+        if (!game) throw failure('error.gameNotFound', 'Game not found', { id })
+
+        // ① 运行中禁止导出（S3 的硬要求，判据在 shared/save-archive.ts）
+        const running = registry.has(id)
+        // 找一次位置（与 listSaves 同一份判据，不另写一份）
+        const listing = listSaves(game.gamePath ?? '', game.gameEngine ?? '', game.gameTitle ?? '')
+        const blocked = exportBlocked({
+          running,
+          hasLocation: listing.location !== null,
+          empty: listing.empty
+        })
+        if (blocked) {
+          const key =
+            blocked.kind === 'running'
+              ? 'error.saveExportRunning'
+              : blocked.kind === 'noLocation'
+                ? 'error.saveExportNoLocation'
+                : 'error.saveArchiveEmpty'
+          throw failure(key, `Cannot export saves: ${blocked.kind}`, { title: game.gameTitle ?? '' })
+        }
+        if (!listing.dir || !listing.location) {
+          // 上面的 blocked 已经覆盖了这些分支；这里只是让 TS 收窄
+          throw failure('error.saveExportNoLocation', 'Cannot export saves: no location')
+        }
+
+        // ② 让用户选输出目录（导出就该带走 → 默认落到下载目录）
+        const chosen =
+          typeof params.outDir === 'string' && params.outDir
+            ? params.outDir
+            : await (deps.pickPath ?? (async () => null))('folder')
+        const outDir = chosen ?? defaultExportDir()
+
+        // ③ 打包**整个存档目录**（不是只打槽）
+        const result: ExportSaveResult = exportSaveArchive({
+          sourceDir: listing.dir,
+          gameTitle: game.gameTitle ?? '',
+          engine: game.gameEngine ?? '',
+          layout: listing.location.layout,
+          outDir
+        })
+        return result
+      }
+
+      /**
+       * M4 S4：把一个导出包还原到探测到的存档目录。
+       *
+       * 顺序**不能变**（见 save-archive-io 的 importSaveArchive 头注释）：
+       *   ① 校验 sha256（不过就一个字节都不写）
+       *   ② 备份现有文件（`<原名>.tsumigeya-bak`）
+       *   ③ 才写
+       *
+       * 运行中同样禁止导入：游戏正在写存档，我们同时覆盖同名文件，
+       * 结果是**两边都不是完整的一档**。
+       */
+      case 'importSaves': {
+        const id = String(params.id ?? '')
+        const game = host.store.loadGames()[id]
+        if (!game) throw failure('error.gameNotFound', 'Game not found', { id })
+        if (registry.has(id)) {
+          throw failure('error.saveImportRunning', 'Cannot import saves while running', {
+            title: game.gameTitle ?? ''
+          })
+        }
+        const file = String(params.file ?? '')
+        if (!file) throw failure('error.saveArchiveMissing', 'Missing archive path')
+
+        const listing = listSaves(game.gamePath ?? '', game.gameEngine ?? '', game.gameTitle ?? '')
+        if (listing.location === null || !listing.dir) {
+          // 导入要有个明确的目标目录：没探测到就不能导（不猜位置）
+          throw failure('error.saveExportNoLocation', 'Cannot locate save directory', {
+            title: game.gameTitle ?? ''
+          })
+        }
+
+        const result: ImportSaveResult = importSaveArchive({ file, targetDir: listing.dir })
+        return result
+      }
+
       /**
        * M3：一键修复（§4.1）。**进队列**——可能触发 244MB 的 RTP 下载，
        * 与 installVersion / moduleTask 是同一类长任务（也复用同一套事务回滚）。

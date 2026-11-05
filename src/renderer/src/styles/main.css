@@ -1155,6 +1155,11 @@ a {
   margin-top: 8px;
 }
 
+/* 「导出按钮为什么是灰的」的说明：禁用状态必须有解释，否则用户以为坏了 */
+.save-blocked-hint {
+  margin-top: 4px;
+}
+
 /* ===== M5.0 S9（U9）：设置页分组 ===== */
 
 .settings-group {

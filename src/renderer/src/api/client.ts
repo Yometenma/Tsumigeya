@@ -227,6 +227,47 @@ export interface SaveListing {
   empty: boolean
 }
 
+/**
+ * M4 S3：导出包里的 manifest.json（与 `shared/save-archive.ts` 的 `SaveManifest` 同构）。
+ *
+ * 这里**刻意重声明一份**而不是 import：`shared/save-archive.ts` 是纯函数无依赖，
+ * 其实可以 import。但渲染层与主进程的契约要能独立演进（主进程换了实现，
+ * 渲染层不该被拖着走）—— 与 `SaveListing` / `SaveSlot` 同一取向。
+ * 字段漂移由 `test/save-archive.test.ts` 与 IPC 层测试一起钉住。
+ */
+export interface SaveManifestInfo {
+  gameTitle: string
+  engine: string
+  layout: string
+  exportedAt: string
+  files: Array<{ name: string; sha256: string }>
+}
+
+/** M4 S3：导出成功的结果。 */
+export interface ExportSaveResult {
+  /** 写出的 zip 绝对路径（UI 可以「在访达中显示」）。 */
+  file: string
+  /** 打包进去的文件数（含配置与插件文件）。 */
+  fileCount: number
+  /** zip 的字节数。 */
+  size: number
+  manifest: SaveManifestInfo
+}
+
+/** M4 S4：导入成功的结果。 */
+export interface ImportSaveResult {
+  /** 还原到的目录。 */
+  dir: string
+  /** 写回的文件数。 */
+  fileCount: number
+  /**
+   * 备份出来的文件名（`<原名>.tsumigeya-bak`）。
+   * **空数组表示目标目录里原本没有同名文件**（全新存档，没覆盖任何东西）。
+   */
+  backups: string[]
+  manifest: SaveManifestInfo
+}
+
 /** M5.0 S7：一条分类定义。 */
 export interface CategoryDef {
   /** 显示名（用户建的）。 */
@@ -622,6 +663,26 @@ export const api = {
    * 渲染层用 `shared/save-view.ts` 的 `saveSectionView` 把它们分成三种形态（有单测）。
    */
   listSaves: (gameId: string): Promise<SaveListing> => bridge().invoke<SaveListing>('listSaves', { id: gameId }),
+
+  /**
+   * M4 S3：把整个存档目录导出成 zip（**进队列**——写盘，且写的是用户选的任意目录）。
+   *
+   * 运行中会被拒（`error.saveExportRunning`）：运行中的存档可能正在写，
+   * 导出的包会是半截文件 —— 用户带着它换机会丢档。这不是可跳过的警告。
+   *
+   * `outDir` 不传就让主进程弹目录选择框（默认落在下载目录）。
+   */
+  exportSaves: (gameId: string, outDir?: string): Promise<ExportSaveResult> =>
+    bridge().invoke<ExportSaveResult>('exportSaves', { id: gameId, outDir }),
+
+  /**
+   * M4 S4：把一个 Tsumigeya 导出的包还原到探测到的存档目录（**进队列**）。
+   *
+   * 主进程的顺序是「先校验 sha256 → 再备份现有文件 → 才写」，
+   * 校验不过一个字节都不写；运行中同样拒绝（`error.saveImportRunning`）。
+   */
+  importSaves: (gameId: string, file: string): Promise<ImportSaveResult> =>
+    bridge().invoke<ImportSaveResult>('importSaves', { id: gameId, file }),
 
   /**
    * M3.5：正在运行的游戏（只读内存里的进程表、绕队列、毫秒级）。

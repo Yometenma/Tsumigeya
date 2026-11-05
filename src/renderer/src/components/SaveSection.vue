@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// M4 S2：详情页「存档」区块。
+// M4 S2/S3/S4：详情页「存档」区块（列表 + 导出 + 导入）。
 //
 // ===== 这个组件唯一要防的错误：把两个"没有存档"糊成一句 =====
 //
@@ -9,6 +9,14 @@
 //
 // ⇒ 三种分支的判据全在 `shared/save-view.ts`（纯函数，18 条单测），
 //    这里只负责把结构画出来 + 查 i18n 键。**绝不在这里判**（写在组件里就没法单测）。
+//
+// ===== 导出/导入的两条硬约束（方案 §3.3/§3.4）=====
+//
+// ① **运行中禁止导出**：游戏正在写存档时读出来的是半截文件，用户带着它换机会丢档。
+//    主进程会再拦一次（`error.saveExportRunning`），这里只是"提前把按钮禁掉"，
+//    让用户不必点了才知道。**主进程那一层不能省**（UI 拦不住所有路径）。
+// ② **导入先备份**：主进程的顺序是「校验 sha256 → 备份 → 才写」，
+//    全部在 `save-archive-io.ts` 里（有 26 条读写真盘的测试）。
 //
 // ===== 三条已知坑（AGENTS.md）=====
 // ① 模板禁 TS 类型断言、禁复杂表达式（都会白屏）→ 判据都在 script 里
@@ -37,6 +45,9 @@ const { t } = useI18n()
 const listing = ref<SaveListing | null>(null)
 /** 是否正在拉（首次进入 + 手动刷新）。 */
 const loading = ref(false)
+/** 导出/导入进行中（按钮 loading + 防重复点击）。 */
+const exporting = ref(false)
+const importing = ref(false)
 
 // ===== 派生数据 =====
 
@@ -48,15 +59,38 @@ const unknownText = computed(() => t('detail.savesUnknown'))
 const emptyText = computed(() => t('detail.savesEmpty'))
 
 /** 有位置时才有「在访达中显示」可点（没位置就无从打开）。 */
-const canReveal = computed(() => {
-  const kind = view.value.kind
-  return kind !== 'unknown'
-})
+const canReveal = computed(() => view.value.kind !== 'unknown')
 
 /** 当前目录（unknown 时是空串，不给按钮传 undefined）。 */
 const dirPath = computed(() => {
   const kind = view.value
   return kind.kind === 'unknown' ? '' : kind.dir
+})
+
+/**
+ * 能不能导出。
+ *
+ * 三个条件缺一不可：
+ *   · 有存档可导（`list` 形态；unknown/empty 时导出只会得到一个空包）
+ *   · 游戏没在跑（**硬约束**：运行中的存档可能正在写 → 包是半截的）
+ *   · 当前没有正在进行的导入/导出
+ */
+const canExport = computed(() => {
+  if (props.running) return false
+  if (exporting.value || importing.value) return false
+  return view.value.kind === 'list'
+})
+
+/**
+ * 「按钮为什么是灰的」的说明。
+ *
+ * 一个禁用按钮没有任何说明，用户只会觉得坏了 —— 所以必须能解释。
+ */
+const exportBlockedHint = computed(() => {
+  if (view.value.kind === 'empty') return t('detail.savesEmpty')
+  if (view.value.kind === 'unknown') return t('detail.savesUnknown')
+  if (props.running) return t('error.saveExportRunning')
+  return ''
 })
 
 /**
@@ -102,6 +136,63 @@ async function revealInFinder(): Promise<void> {
   } catch (error) {
     ElMessage.error(translateError(error, t))
   }
+}
+
+/**
+ * 导出（S3）。
+ *
+ * 主进程会弹目录选择框（默认落在下载目录），所以这里不自己选路径 ——
+ * 选目录的逻辑（含"不选就用默认"）只有主进程那一份。
+ *
+ * 失败时的文案来自 `translateError`：运行中那条是 `error.saveExportRunning`
+ * （"请先关闭游戏"），与"没存档"/"找不到位置"分开 —— 用户能据此知道该做什么。
+ */
+async function exportSaves(): Promise<void> {
+  if (!canExport.value || exporting.value) return
+  exporting.value = true
+  try {
+    const result = await api.exportSaves(props.gameId)
+    // 用「已导出：<文件名>」而不是「导出成功」：用户要知道包在哪、叫什么
+    ElMessage.success(t('detail.exportDone', { name: filenameOf(result.file) }))
+    await load()
+  } catch (error) {
+    ElMessage.error(translateError(error, t))
+  } finally {
+    exporting.value = false
+  }
+}
+
+/**
+ * 导入（S4）。
+ *
+ * 只接受我们导出的包（主进程按 manifest 的 sha256 逐文件校验）。
+ * 导入后重拉列表：用户要立刻看到"档回来了"。
+ */
+async function importSaves(): Promise<void> {
+  if (importing.value || props.running) return
+  const file = await api.pickPath('file')
+  if (!file) return
+  importing.value = true
+  try {
+    const result = await api.importSaves(props.gameId, file)
+    // 有备份就把备份数说出来 —— 用户要知道"我的旧档还在，去哪找"
+    ElMessage.success(
+      result.backups.length > 0
+        ? t('detail.importDoneWithBackup', { count: result.backups.length })
+        : t('detail.importDone', { count: result.fileCount })
+    )
+    await load()
+  } catch (error) {
+    ElMessage.error(translateError(error, t))
+  } finally {
+    importing.value = false
+  }
+}
+
+/** 绝对路径 → 文件名（提示里只显示名字，全路径太长）。 */
+function filenameOf(file: string): string {
+  const parts = file.split(/[/\\]/)
+  return parts[parts.length - 1] || file
 }
 
 // 换游戏就重拉（否则上一个游戏的存档列表会残留）。
@@ -152,6 +243,15 @@ watch(() => props.gameId, () => void load(), { immediate: true })
         <template #icon><AppIcon name="RefreshCw" :size="16" :stroke-width="1.75" /></template>
         {{ t('common.refresh') }}
       </el-button>
+      <el-button text size="small" :loading="exporting" :disabled="!canExport" @click="exportSaves">
+        {{ t('detail.exportSaves') }}
+      </el-button>
+      <el-button text size="small" :loading="importing" :disabled="running" @click="importSaves">
+        {{ t('detail.importSaves') }}
+      </el-button>
     </div>
+
+    <!-- 按钮为什么是灰的：一个禁用按钮没有任何说明，用户只会觉得坏了 -->
+    <div v-if="exportBlockedHint" class="hint save-blocked-hint">{{ exportBlockedHint }}</div>
   </section>
 </template>

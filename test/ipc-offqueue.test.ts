@@ -44,7 +44,11 @@ describe('OFF_QUEUE_METHODS', () => {
       // M3：一键修复可能触发 244MB 的 RTP 下载 → 必须排队
       'repairGame',
       // M3.5：关闭游戏要**等**进程退出（SIGTERM→5s→SIGKILL，D52），必须排队
-      'stopGame'
+      'stopGame',
+      // M4 S3/S4：导出写 zip 到**用户选的任意目录**（不是我们自己的目录），
+      // 导入会覆盖游戏目录里的存档文件 → 两条都写盘，必须排队。
+      'exportSaves',
+      'importSaves'
     ]) {
       expect(OFF_QUEUE_METHODS.has(method)).toBe(false)
     }
@@ -61,6 +65,7 @@ describe('OFF_QUEUE_METHODS', () => {
     // 这条断言的作用：有人偷偷加了命令却没更新这里 → 测试红了，逼他重新想一遍准入标准。
     // 8（M2/M2.5）→ 9（M3 的 diagnoseGame）→ 10（M3.5 的 runningGames）
     // → 11（M4 的 listSaves：纯本地 readdirSync + statSync，毫秒级）
+    // 11 保持不变：M4 S3/S4 的 exportSaves / importSaves **写盘**，不进这份名单。
     expect(OFF_QUEUE_METHODS.size).toBe(11)
   })
 })
