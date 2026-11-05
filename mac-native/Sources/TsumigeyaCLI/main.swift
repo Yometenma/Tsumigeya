@@ -30,6 +30,8 @@ func main() {
         exit(f == 0 ? 0 : 1)
     case "deps":
         exit(runDependencyCheck() == 0 ? 0 : 1)
+    case "saves":
+        exit(runSaveCheck() == 0 ? 0 : 1)
     case "install":
         // install <引擎> [--dry-run]
         let rest = Array(args.dropFirst())

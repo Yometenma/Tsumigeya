@@ -76,6 +76,7 @@ public enum SaveLocate {
     ///   - root: `<游戏>` 本身
     ///   - external: Ren'Py 专用的外部目录
     ///   - packageMain: `<游戏>/package.json` 的 `main` 字段（原样，**只有 nwjs 用得到**）
+    ///   - gameRoot: 游戏根目录（**用于在目标目录还不存在时拼出完整路径**）
     ///
     /// - Returns: 存档位置；`nil` = **不知道在哪**（与「还没存过档」是两件事，见 D85）
     public static func detect(
@@ -86,13 +87,19 @@ public enum SaveLocate {
         saveDir: DirSnapshot? = nil,
         root: DirSnapshot? = nil,
         external: DirSnapshot? = nil,
-        packageMain: String? = nil
+        packageMain: String? = nil,
+        gameRoot: String? = nil
     ) -> SaveLocation? {
         switch engine {
         case "nwjs":
-            return detectNwjs(wwwSave: wwwSave, gameSave: gameSave, packageMain: packageMain)
+            // ⚠️ 传 gameRoot：目标目录可能还不存在（用户没存过档），
+            //    那时也要拼出**完整路径**（不能是「www/save」这种相对的）。
+            return detectNwjs(
+                wwwSave: wwwSave, gameSave: gameSave,
+                packageMain: packageMain, gameRoot: gameRoot)
         case "mkxpz":
-            return detectRgss(root: root, data: dataDir, saveDir: saveDir)
+            return detectRgss(
+                root: root, data: dataDir, saveDir: saveDir, gameRoot: gameRoot)
         case "easyrpg":
             return detectEasyrpg(saveDir)
         case "renpy":
@@ -130,7 +137,8 @@ public enum SaveLocate {
     /// ⚠️ **为什么读不到 main 才退回启发式**：读不到是「这个包不规范」，
     ///    那时只能猜；而能读到 `main` 时**必须听它的**（它是运行时的真实依据）。
     private static func detectNwjs(
-        wwwSave: DirSnapshot?, gameSave: DirSnapshot?, packageMain: String?
+        wwwSave: DirSnapshot?, gameSave: DirSnapshot?,
+        packageMain: String?, gameRoot: String?
     ) -> SaveLocation? {
         // ① main 在 www/ 下 → www/save
         if let main = packageMain, !main.isEmpty {
@@ -139,12 +147,22 @@ public enum SaveLocate {
             if inWww {
                 // ⚠️ **即使 www/save 还不存在也要指向它** ——
                 //    那是「用户还没存过档」（empty），不是「不知道在哪」（unknown）。
-                //    两者必须分开（D85 的同一条原则）。
-                let dir = wwwSave?.path ?? "www/save"
+                //
+                // ⚠️ **但路径必须是完整的绝对路径**。
+                //    本鱼第一版在目录不存在时返回了字面量 `"www/save"` ——
+                //    CLI 实测抓到了（id=1 显示 `目录: www/save`）。
+                //    相对路径对 UI 没用：「在访达中显示」会指向一个未知位置。
+                //
+                //    所以有快照就用它；没有就用 `gameRoot` 拼出来。
+                let dir = wwwSave?.path
+                    ?? gameRoot.map { ($0 as NSString).appendingPathComponent("www/save") }
+                guard let dir else { return nil }
                 return SaveLocation(dir: dir)
             }
             // main 在根 → save/
-            let dir = gameSave?.path ?? "save"
+            let dir = gameSave?.path
+                ?? gameRoot.map { ($0 as NSString).appendingPathComponent("save") }
+            guard let dir else { return nil }
             return SaveLocation(dir: dir)
         }
 
@@ -163,9 +181,27 @@ public enum SaveLocate {
     ///   ② 根目录 `Save*`
     ///   ③ `Save/` 子目录
     ///
-    /// ⚠️ 三条都要查：不同的游戏打包习惯不同，只查一种会漏。
+    /// ⚠️ **三条都要查**：不同的游戏打包习惯不同，只查一种会漏。
+    ///
+    /// ⚠️ **三个都没有时返回 nil，不猜**。
+    ///
+    ///    本鱼实测（2026-11-06）：用户的 `傭兵の冒険` 三个都没有
+    ///    （根目录只有 Audio/Data/Fonts/Game.exe/...，`Data/` 里全是 `.rvdata2` 素材，
+    ///    **没有 Save 开头的**）。这说明**用户还没在那个游戏里存过档**。
+    ///
+    ///    那时该返回什么？
+    ///      · 返回 nil（不知道在哪）→ UI 显示 unknown → 用户以为程序找不到档
+    ///      · 猜一个 `Save/` → 但那个目录不存在，且不知道游戏会不会自己创建
+    ///
+    ///    本鱼选 **nil**，理由是「宁可说不知道，也不要指向一个可能永远不会被创建的目录」
+    ///    —— 后者会让用户点「在访达中显示」时找不到东西，比 unknown 更困惑。
+    ///
+    ///    ⚠️ 但如果将来实测出「MKXP-Z 的存档一定落在某个固定位置」（比如
+    ///    它会自己在根目录创建 `Save1.rvdata2`），那时这里就该改成
+    ///    「固定指向那个位置」——**改了要留实测记录**。
     private static func detectRgss(
-        root: DirSnapshot?, data: DirSnapshot?, saveDir: DirSnapshot?
+        root: DirSnapshot?, data: DirSnapshot?, saveDir: DirSnapshot?,
+        gameRoot: String?
     ) -> SaveLocation? {
         // ① Data 里有存档文件
         if let data, data.entries.contains(where: { isSaveFile($0) }) {
@@ -177,6 +213,9 @@ public enum SaveLocate {
         }
         // ③ Save/ 子目录（存在就用，哪怕空 —— 那是「还没存档」）
         if let saveDir { return SaveLocation(dir: saveDir.path) }
+
+        // ④ 都没有 → nil（见上）
+        _ = gameRoot
         return nil
     }
 

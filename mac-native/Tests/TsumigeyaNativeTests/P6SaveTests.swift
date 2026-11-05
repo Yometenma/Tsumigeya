@@ -64,14 +64,29 @@ struct NwjsSaveLocateTests {
     /// 那是「用户还没存过档」—— 与「不知道在哪」是两件事。
     @Test("www/save 不存在也指向它")
     func pointsToMissingWwwSave() {
-        let loc = SaveLocate.detect(
+        // ① 目录成立（但空）
+        let loc1 = SaveLocate.detect(
             engine: "nwjs",
-            wwwSave: nil,     // 目录还没创建
-            gameSave: nil,
+            wwwSave: DirSnapshot(path: "/games/苍蓝星/www/save", entries: []),
             packageMain: "www/index.html"
         )
-        #expect(loc != nil, "读得到 main 就必须给出位置（哪怕是空的）")
-        #expect(loc?.dir.contains("www") == true)
+        #expect(loc1?.dir == "/games/苍蓝星/www/save")
+
+        // ② 目录**根本不存在** → 用 gameRoot 拼出完整路径
+        //
+        // ⚠️ 这条是本鱼改了语义才补上的：第一版在目录不存在时返回字面量
+        //    `"www/save"`（相对路径），CLI 实测抓到了（id=1 显示 `目录: www/save`）。
+        //    相对路径对 UI 没用 ——「在访达中显示」会指向未知位置。
+        let loc2 = SaveLocate.detect(
+            engine: "nwjs",
+            wwwSave: nil,
+            gameSave: nil,
+            packageMain: "www/index.html",
+            gameRoot: "/games/苍蓝星"
+        )
+        #expect(loc2 != nil, "读得到 main 就必须给出位置（哪怕是空的）")
+        #expect(loc2?.dir == "/games/苍蓝星/www/save", "必须是绝对路径")
+        #expect(loc2?.dir.hasPrefix("/") == true, "以 / 开头")
     }
 
     /// 读不到 `main` 才退回启发式（哪个目录存在就用哪个）。

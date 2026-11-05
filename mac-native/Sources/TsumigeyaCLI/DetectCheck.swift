@@ -101,6 +101,75 @@ func runInstalledCheck() -> Int {
     return 0
 }
 
+// MARK: - 存档探测检查（P6）
+
+/// 用真实游戏验证存档位置探测。
+///
+/// ⚠️ 这是 P6 的唯一硬判据：单测证明「布局 A 指向 B」，
+///    但只有真实游戏能证明「它真的能找到用户的存档」。
+func runSaveCheck() -> Int {
+    let dir = DataDir.resolve()
+    print("")
+    print("=== 存档位置探测（真实游戏）===")
+
+    let url = URL(fileURLWithPath: dir.path).appendingPathComponent("games.json")
+    guard case .loaded(let map) = JSONStore.load(GameMap.self, from: url) else {
+        print("❌ 读不到 games.json")
+        return 1
+    }
+
+    var failures = 0
+    for game in map.ordered {
+        print("")
+        print("id=\(game.id)  \(game.gameTitle)  [\(game.gameEngine)]")
+
+        let listing = SaveStore.list(gamePath: game.gamePath, engine: game.gameEngine)
+
+        guard let saveDir = listing.dir else {
+            // ⚠️ **`nil` 有两种含义，文案必须分开**（本鱼第一版混成一句，
+            //    CLI 实测时把「这个游戏还没存过档」误报成「引擎未实现」）：
+            //
+            //    · 引擎的**探测逻辑没实现**（tyrano / kirikiri）→ 那是我们的活没做完
+            //    · 引擎**实现了但找不到位置**（mkxpz 的三个约定目录都不存在）
+            //      → 那是「这个游戏还没存过档」，**正常状态**
+            //
+            //    两者对用户的含义完全不同，混成一句会让人以为程序坏了。
+            let engineImplemented = ["nwjs", "mkxpz", "easyrpg", "renpy"]
+                .contains(game.gameEngine)
+            if engineImplemented {
+                print("  ⚠️ 找不到存档位置 —— 三个约定目录都不存在")
+                print("     （很可能是还没在这个游戏里存过档；这不影响启动）")
+            } else {
+                print("  ⚠️ 这个引擎的存档位置**还没实现**（已知缺口，不是 bug）")
+            }
+            continue
+        }
+
+        print("  目录: \(saveDir)")
+        let exists = FileManager.default.fileExists(atPath: saveDir)
+        print("  存在: \(exists ? "是" : "**否**（用户还没存过档 —— 正常）")")
+
+        if listing.items.isEmpty {
+            print("  条目: 0（空）")
+        } else {
+            let slots = listing.items.filter { !$0.isConfig }
+            let configs = listing.items.filter { $0.isConfig }
+            print("  条目: \(slots.count) 个槽 + \(configs.count) 个配置")
+            for item in listing.items.prefix(6) {
+                let size = item.size.map { "\($0) B" } ?? "?"
+                print("    \(item.isConfig ? "[配置] " : "")\(item.name)  \(size)")
+            }
+            if listing.items.count > 6 {
+                print("    …还有 \(listing.items.count - 6) 个")
+            }
+        }
+    }
+
+    print("")
+    if failures == 0 { print("✅ 存档探测完成") } else { print("❌ \(failures) 项有问题") }
+    return failures == 0 ? 0 : 1
+}
+
 // MARK: - 依赖解析检查（P3）
 
 /// 检查每个已装引擎的 manifest 依赖表能不能正确解析。
