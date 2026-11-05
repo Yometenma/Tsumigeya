@@ -13,6 +13,19 @@
 // 这是全清单里**成本最低的一档**，原因就在这：不是「再加一个引擎」，
 // 而是「让已有的 nwjs 支持多一种游戏目录」。
 //
+// ===== ⚠️ M6.5 核实后的真实覆盖范围（别以为都支持了）=====
+//
+//   ① **v4 未打包**：`tyrano/` + `data/` 在游戏根 → ✅ 支持（直接 `nw <目录>`）
+//   ② **v5 unpacked**：`resources/app/{index.html,main.js,tyrano/,data/}`
+//      → ⚠️ **半支持**：用户选 `resources/app/index.html` 时，import-target 上退一层
+//        能看到 `tyrano/` + `data/` → 认得出 → 但**启动要喂 `resources/app/` 而不是游戏根**。
+//        下面 `resolveNwRoot` 就是干这个的。
+//   ③ **v5 packed**：`resources/app.asar` → ❌ **不支持**。
+//      NW.js **原生不支持 asar**（nwjs/nw.js issue #5500 至今是 feature request，未实现）；
+//      且目录里只有 asar 时**没有可靠判据**区分「Tyrano 的 asar」与「别的 Electron 应用的 asar」
+//      → 乱认会把所有 Electron 程序都当 Tyrano（D88 那个 Unity 误判的同一教训）。
+//      **宁可漏认，不可乱认。**
+//
 // ===== 三种 Windows 分发包形态（复述 registry 的注释，这里只讲启动侧的处置）=====
 //
 //   ① 未打包目录：`tyranoscript.exe` + `game/`（内含 index.html、tyrano/、data/）
@@ -67,11 +80,52 @@ export function canLaunchAsNwDirectory(folder: string): boolean {
 }
 
 /**
+ * 从「游戏目录」解析出**真正该喂给 nw 的那个目录**（M6.5：支持 Tyrano v5 unpacked 形态）。
+ *
+ * ===== 为什么需要这一层 =====
+ *
+ * Tyrano v4 的网页根 = 游戏目录本身（`tyrano/` + `data/` 直接在根）。
+ * 但 **v5 是 Electron**，网页根在 `resources/app/` 里：
+ *
+ *     <游戏目录>/resources/app/{index.html,main.js,tyrano/,data/}
+ *
+ * 直接把游戏目录喂给 `nw` 会找不到 `package.json` → **启动失败**，
+ * 而游戏本身完全正常。所以这里要往下探一层。
+ *
+ * ===== 判据顺序（先浅后深，命中即止）=====
+ *
+ *   ① 根上有 `package.json` → 就是它（v4 或已解包的 v5）
+ *   ② 根上有 `resources/app/package.json` 或 `resources/app/index.html`
+ *      → 用 `resources/app`（**v5 unpacked**）
+ *   ③ 都不满足 → 返回 null（调用方报可读失败，**不猜**）
+ *
+ * ⚠️ 为什么第 ② 条也认 `index.html`：v5 的 `resources/app/` 里不一定有 package.json
+ * （Electron 的入口写在 asar 内的 package.json 或主进程脚本里）。有 index.html 就够了 ——
+ * `nw` 对缺 main 的 package.json 会退回 index.html；而这里连 package.json 都可能没有，
+ * 所以**上层还要补一个 package.json**（见 `ensureShim`）。
+ */
+export function resolveNwRoot(folder: string): string | null {
+  // ① 根上直接可跑
+  if (canLaunchAsNwDirectory(folder)) return folder
+
+  // ② v5 unpacked：resources/app/
+  const appDir = path.join(folder, 'resources', 'app')
+  if (canLaunchAsNwDirectory(appDir)) return appDir
+  try {
+    if (fs.statSync(path.join(appDir, 'index.html')).isFile()) return appDir
+  } catch {
+    // 没有就落到下面
+  }
+
+  return null
+}
+
+/**
  * TyranoScript 的启动方案。
  *
  * **与 nwjsPlan 的关系**：binary / args 的拼法与它一致（同一个运行时、同样的参数顺序），
- * 但多了一道 `canLaunchAsNwDirectory` 前置检查，并把 `engine` 标成 `tyrano`
- * （诊断、日志、进程表都靠这个字段区分「这是哪种游戏」）。
+ * 但多了一道 `resolveNwRoot` 解析（支持 v5 的 `resources/app/` 布局），
+ * 并把 `engine` 标成 `tyrano`（诊断、日志、进程表都靠这个字段区分「这是哪种游戏」）。
  *
  * 找不到 NW.js 运行时时的处置与 nwjsPlan 相同：**仍然返回 plan**（binary 指向「本该在那」），
  * 由 ipc 层统一按「可执行文件不存在」处理，这样错误文案能带上期望路径。
@@ -82,7 +136,12 @@ export function canLaunchAsNwDirectory(folder: string): boolean {
 export function tyranoPlan(ctx: LaunchContext): LaunchPlan {
   const version = String(ctx.gameArgs.version ?? '')
   const binary = nwjsBinaryPath(ctx.dataDir, version, ctx.arch)
-  const args: string[] = [ctx.folder]
+
+  // 解析出真正该给 nw 的目录；解析不出来就退回游戏目录本身
+  // （让 NW.js 自己报它的错，比我们猜一个路径更准确）
+  const nwRoot = resolveNwRoot(ctx.folder) ?? ctx.folder
+
+  const args: string[] = [nwRoot]
   if (ctx.gameArgs.fullscreen === true) {
     args.push('--start-fullscreen')
   }
@@ -106,6 +165,8 @@ export function tyranoMissingManifestMessage(folder: string): string {
   return (
     `这个 TyranoScript 分发包缺少 package.json，暂时无法自动启动：${folder}\n` +
     '（这是游戏分发包的形态问题，与引擎是否安装无关。' +
-    '若是单文件 exe 形态的分发包，本版本暂不支持。）'
+    '本版本支持 v4 未打包目录与 v5 的 resources/app/ 目录；' +
+    '不支持单文件 exe 形态，也不支持只有 resources/app.asar 的形态 —— ' +
+    'NW.js 原生不支持 asar，这是运行时的限制。）'
   )
 }

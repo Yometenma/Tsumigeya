@@ -445,8 +445,28 @@ const tyrano: EngineDefinition = {
   description: 'A module to launch TyranoScript HTML5 games with NW.js.',
   descriptionKey: 'engines.desc.tyrano',
   autodetect: {
-    // 用两个**目录**当判据，不用 index.html —— 后者在任何网页项目里都有，会误伤。
-    // 强命中（all_required），与 nwjs 的 `nw.dll + package.json` 互不重叠。
+    // ===== Tyrano 的三种分发包形态（2026-11-05 核实，M6.5 补 v5）=====
+    //
+    //   ① **v4 未打包**：`tyrano/` + `data/` 直接在游戏根            ✅ 强命中（下面这条）
+    //   ② **v5 unpacked**：`resources/app/{index.html,main.js,tyrano/,data/}`  ⚠️ 见下
+    //   ③ **v5 packed**：`resources/app.asar`                       ❌ **认不出**（见下）
+    //
+    // ① 用两个**目录**当判据，不用 index.html —— 后者在任何网页项目里都有，会误伤。
+    //    强命中（all_required），与 nwjs 的 `nw.dll + package.json` 互不重叠。
+    //
+    // ⚠️ **② 为什么不能写进规则**：`resources/app/` 这个路径在很多 Electron 应用里都有，
+    //    写成 `files: ['resources/app']` 会把任何 Electron 打包的程序都认成 Tyrano。
+    //    → 形态 ② 的识别**靠 `import-target.ts` 的上退兜底**：用户选 `resources/app/index.html`
+    //      时，退到 `resources/app/` 那一层能看到 `tyrano/` + `data/`（上退上限 2 层，刚好够）。
+    //      **这条依赖用户选对文件，脆弱但不会误认** —— 这是有意的取舍：宁可漏认，不可乱认
+    //      （D88 那条 Unity 误判的同一个教训）。
+    //
+    // ⚠️ **③ 为什么认不出**：NW.js **原生不支持 asar**（nwjs/nw.js issue #5500 至今是
+    //    feature request，未实现）。而 Electron 才能读 asar。
+    //    → 形态 ③ **本版本不支持**，且**没有可靠的本地判据**认它
+    //      （asar 是个魔数文件，但目录里只有它时无法区分「这是 Tyrano 的 asar」
+    //      和「别的 Electron 应用的 asar」）。
+    //    → 如实记为「未支持」，不写一个会误伤所有 Electron 应用的规则。
     files: ['tyrano', 'data'],
     all_required: true
   },

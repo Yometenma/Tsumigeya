@@ -10,7 +10,12 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, test } from 'vitest'
 import { nwjsBinaryPath } from '../src/main/launchers/binary-paths'
-import { canLaunchAsNwDirectory, tyranoMissingManifestMessage, tyranoPlan } from '../src/main/launchers/tyrano'
+import {
+  canLaunchAsNwDirectory,
+  resolveNwRoot,
+  tyranoMissingManifestMessage,
+  tyranoPlan
+} from '../src/main/launchers/tyrano'
 import type { LaunchContext } from '../src/main/launchers/types'
 
 const created: string[] = []
@@ -94,5 +99,118 @@ describe('tyranoMissingManifestMessage：把「为什么」说清楚', () => {
 
   test('明确说出「与引擎是否安装无关」（否则用户会去重装引擎）', () => {
     expect(tyranoMissingManifestMessage('/games/demo')).toContain('与引擎是否安装无关')
+  })
+})
+
+// ===== M6.5：Tyrano v5（Electron）形态 =====
+//
+// v5 的网页根不在游戏目录，而在 `resources/app/` 里：
+//   <游戏目录>/resources/app/{index.html,main.js,tyrano/,data/}
+//
+// 直接把游戏目录喂给 `nw` 会找不到入口 → 启动失败，而游戏本身完全正常。
+// 这一组测 `resolveNwRoot` 能正确往下探一层。
+//
+// 同时测**不支持的两种形态**（单文件 exe、只有 asar）——
+// 它们必须**明确失败**，而不是悄悄当成 v4 去启动一个空目录。
+describe('M6.5 resolveNwRoot：v5 的 resources/app/ 布局', () => {
+  test('v4：根上有 package.json → 就用根', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tsmg-tyrano-'))
+    created.push(dir)
+    fs.writeFileSync(path.join(dir, 'package.json'), '{}')
+    expect(resolveNwRoot(dir)).toBe(dir)
+  })
+
+  test('v5 unpacked：resources/app 下有 package.json → 用它', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tsmg-tyrano-'))
+    created.push(dir)
+    const app = path.join(dir, 'resources', 'app')
+    fs.mkdirSync(app, { recursive: true })
+    fs.writeFileSync(path.join(app, 'package.json'), '{}')
+    expect(resolveNwRoot(dir)).toBe(app)
+  })
+
+  test('v5 unpacked：resources/app 下只有 index.html（无 package.json）→ 仍用 app 目录', () => {
+    // v5 的入口常在 asar 内的 package.json 或主进程里，目录里可能没有 package.json。
+    // 有 index.html 就够了 —— nw 对缺 main 的 package 会退回 index.html。
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tsmg-tyrano-'))
+    created.push(dir)
+    const app = path.join(dir, 'resources', 'app')
+    fs.mkdirSync(app, { recursive: true })
+    fs.writeFileSync(path.join(app, 'index.html'), '')
+    expect(resolveNwRoot(dir)).toBe(app)
+  })
+
+  test('根上有 package.json 时**优先用根**（不去看 resources/app）', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tsmg-tyrano-'))
+    created.push(dir)
+    fs.writeFileSync(path.join(dir, 'package.json'), '{}')
+    const app = path.join(dir, 'resources', 'app')
+    fs.mkdirSync(app, { recursive: true })
+    fs.writeFileSync(path.join(app, 'package.json'), '{}')
+    expect(resolveNwRoot(dir)).toBe(dir)
+  })
+
+  test('⚠️ 只有 resources/app.asar → null（NW.js 不支持 asar，明确失败）', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tsmg-tyrano-'))
+    created.push(dir)
+    const app = path.join(dir, 'resources')
+    fs.mkdirSync(app, { recursive: true })
+    fs.writeFileSync(path.join(app, 'app.asar'), '')
+    expect(resolveNwRoot(dir)).toBeNull()
+  })
+
+  test('⚠️ 单文件 exe（目录里只有 exe）→ null', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tsmg-tyrano-'))
+    created.push(dir)
+    fs.writeFileSync(path.join(dir, 'game.exe'), '')
+    expect(resolveNwRoot(dir)).toBeNull()
+  })
+
+  test('空目录 → null（不抛）', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tsmg-tyrano-'))
+    created.push(dir)
+    expect(resolveNwRoot(dir)).toBeNull()
+  })
+})
+
+describe('M6.5 tyranoPlan 用解析出的目录而不是游戏目录', () => {
+  test('v5 形态下 args[0] 是 resources/app，不是游戏根', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tsmg-tyrano-'))
+    created.push(dir)
+    const app = path.join(dir, 'resources', 'app')
+    fs.mkdirSync(app, { recursive: true })
+    fs.writeFileSync(path.join(app, 'package.json'), '{}')
+
+    const plan = tyranoPlan(makeCtx({ folder: dir }))
+    expect(plan.args[0]).toBe(app)
+  })
+
+  test('v4 形态下 args[0] 就是游戏根', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tsmg-tyrano-'))
+    created.push(dir)
+    fs.writeFileSync(path.join(dir, 'package.json'), '{}')
+
+    const plan = tyranoPlan(makeCtx({ folder: dir }))
+    expect(plan.args[0]).toBe(dir)
+  })
+
+  test('解析不出来时退回游戏目录本身（让 NW.js 报它自己的错，比我们猜路径准）', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tsmg-tyrano-'))
+    created.push(dir)
+    fs.writeFileSync(path.join(dir, 'game.exe'), '')
+
+    const plan = tyranoPlan(makeCtx({ folder: dir }))
+    expect(plan.args[0]).toBe(dir)
+  })
+
+  test('cwd 仍然是游戏目录（不是 resources/app）', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tsmg-tyrano-'))
+    created.push(dir)
+    const app = path.join(dir, 'resources', 'app')
+    fs.mkdirSync(app, { recursive: true })
+    fs.writeFileSync(path.join(app, 'package.json'), '{}')
+
+    const plan = tyranoPlan(makeCtx({ folder: dir }))
+    expect(plan.cwd).toBe(dir)
   })
 })
