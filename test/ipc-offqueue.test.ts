@@ -60,6 +60,7 @@ describe('OFF_QUEUE_METHODS', () => {
   test('名单不会意外膨胀（数量与已知命令对齐）', () => {
     // 这条断言的作用：有人偷偷加了命令却没更新这里 → 测试红了，逼他重新想一遍准入标准。
     // 8（M2/M2.5）→ 9（M3 的 diagnoseGame）→ 10（M3.5 的 runningGames）
-    expect(OFF_QUEUE_METHODS.size).toBe(10)
+    // → 11（M4 的 listSaves：纯本地 readdirSync + statSync，毫秒级）
+    expect(OFF_QUEUE_METHODS.size).toBe(11)
   })
 })

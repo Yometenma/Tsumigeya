@@ -186,6 +186,47 @@ export interface PlayStat {
   totalSeconds: number
 }
 
+/**
+ * M4：一个存档槽（或配置文件）。
+ *
+ * ⚠️ `kind` 必须分开用：`config` 类型的条目**不是**存档槽，
+ * 全列成「存档」会让用户以为 `config.rmmzsave` 是第 0 号档。
+ */
+export interface SaveSlot {
+  /** 绝对路径 */
+  file: string
+  name: string
+  size: number
+  /** ISO 8601；读不到时是空串 */
+  mtime: string
+  kind: 'slot' | 'config'
+}
+
+/** M4：存档探测的布局类别（与 `shared/save-locate.ts` 的 `SaveLayout` 同构）。 */
+export type SaveLayout =
+  | 'nwjs-mv'
+  | 'nwjs-mz'
+  | 'rgss-data'
+  | 'rgss-root'
+  | 'rgss-save'
+  | 'easyrpg'
+  | 'renpy'
+
+/**
+ * M4：`listSaves` 的返回。
+ *
+ * ⚠️ `location: null` 与 `empty: true` 是**两件不同的事**：
+ *   · `location === null` → 不知道这个游戏的存档在哪（引擎未识别 / Ren'Py 在游戏目录外）
+ *   · `empty === true`     → 位置找到了，只是还没有存档
+ */
+export interface SaveListing {
+  location: { layout: SaveLayout; relativeDir: string } | null
+  dir: string | null
+  slots: SaveSlot[]
+  configs: SaveSlot[]
+  empty: boolean
+}
+
 /** M5.0 S7：一条分类定义。 */
 export interface CategoryDef {
   /** 显示名（用户建的）。 */

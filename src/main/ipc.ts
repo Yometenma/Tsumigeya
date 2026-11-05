@@ -47,6 +47,7 @@ import {
   withoutCategory
 } from '../shared/categories'
 import { diagnoseGame, type Diagnosis, type DiagnosisFix } from './diagnose'
+import { listSaves } from './save-store'
 import { DATA_DIR_NOTICE_KEY, DATA_DIR_NOTICE_TEXT, shouldShowDataDirNotice } from './data-dir-notice'
 import { createPlayStatsStore, sessionSeconds, type PlayStatsStore } from './play-stats'
 import { engineDefinitionsFromRegistry } from './core-host'
@@ -121,6 +122,8 @@ export const OFF_QUEUE_METHODS: ReadonlySet<string> = new Set([
   'dlsiteSearch',
   // M2.5-C：多语言分组——纯本地计算，只读 games.json，毫秒级。
   'languageGroups',
+  // M4：列存档——纯本地只读（readdirSync + statSync），毫秒级
+  'listSaves',
   // M3：启动前诊断——纯本地文件扫描（读魔数 8 字节 / 读 Game.ini / 查目录），
   // 毫秒级、只读、不写盘。用户点「启动」就在等它，排到 60 秒更新检查后面就是「点了没反应」。
   // **repairGame 不在名单里**：它可能触发 244MB 的 RTP 下载，必须排队（§4.1）。
@@ -1595,6 +1598,19 @@ export function createDispatcher(deps: IpcDeps): Dispatcher {
       case 'diagnoseGame':
         return runDiagnose(String(params.gameId ?? ''))
 
+      /**
+       * M4：列出一个游戏的存档（S2）。**绕队列**（纯本地只读）。
+       *
+       * 返回 `location: null` 与 `empty: true` 是**两种不同的事**：
+       *   · `location: null` → 我们不知道这个游戏的存档在哪（引擎未识别 / Ren'Py 在游戏目录外）
+       *   · `empty: true`     → 位置找到了，但还没存过档（UI 可以说「玩到存档点后会出现」）
+       * 混为一谈会让「找不到」被误当成「没有」，用户就永远查不出问题。
+       */
+      case 'listSaves': {
+        const game = host.store.loadGames()[String(params.id ?? '')]
+        if (!game) throw failure('error.gameNotFound', 'Game not found', { id: String(params.id ?? '') })
+        return listSaves(game.gamePath ?? '', game.gameEngine ?? '', game.gameTitle ?? '')
+      }
       /**
        * M3：一键修复（§4.1）。**进队列**——可能触发 244MB 的 RTP 下载，
        * 与 installVersion / moduleTask 是同一类长任务（也复用同一套事务回滚）。
