@@ -405,6 +405,70 @@ Vue → Pinia → api/client → preload(window.tsumi.invoke)
   - ⚠️ **仍没自动化的只有「弹目录选择框」这一步**：`dialog.showOpenDialog` 无法在无画面环境
     操作。它的两条分支（选到目录 / 取消落默认目录）靠 `outDir` / `file` 参数旁路验证，
     **真实点击**要在真机上手动点一次
+  - ✅ **v0.6.2 已在 Mac 真机上装好并验证**（2026-11-05，**验的是 GitHub 发布的 dmg 本身**，
+    不是本地构建）：见下方「Mac 真机验收方法」
+
+## Mac 真机验收方法（v0.6.2 实测跑通，可复用）
+
+> 本机无画面时只能做逻辑与探针验证；**发布包本身**的真实行为靠这套流程验。
+> 全部通过 `ssh yometenma@192.168.1.86` 完成，无需人到 Mac 前。
+
+### 装包（含代理加速）
+
+```bash
+# GitHub 直连很慢（131MB 下了 5 分钟只到 14MB）。用户 Mac 开着 Clash，
+# 系统代理是 127.0.0.1:7897 —— 走它只要 14 秒。
+curl -sSL --proxy http://127.0.0.1:7897 -o /tmp/Tsumigeya.dmg \
+  "https://github.com/Yometenma/Tsumigeya/releases/download/v0.6.2/Tsumigeya-0.6.2-arm64.dmg"
+
+hdiutil attach /tmp/Tsumigeya.dmg -quiet
+rm -rf /Applications/Tsumigeya.app                      # 或先备份旧版
+cp -R "/Volumes/Tsumigeya 0.6.2-arm64/Tsumigeya.app" /Applications/
+xattr -dr com.apple.quarantine /Applications/Tsumigeya.app
+```
+
+### 启动（两个真机坑）
+
+| 坑 | 现象 | 正解 |
+|---|---|---|
+| **`nohup ... &` 撑不住** | SSH 一断进程就被 SIGHUP 杀掉，日志只剩 `GPU process exited unexpectedly` / `Network service crashed` —— 看起来像应用崩了，其实是 shell 把子进程带走了 | 用 `launchctl submit -l tsmg-verify -- /bin/sh -c "..."`。**macOS 没有 `setsid`**（那是 util-linux） |
+| **调试端口不认外部指定** | 传 `--remote-debugging-port=92299` 后实际端口是随机的 | 传 `0`，然后从日志读 `DevTools listening on ws://127.0.0.1:<port>/...` |
+
+### 连 UI
+
+用 CDP（`Runtime.evaluate`）操作真实 DOM —— 不重打包、不改应用，验的就是发出去的那个包。
+极简客户端只用 `WebSocket` + `Runtime.evaluate`，无需第三方库。
+
+**v0.6.2 实测结果**（全部通过）：
+
+| 项 | 结果 |
+|---|---|
+| 版本号 | `0.6.2` ✓ |
+| 分类栏 | 库页顶部 chip 栏（全部 / 未分类）+ 侧边栏**无分类** + 导航 3 个 ✓ |
+| 存档区块（修过的克隆 bug） | Karryn 列出槽 2 个 + 配置 2 个，**零 console 错误** ✓ |
+| 真实导出（点 UI 按钮） | 对话框回落 Downloads，包内 5 文件 **sha256 逐个一致** ✓ |
+| 真实导入（破坏源档后） | **5/5 精确还原** + 5 个 `.tsumigeya-bak` ✓ |
+| 存档位置判据（D85） | 苍蓝星 → `www/save`（用户确实没存过档）✓ |
+
+### 系统对话框那条分支怎么验的
+
+`dialog.showOpenDialog` 无法用 CDP 点。**但可以验「它确实弹了」**——
+点按钮后观察三个独立信号（v0.6.2 实测全部成立）：
+
+1. 旁路只读命令（`listSaves`）**仍响应** → 主进程活着，没崩
+2. 再发一个 `exportSaves` **被串行队列挡住**（6s 内不返回）→ 模态框占着队列
+3. 按钮变成 `el-button is-disabled is-loading` → UI 知道操作在进行中
+
+⚠️ **但 SSH 后台会话里对话框会立即返回 null**（无真实用户会话），
+于是代码正确地回落到 `defaultExportDir()`（`~/Downloads`）并导出成功 ——
+这反而把「取消/无应答」这条分支端到端验了。**真正"选到某个目录"那条分支
+仍需人在 Mac 前点一次**（目前只有 `outDir` 参数旁路验证）。
+
+### 收尾纪律（改真实用户数据前必做）
+
+- 动用户存档前先 `cp -R` 备份到 `/tmp/tsmg-save-backup/` 并记下 `shasum -a 256`
+- 测完逐文件比对 sha256，**清理测试产生的 `.tsumigeya-bak`**
+- 保留旧版 app 备份（`/tmp/Tsumigeya-backup-<old>.app`）便于回退
 
 ## 上游参考（仅历史）
 
