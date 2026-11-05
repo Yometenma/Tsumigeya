@@ -289,6 +289,7 @@
   },
   "settings": {
     "title": "设置",
+    "subtitle": "数据与引擎都存放在 {path}",
     "groupCount": "{count} 项",
     "group": {
       "appearance": "外观",

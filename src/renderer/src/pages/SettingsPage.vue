@@ -114,7 +114,11 @@ function onSaveSyncChange(value: unknown): void {
 
 <template>
   <h1 class="page-title">{{ t('settings.title') }}</h1>
-  <p class="page-subtitle">{{ t('app.tagline') }}</p>
+  <!-- 副标题原来复用了品牌标语（app.tagline =「DLsite 游戏启动器」）——
+       那等于在标题下面重复一遍应用名，用户点进来什么新信息都得不到。
+       改成「数据存放在哪」：这是设置页唯一一个"随时想知道"的事实，
+       而且它也是下面「数据与版本」那组的主答案（用户找它就是找这个）。 -->
+  <p class="page-subtitle">{{ t('settings.subtitle', { path: settings.dataPath || '—' }) }}</p>
 
   <!-- M5.0 S9（U9）：分组化。原来 13 条设置项平铺在一个 panel 里 ——
        用户的抱怨就是"一条条平铺"，所以只把最常改的两组默认展开，其余收起。
