@@ -15,6 +15,7 @@ import { mkxpzPlan } from './mkxpz'
 import { nscripterPlan } from './nscripter'
 import { nwjsPlan } from './nwjs'
 import { renpyPlan } from './renpy'
+import { godotPlan } from './godot'
 import { siglusPlan } from './siglus'
 import { tyranoPlan } from './tyrano'
 import type { EngineId } from './binary-paths'
@@ -41,7 +42,8 @@ export const LAUNCHABLE_ENGINES: readonly EngineId[] = [
   'tyrano',
   'kirikiri',
   'nscripter',
-  'siglus'
+  'siglus',
+  'godot'
 ]
 
 /** 引擎 → 实现。用 Map 而不是对象字面量：查表时不会撞上 `constructor` / `__proto__`。 */
@@ -53,7 +55,8 @@ const PLANNERS: ReadonlyMap<string, EnginePlanner> = new Map<string, EnginePlann
   ['tyrano', tyranoPlan],
   ['kirikiri', kirikiriPlan],
   ['nscripter', nscripterPlan],
-  ['siglus', siglusPlan]
+  ['siglus', siglusPlan],
+  ['godot', godotPlan]
 ])
 
 /** 这个引擎能不能自实现启动（供 IPC 与 UI 共用的唯一判据）。 */

@@ -644,6 +644,70 @@ const siglus: EngineDefinition = {
   }
 }
 
+// ===== Godot =====
+//
+// ===== 判据 A：pck 跨平台（但有三个前提）=====
+//
+// 官方导出文档：「allows a single exported main pack file to be used with
+// **multiple Godot executables**」→ 只出 PCK 时，同一份 pck 可配不同平台的引擎。
+// 桌面↔桌面不受 VRAM 压缩纹理差异影响（Windows 与 macOS 都走 S3TC/BPTC）。
+//
+// ⚠️ **三个前提，缺一不可**：
+//   ① **GDScript 项目**（C# 项目在 mac 上加载不了 —— issue #72159 实测报
+//      `class could not be found` / `Failed to load hostfxr`）
+//   ② **不用 GDExtension**（它含平台专用 .dylib/.dll）
+//   ③ **引擎版本匹配**（4.6.1 的 pck 只能配 4.6.x）
+//
+// ===== 判据 B：有 macOS 运行时 =====
+//
+// 用**官方编辑器二进制**（universal 双架构，约 154 MiB）。
+// 为什么不自己编译 export template：4.6 起 template **默认禁用 `--main-pack`**
+// （PR #111909 / issue #119376 实测报 `compiled without support for path overrides`），
+// 而编辑器二进制仍然支持 —— 用它可以**避免要求每个用户自己编译 Godot**。
+//
+// ===== ⚠️ 已知限制：存档改不了 =====
+//
+// 官方明确「导出的工程不支持 self-contained mode」→ 不能把存档重定向到游戏目录。
+// 而默认位置依赖 `project_name`（要从 pck 里读）。
+// → **本版本存档位置返回 null（未实现）**，不假装支持（与 tyrano/kirikiri 同一取向）。
+//
+// ===== autodetect 为什么这么窄 =====
+//
+// 只认 `.pck` 这个扩展名 —— 它太宽（任何引擎都可能有个叫 x.pck 的文件）？
+// 实测权衡：Godot 的 pck **只有 Godot 用**这个扩展名，而更可靠的判据
+// （读 pck 魔数 `GDPC`）需要额外解析。用扩展名 + **排在所有强命中之后**打分，
+// 风险可控：真被误认的后果是「识别成 Godot」，而 Godot 玩家目录里确实有 .pck。
+const godot: EngineDefinition = {
+  folder: 'godot',
+  name: 'Godot',
+  version: '1.0.0',
+  description: 'A module to launch Godot games (GDScript projects) with the official Godot runtime.',
+  descriptionKey: 'engines.desc.godot',
+  autodetect: {
+    extensions: ['pck'],
+    all_required: false
+  },
+  gameArgs: {
+    fullscreen: {
+      type: 'boolean',
+      label: 'Start in Fullscreen',
+      labelKey: 'args.fullscreen',
+      default: false
+    }
+  },
+  dependencies: {
+    // ⚠️ universal 双架构（arm64 + x86_64），约 154 MiB。
+    // 版本 pin 在 4.6.x —— 因为 pck 的版本必须与引擎匹配，
+    // 而 4.5 与 4.6 的 pck 格式不通用。
+    godot: {
+      universal: {
+        link: 'https://github.com/godotengine/godot-builds/releases/download/4.6.1-stable/Godot_v4.6.1-stable_macos.universal.zip',
+        unzip: true
+      }
+    }
+  }
+}
+
 // ===== 只识别、不启动的引擎（DETECT_ONLY）=====
 //
 // ===== 为什么需要这张表 =====
@@ -748,7 +812,8 @@ export const ENGINES: readonly EngineDefinition[] = [
   tyrano,
   kirikiri,
   nscripter,
-  siglus
+  siglus,
+  godot
 ]
 
 /** 引擎目录名集合（`gameEngine` 的合法值）。 */

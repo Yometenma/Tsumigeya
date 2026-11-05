@@ -41,7 +41,8 @@ export const ENGINE_IDS = [
   'tyrano',
   'kirikiri',
   'nscripter',
-  'siglus'
+  'siglus',
+  'godot'
 ] as const
 
 export type EngineId = (typeof ENGINE_IDS)[number]
@@ -358,6 +359,48 @@ export function siglusBinaryPath(dataDir: string): string | null {
  */
 export function siglusExpectedPath(dataDir: string): string {
   return path.join(siglusDepsDir(dataDir), 'siglus_engine.app', 'Contents', 'MacOS', 'siglus_engine')
+}
+
+// ===== Godot =====
+
+/** Godot 的依赖根目录（`deps/godot`）。 */
+export function godotDepsDir(dataDir: string): string {
+  return depsDir(dataDir, 'godot', 'godot')
+}
+
+/**
+ * 找 Godot 的可执行文件。
+ *
+ * 我们用的是**官方编辑器二进制**（不是 export template）—— 因为 4.6 起 template 默认
+ * 禁用 `--main-pack`（PR #111909 / issue #119376），而编辑器二进制仍可用。
+ * 见 `launchers/godot.ts` 的注释。
+ *
+ * 两种布局：
+ *   `deps/godot/Godot.app/Contents/MacOS/Godot`          ← 官方 zip 解压后
+ *   `deps/godot/<子目录>/Godot.app/Contents/MacOS/Godot` ← 万一有包裹层
+ */
+export function godotBinaryPath(dataDir: string): string | null {
+  const root = godotDepsDir(dataDir)
+  const expected = path.join(root, 'Godot.app', 'Contents', 'MacOS', 'Godot')
+  if (isFileSafe(expected)) return expected
+
+  let entries: fs.Dirent[]
+  try {
+    entries = fs.readdirSync(root, { withFileTypes: true })
+  } catch {
+    return null
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue
+    const nested = path.join(root, entry.name, 'Godot.app', 'Contents', 'MacOS', 'Godot')
+    if (isFileSafe(nested)) return nested
+  }
+  return null
+}
+
+/** Godot 的「本该在那」路径（错误文案用）。 */
+export function godotExpectedPath(dataDir: string): string {
+  return path.join(godotDepsDir(dataDir), 'Godot.app', 'Contents', 'MacOS', 'Godot')
 }
 
 /** 存在且是文件（不抛）。 */

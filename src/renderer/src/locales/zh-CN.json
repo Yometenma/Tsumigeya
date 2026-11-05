@@ -234,6 +234,9 @@
     },
     "siglus": {
       "fullscreen": "全屏启动"
+    },
+    "godot": {
+      "fullscreen": "全屏启动"
     }
   },
   "engines": {
@@ -279,7 +282,8 @@
       "tyrano": "运行 TyranoScript（ティラノスクリプト）HTML5 游戏。复用 NW.js 运行时，无需单独下载。",
       "kirikiri": "运行吉里吉里（KiriKiri）游戏。⚠️ 实验性：所用运行时 krkrsdl2 的作者声明不承诺商用游戏兼容。",
       "nscripter": "运行 NScripter 视觉小说（经 ONScripter）。",
-      "siglus": "运行 Siglus / UK2 / AVG32 / RealLive 游戏（经 siglus_rs）。"
+      "siglus": "运行 Siglus / UK2 / AVG32 / RealLive 游戏（经 siglus_rs）。",
+      "godot": "运行 Godot 游戏（仅 GDScript 项目；C# 与 GDExtension 项目不支持）。"
     },
     "experimental": "实验性",
     "noDependencies": "无需单独下载"
