@@ -218,6 +218,30 @@ struct GameDetailView: View {
                 }
                 .controlSize(.large)
             }
+
+            // ⚠️ **移除入口**（用户 2026-11-06 报的第 1 个问题：
+            //    「加入进游戏库的游戏没有移除用的按键」）。
+            //
+            //    右键菜单也有，但**详情页必须有一个看得见的** ——
+            //    用户不会去猜「右键试试」。
+            //
+            //    用 `Menu` 而不是裸按钮：删除是危险操作，收进菜单里能减少误点，
+            //    同时又让入口看得见（菜单箭头就是提示）。
+            Menu {
+                Button("在访达中显示") {
+                    store.revealInFinder(game: game)
+                }
+                Divider()
+                Button("从游戏库移除…", role: .destructive) {
+                    store.confirmDelete(game: game)
+                }
+            } label: {
+                Label("更多", systemImage: "ellipsis.circle")
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .frame(width: 30)
+            .help("更多操作")
         }
     }
 

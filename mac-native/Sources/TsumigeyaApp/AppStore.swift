@@ -106,12 +106,22 @@ final class AppStore: ObservableObject {
     ///
     /// ⚠️ 判据**不要**写在 View 里（Electron 版踩过：画错不报错，只能靠单测钉）。
     var filteredGames: [GameRecord] {
-        LibraryFilter.apply(
+        var result = LibraryFilter.apply(
             games: games,
             searchText: searchText,
             onlyUnbound: false,
             hasBinding: { !($0.gameArgs?.isEmpty ?? true) }
         )
+        // ⚠️ **分类筛选**（P5 补上）。
+        //
+        //    用户 2026-11-06 报「没有地方创建分类」—— 本鱼加了创建入口之后，
+        //    还得让**筛选真的生效**，否则那个栏位仍然是个摆设。
+        if let activeCategory {
+            result = result.filter { game in
+                (assignments[game.id] ?? []).contains(activeCategory)
+            }
+        }
+        return result
     }
 
     /// 按 id 查一个游戏。
@@ -692,7 +702,99 @@ final class AppStore: ObservableObject {
         persistCategories()
     }
 
+    // MARK: - 删除确认（P5 补齐）
+
+    /// 待确认删除的游戏（`nil` = 没有待确认的）。
+    ///
+    /// ⚠️ **删除必须二次确认**（除非用户在设置里关掉了 `deletionConfirmation`）。
+    ///    删游戏清的是四处旁挂数据，误点的代价是「游玩历史和分类归属全丢」，
+    ///    而用户当时不会想到是自己点错。
+    @Published var pendingDelete: GameRecord?
+
+    /// 请求删除（先弹确认）。
+    func confirmDelete(game: GameRecord) {
+        // 设置里关掉了确认 → 直接删（那是用户明确要的）
+        if !settingBool(.deletionConfirmation) {
+            deleteGame(id: game.id)
+            return
+        }
+        pendingDelete = game
+    }
+
+    /// 确认删除。
+    func confirmPendingDelete() {
+        guard let game = pendingDelete else { return }
+        pendingDelete = nil
+        deleteGame(id: game.id)
+    }
+
+    func cancelPendingDelete() {
+        pendingDelete = nil
+    }
+
+    /// 在访达中显示游戏目录。
+    ///
+    /// ⚠️ 用游戏的**目录**而不是 gamePath（后者是 `…/Game.exe` 这种文件）——
+    ///    用户想看到的是文件夹。
+    func revealInFinder(game: GameRecord) {
+        let dir = DetectPath.gameDirForFiles(game.gamePath)
+        NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: dir)
+    }
+
+    // MARK: - 编辑请求（右键菜单用）
+
+    /// 请求进入编辑（由 `GamePane` 消费）。
+    ///
+    /// ⚠️ 用「请求」而不是直接设 state：`GamePane` 的 `isEditing` 是它自己的
+    ///    `@State`，store 拿不到。所以 store 记一个「要编辑这个 id」，
+    ///    View 那边读它并清掉。
+    @Published private(set) var editRequest: String?
+
+    func requestEdit(gameId: String) {
+        editRequest = gameId
+    }
+
+    func consumeEditRequest() -> String? {
+        let id = editRequest
+        editRequest = nil
+        return id
+    }
+
     // MARK: - 分类操作
+
+    /// 当前筛选的分类（`nil` = 全部）。
+    @Published var activeCategory: String?
+
+    /// 是否在新建分类。
+    @Published var isCreatingCategory = false
+
+    /// 待删除的分类（`nil` = 没有）。
+    @Published var pendingDeleteCategory: (id: String, name: String)?
+
+    func beginCreateCategory() {
+        isCreatingCategory = true
+    }
+
+    func closeCreateCategory() {
+        isCreatingCategory = false
+    }
+
+    func confirmDeleteCategory(id: String, name: String) {
+        pendingDeleteCategory = (id, name)
+    }
+
+    func cancelDeleteCategory() {
+        pendingDeleteCategory = nil
+    }
+
+    func confirmPendingDeleteCategory() {
+        guard let pair = pendingDeleteCategory else { return }
+        pendingDeleteCategory = nil
+        deleteCategory(id: pair.id)
+        // ⚠️ 如果删的正好是当前筛选的那个，要回到「全部」
+        //    （否则列表会空 —— 用户会以为游戏丢了）
+        if activeCategory == pair.id { activeCategory = nil }
+    }
 
     /// 保存分类（**保留其他所有顶层键**，见 LibraryMetaStore 的注释）。
     private func persistCategories() {

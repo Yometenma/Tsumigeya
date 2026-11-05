@@ -51,6 +51,10 @@ struct RootView: View {
     var body: some View {
         VStack(spacing: 0) {
             topBar
+            if page == .library {
+                Divider()
+                categoryBar
+            }
             Divider()
             content
         }
@@ -62,6 +66,45 @@ struct RootView: View {
         .sheet(isPresented: $store.isAddingGame) {
             AddGameWizard()
                 .environmentObject(store)
+        }
+        // 新建分类（输入名字的小弹窗）
+        .sheet(isPresented: $store.isCreatingCategory) {
+            CreateCategorySheet()
+                .environmentObject(store)
+        }
+        // 删除游戏确认
+        .alert("从游戏库移除？", isPresented: Binding(
+            get: { store.pendingDelete != nil },
+            set: { if !$0 { store.cancelPendingDelete() } }
+        ), presenting: store.pendingDelete) { game in
+            // ⚠️ **必须说清「不会删游戏文件」** ——
+            //    用户最怕的是「点一下把游戏删没了」。
+            //    实际只删库里的记录，游戏目录原样不动。
+            Button("移除", role: .destructive) {
+                store.confirmPendingDelete()
+            }
+            Button("取消", role: .cancel) {
+                store.cancelPendingDelete()
+            }
+        } message: { game in
+            Text("「\(game.gameTitle)」会从游戏库移除。\n\n"
+                 + "**游戏文件不会被删除**，只是不再显示在列表里。"
+                 + "游玩记录和分类归属也会一起清掉。")
+        }
+        // 删除分类确认
+        .alert("删除分类？", isPresented: Binding(
+            get: { store.pendingDeleteCategory != nil },
+            set: { if !$0 { store.cancelDeleteCategory() } }
+        ), presenting: store.pendingDeleteCategory) { pair in
+            Button("删除", role: .destructive) {
+                store.confirmPendingDeleteCategory()
+            }
+            Button("取消", role: .cancel) {
+                store.cancelDeleteCategory()
+            }
+        } message: { pair in
+            Text("分类「\(pair.name)」会被删除。\n\n"
+                 + "**游戏不会被删除**，只是它们不再属于这个分类。")
         }
     }
 
@@ -99,6 +142,70 @@ struct RootView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
+    }
+
+    // MARK: - 分类栏（库页顶部）
+
+    /// 分类筛选栏 + 新建入口。
+    ///
+    /// ⚠️ **分类在库页顶部，不在侧边栏**（D84 —— 用户 2026-11-05 拍板）：
+    ///    侧边栏同时装着导航，分类越攒越多会把导航挤远。
+    ///
+    /// ⚠️ **必须有「新建分类」入口**（用户 2026-11-06 报的第 3 个问题：
+    ///    「没有地方创建分类」）。本鱼第一版只做了筛选，忘了新建。
+    private var categoryBar: some View {
+        HStack(spacing: 7) {
+            categoryChip(title: "全部", isActive: store.activeCategory == nil) {
+                store.activeCategory = nil
+            }
+
+            ForEach(Categories.ordered(store.categories), id: \.id) { pair in
+                categoryChip(
+                    title: pair.def.name,
+                    isActive: store.activeCategory == pair.id
+                ) {
+                    store.activeCategory = (store.activeCategory == pair.id) ? nil : pair.id
+                }
+                .contextMenu {
+                    Button("删除分类「\(pair.def.name)」", role: .destructive) {
+                        store.confirmDeleteCategory(id: pair.id, name: pair.def.name)
+                    }
+                }
+            }
+
+            // 新建分类
+            Button {
+                store.beginCreateCategory()
+            } label: {
+                Label("新建分类", systemImage: "plus")
+                    .font(.system(size: 11))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(Color.secondary.opacity(0.08), in: Capsule())
+
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 7)
+    }
+
+    private func categoryChip(
+        title: String, isActive: Bool, action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 11, weight: isActive ? .medium : .regular))
+                .padding(.horizontal, 9)
+                .padding(.vertical, 3)
+                .background(
+                    isActive ? Color.accentColor.opacity(0.18) : Color.secondary.opacity(0.08),
+                    in: Capsule())
+                .foregroundStyle(isActive ? Color.accentColor : Color.secondary)
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - 内容
@@ -197,6 +304,24 @@ struct GameListView: View {
                             isRunning: store.runningGames[game.id] != nil
                         )
                         .tag(game.id)
+                        // ⚠️ **右键菜单**（用户 2026-11-06 报的第 1 个问题：
+                        //    「加入进游戏库的游戏没有移除用的按键」）。
+                        //
+                        //    mac 的惯例是右键菜单而不是每行一个删除按钮 ——
+                        //    后者会让列表看起来很吵，而且容易误点。
+                        .contextMenu {
+                            Button("编辑") {
+                                selection = game.id
+                                store.requestEdit(gameId: game.id)
+                            }
+                            Button("在访达中显示") {
+                                store.revealInFinder(game: game)
+                            }
+                            Divider()
+                            Button("从游戏库移除", role: .destructive) {
+                                store.confirmDelete(game: game)
+                            }
+                        }
                     }
                 } header: {
                     groupHeader(group)
@@ -374,18 +499,27 @@ struct GameListRow: View {
 ///    判据：用 `id(game.id)` 在游戏切换时重建，`@State isEditing` 自然归 false。
 struct GamePane: View {
     let game: GameRecord
+    @EnvironmentObject private var store: AppStore
     @State private var isEditing = false
 
     var body: some View {
         Group {
             if isEditing {
-                GameEditView(game: game)
+                GameEditView(game: game, onDone: { isEditing = false })
             } else {
                 GameDetailView(game: game, onEdit: { isEditing = true })
             }
         }
-        // ⚠️ 关键：游戏变了就重建（把 isEditing 重置）
         .id(game.id)
+        // ⚠️ **响应右键菜单的「编辑」请求**。
+        //
+        //    列表行右键「编辑」时，`GamePane` 的 `isEditing` 是它自己的 `@State`，
+        //    store 拿不到 → 用「请求 + 消费」的桥接（store.requestEdit / consumeEditRequest）。
+        .onChange(of: store.editRequest) { _, newValue in
+            guard let newValue, newValue == game.id else { return }
+            isEditing = true
+            _ = store.consumeEditRequest()
+        }
     }
 }
 

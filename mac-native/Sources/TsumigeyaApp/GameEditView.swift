@@ -27,6 +27,8 @@ import TsumigeyaCore
 
 struct GameEditView: View {
     let game: GameRecord
+    /// 点「返回」时调（由 `GamePane` 提供）。
+    var onDone: () -> Void = {}
     @EnvironmentObject private var store: AppStore
 
     // ===== 展开状态（哪些区块是打开的）=====
@@ -43,26 +45,57 @@ struct GameEditView: View {
     @State private var gameArgs: [String: JSONValue] = [:]
 
     // ===== 状态 =====
-    @State private var isDirty = false
     @State private var saveError: String?
 
+    /// 是否有未保存的改动。
+    ///
+    /// ⚠️ **这是「派生状态」，不是一个标志位**。
+    ///
+    /// 本鱼第一版用 `@State private var isDirty` + `.onChange(of:) { isDirty = true }`，
+    /// 结果是「一进编辑页就显示有未保存的改动」（用户 2026-11-06 报的第 4 个问题）。
+    ///
+    /// 根因：`.onAppear` 里 `title = game.gameTitle`（从 "" 变成真值）→
+    /// `.onChange` 在**下一个渲染周期**触发 → 把 `onAppear` 里设的 `isDirty = false`
+    /// **覆盖掉了**。SwiftUI 的 onChange 不是同步的，这个顺序很容易想错。
+    ///
+    /// 正确做法：直接比较**当前值与原始值**。这样即使 onChange 多触发几次，
+    /// 只要值没真变，结果就是 false。**没有标志位就不可能搞错**。
+    private var isDirty: Bool {
+        if title != game.gameTitle { return true }
+        if engine != game.gameEngine { return true }
+        if gameArgs != (game.gameArgs ?? [:]) { return true }
+        return false
+    }
+
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            Divider()
-            Form {
-                localSection
-                argsSection
-                categoriesSection
+        // ⚠️ **用 `safeAreaInset` 而不是 VStack 装 header**（本鱼改了两次才修对）。
+        //
+        //    第一版：`VStack { header; Form }` → Form 内容超高时把 header **顶出可视区**
+        //            （快照实测：返回/保存按钮完全看不到）。
+        //    第二版：加 `.frame(maxHeight: .infinity)` → **没用**，
+        //            Form 自己要求内容高度，VStack 还是把 header 挤走。
+        //
+        //    正解：`safeAreaInset(edge: .top)` —— Form 自己滚动，
+        //    header **固定悬在内容之上**，永远看得见。
+        //    这也是 mac 编辑类界面的惯例（工具条不该被内容滚动带走）。
+        Form {
+            localSection
+            argsSection
+            categoriesSection
+        }
+        .formStyle(.grouped)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            VStack(spacing: 0) {
+                header
+                Divider()
             }
-            .formStyle(.grouped)
+            // ⚠️ 必须给背景色，否则 Form 的内容会透上来与 header 重叠
+            .background(.bar)
         }
         .onAppear {
-            // 从游戏记录初始化暂存值
             title = game.gameTitle
             engine = game.gameEngine
             gameArgs = game.gameArgs ?? [:]
-            isDirty = false
             saveError = nil
         }
     }
@@ -71,6 +104,20 @@ struct GameEditView: View {
 
     private var header: some View {
         HStack(spacing: 12) {
+            // ⚠️ **返回按钮**（用户 2026-11-06 报的第 2 个问题：编辑后没有返回的按键）。
+            //
+            //    mac 的惯例是左上角一个「‹ 返回」——本鱼漏了这个。
+            //    用 `chevron.left` + 文字而不是纯图标：文字让意图更明确。
+            Button {
+                onDone()
+            } label: {
+                Label("返回", systemImage: "chevron.left")
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+
+            Divider().frame(height: 16)
+
             Text("编辑")
                 .font(.system(size: 15, weight: .semibold))
             Text(game.gameTitle)
@@ -97,7 +144,6 @@ struct GameEditView: View {
                 title = game.gameTitle
                 engine = game.gameEngine
                 gameArgs = game.gameArgs ?? [:]
-                isDirty = false
                 saveError = nil
             }
             .disabled(!isDirty)
@@ -119,7 +165,6 @@ struct GameEditView: View {
         Section {
             TextField("游戏名", text: $title)
                 .textFieldStyle(.roundedBorder)
-                .onChange(of: title) { _, _ in isDirty = true }
 
             HStack(spacing: 10) {
                 Text("引擎")
@@ -133,7 +178,6 @@ struct GameEditView: View {
                     }
                 }
                 .labelsHidden()
-                .onChange(of: engine) { _, _ in isDirty = true }
             }
 
             HStack(spacing: 10) {
@@ -167,6 +211,7 @@ struct GameEditView: View {
                     EngineArgRow(
                         name: pair.name,
                         def: pair.def,
+                        engine: game.gameEngine,
                         value: Binding(
                             get: { EngineArgs.value(for: pair.name, in: gameArgs, schema: pair.def) },
                             set: { newValue in
@@ -175,7 +220,6 @@ struct GameEditView: View {
                                 } else {
                                     gameArgs.removeValue(forKey: pair.name)
                                 }
-                                isDirty = true
                             }),
                         availableVersions: store.availableVersions(for: pair.def, engine: game.gameEngine)
                     )
@@ -254,7 +298,6 @@ struct GameEditView: View {
         let ok = store.updateGame(
             id: game.id, title: title, engine: engine, gameArgs: gameArgs)
         if ok {
-            isDirty = false
         } else {
             saveError = store.lastAddGameError ?? "保存失败"
         }
@@ -266,6 +309,8 @@ struct GameEditView: View {
 struct EngineArgRow: View {
     let name: String
     let def: GameArgDef
+    /// 引擎 folder（翻译参数名要用）。
+    let engine: String
     @Binding var value: JSONValue?
     let availableVersions: [String]
 
@@ -368,7 +413,12 @@ struct EngineArgRow: View {
     }
 
     private var label: String {
-        def.label ?? name
+        // ⚠️ **必须走翻译层**，不能直接用 `def.label`（那是英文，
+        //    快照实测看到 `Start in Fullscreen` / `RGSS Version`）。
+        //
+        //    退化顺序：我们的中文表 → manifest 的英文 label → 键名。
+        //    判据在 `EngineArgsLabels.label(...)`（纯函数，可单测）。
+        EngineArgsLabels.label(engine: engine, key: name, manifestLabel: def.label)
     }
 
     private var labelText: some View {
