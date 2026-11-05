@@ -269,6 +269,26 @@ function goBack(): void {
            · bound  有 gameId → 每个动作立刻落盘（与原来行为一致）
            · staged 没有 gameId → 只进内存，由向导保存游戏后一起提交 -->
 
+    <!-- ⚠️⚠️ 这个 <section> 曾经在 S11b 拆组件时**被整体删掉**，只剩下上面这段注释。
+         后果：编辑页里再也找不到 DLsite 相关的任何东西（RJ 输入 / 按名字搜索 /
+         封面预览 / 标题来源），用户没法手动补或改元数据 —— 而组件本身还在、
+         还在被 import、`infoForm` ref 也还在，所以 tsc / build / 单测全绿。
+         守它的测试：test/edit-page-sections.test.ts（模板里必须真的有 <GameInfoForm）。 -->
+    <section class="panel stack" style="margin-bottom: 16px">
+      <div>
+        <h3 style="margin: 0">{{ t('game.identitySection') }}</h3>
+        <div class="hint">{{ t('game.identitySectionHint') }}</div>
+      </div>
+      <GameInfoForm
+        ref="infoForm"
+        :initial-meta="savedMeta"
+        v-model:title="title"
+        :game-path="path"
+        :icon-path="iconPath"
+        @stage-change="onStageChange"
+      />
+    </section>
+
     <!-- M5.0 S11（U8）③：本地信息拆成独立组件（路径 + 引擎） -->
     <GameLocalSection v-model:path="path" v-model:engine="engine" />
 

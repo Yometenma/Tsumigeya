@@ -2,7 +2,6 @@
    暗色走 html.dark + Element Plus 的 dark css-vars。 */
 
 :root {
-:root {
   /* M5.5：侧边栏宽度的**唯一来源**是 shared/sidebar-collapse.ts 的 SIDEBAR_WIDTH
      （折叠态会变，所以宽度由 App.vue 内联给出）。这个变量只作**首屏兜底**：
      Vue 挂载前的第一帧用它，避免"侧边栏先窄一下再变宽"的闪动。
@@ -14,7 +13,13 @@
   --tsmg-panel: #ffffff;
   --tsmg-border: #e4e7ed;
   --tsmg-text: #303133;
-  --tsmg-text-dim: #909399;
+  /* ⚠️ 浅色的次要文字色**必须能看清**（用户 2026-11-05 报「浅色模式看不清楚」）。
+     原来用 #909399：对 #f6f7f9 只有 **2.87:1**、对 #ffffff 只有 3.08:1
+     —— 远低于 WCAG AA 的 4.5:1，而这个变量在 30 多处用到（hint / 说明 / 副标题）。
+     换成 #6b6b73：4.93 / 5.28，**两种背景都达标**。
+     暗色那侧本来就是 6.17，没问题，保持原值。
+     见 test/theme-contrast.test.ts（那条测试会重算并守住 >= 4.5）。 */
+  --tsmg-text-dim: #6b6b73;
   --tsmg-accent: #4f7cff;
 }
 

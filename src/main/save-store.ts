@@ -16,7 +16,7 @@ import {
   classifySaveEntries,
   detectSaveLocation,
   type DirSnapshot,
-  type SaveLocation
+  type SaveLayout
 } from '../shared/save-locate'
 
 /** 一个存档槽（或配置文件）的可展示元数据。 */
@@ -38,8 +38,13 @@ export interface SaveListing {
   /**
    * 探测到的位置；`null` = **没有可靠的存档位置**（Ren'Py 在游戏目录外，或引擎未识别）。
    * 这不是"没存档"，是"不知道去哪找" —— UI 文案要区分这两件事。
+   *
+   * ⚠️ 只含**可序列化**的两个字段（`layout` / `relativeDir`）。
+   *   绝不把整个 `SaveLocation` 放进去 —— 它含 `slotPattern` / `configPattern`
+   *   （正则或函数），过 contextBridge 会抛 `An object could not be cloned.`
+   *   （用户在 v0.6.1 上实测撞到）。
    */
-  location: SaveLocation | null
+  location: { layout: SaveLayout; relativeDir: string } | null
   /** 存档目录的绝对路径（`location` 为 null 时是 null）。 */
   dir: string | null
   /** 存档槽（按自然序）。 */
@@ -115,7 +120,11 @@ export function listSaves(gamePath: string, engine: string, gameTitle = ''): Sav
 
   const { slots, configs } = classifySaveEntries(snap.entries, location)
   return {
-    location,
+    // ⚠️ **绝不能直接返回 location**：它含 `slotPattern` / `configPattern`
+    //   （正则或函数），过 contextBridge 会抛
+    //   `An object could not be cloned.` —— 这正是用户报的那个错。
+    //   渲染层只需要「布局名 + 相对路径」两个字段（见 client.ts 的 SaveListing）。
+    location: { layout: location.layout, relativeDir: location.relativeDir },
     dir,
     slots: slots.map((name) => describe(dir, name, 'slot')),
     configs: configs.map((name) => describe(dir, name, 'config')),
