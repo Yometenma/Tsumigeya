@@ -526,9 +526,20 @@ const kirikiri: EngineDefinition = {
     }
   },
   dependencies: {
-    // ⚠️ 下载地址**必须 pin 到具体版本**，绝不用 `latest` 浮动 tag。
-    // 浮动 tag 会让我们的行为随上游漂移（D60 要避免的正是这个）。
-    // 这里的版本号由安装时实际落盘的 commit/tag 决定，registry 里写基准值。
+    // ===== ⚠️ 这是一个**浮动 tag**，不是固定版本（2026-11-05 实测）=====
+    //
+    // `krkrsdl2` 仓库没有版本化 release，只有一个由 GitHub Actions 每次 commit
+    // 自动重建、**反复覆盖同一文件名**的 `latest` tag（实测 HEAD 请求 302 到
+    // release-assets，文件名仍是 `krkrsdl2-macos.zip`）。
+    //
+    // 这与 D60 的取向**冲突**（浮动 tag 会让我们的行为随上游漂移），但这里没有选择：
+    // 上游根本不提供固定版本。**如实记下来，不假装它稳定。**
+    //
+    // 后果与处置：
+    //   · 用户装到的是「安装那一刻」的上游代码 —— 同一台机器重装可能拿到不同 build
+    //   · 若某次重建引入了回归，我们**无法 pin、无法回退**
+    //   · → 出问题时的排障提示要指向「上游 latest 变了」这个可能性
+    //     （`launchers/kirikiri.ts` 的注释里记了这条）
     krkrsdl2: {
       universal: {
         link: 'https://github.com/krkrsdl2/krkrsdl2/releases/download/latest/krkrsdl2-macos.zip',
@@ -653,11 +664,25 @@ const siglus: EngineDefinition = {
     }
   },
   dependencies: {
-    // ⚠️ 下载地址必须 pin 到具体 release（不用 `latest` 浮动 tag —— D60 的取向）。
-    //    这里是 README 里的通用发布位置，实际安装时由 versions 逻辑决定具体产物。
+    // ===== ⚠️ M6.5 实测修正：原来的地址是 404 =====
+    //
+    // 本鱼第一版写的是
+    //   `.../releases/latest/download/siglus_engine-macos-universal.dmg`
+    // **两处都错**（2026-11-05 经代理实测 404）：
+    //   ① 资产名不对：真实文件叫 **`Siglus-universal.dmg`**（不是 siglus_engine-…）
+    //   ② tag 不对：macOS 产物在 **`pre-release`** 这个 tag 里；
+    //      而 `latest` 指向的是 `1.0.0`，**那个 release 一个资产都没有**（只有源码）
+    //
+    // 改用**按架构分开的 app 包**（`siglus-macos-arm64.app.tar.gz`，12 MB），
+    // 而不是 universal DMG（DMG 在 mac 上要挂载/解包，对我们这条「引擎=目录」模型更麻烦）。
+    // 地址已实测 HTTP 206（可下载）。
     siglus_rs: {
-      universal: {
-        link: 'https://github.com/xmoezzz/siglus_rs/releases/latest/download/siglus_engine-macos-universal.dmg',
+      arm64: {
+        link: 'https://github.com/xmoezzz/siglus_rs/releases/download/pre-release/siglus-macos-arm64.app.tar.gz',
+        unzip: true
+      },
+      x86_64: {
+        link: 'https://github.com/xmoezzz/siglus_rs/releases/download/pre-release/siglus-macos-x86_64.app.tar.gz',
         unzip: true
       }
     }
