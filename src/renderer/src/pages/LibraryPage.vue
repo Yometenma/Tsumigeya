@@ -13,6 +13,7 @@ import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import GameCard from '@/components/GameCard.vue'
+import CategoryFilterBar from '@/components/CategoryFilterBar.vue'
 import { translateError } from '@/api/client'
 import { useLibraryStore } from '@/stores/library'
 import { useSettingsStore } from '@/stores/settings'
@@ -294,6 +295,16 @@ function buildConfirmMessage(plan: ReturnType<typeof deleteConfirmPlan>, hidden:
     </div>
     <el-button type="primary" @click="router.push('/library/new')">{{ t('library.addGame') }}</el-button>
   </header>
+
+  <!-- M5.0 S12（U2 迁移）：分类筛选栏。
+       位置刻意在**标题下面、搜索框上面**：分类是"库页的入口级筛选"
+       （用户点它往往是为了换一批游戏看），而搜索是在当前那批里再收窄。
+       顺序反过来会让"先选分类"这件事没有视觉上的起点。
+
+       ⚠️ 批量模式下整条隐藏 —— 与普通工具条同一条理由（批量时不筛，
+       否则会出现"选中了 A 但 A 被筛走看不见"，那是误删的来源）。
+       分类筛选本身在 enterBatch() 里也会被 clearFilters() 清掉。 -->
+  <CategoryFilterBar v-if="!batchMode" />
 
   <!-- M5.0 U1：批量模式下**整条普通工具条隐藏**（不是只藏两个按钮）。
        理由：批量模式开着时还能改搜索/筛选，就会出现「选中了 A，但 A 被筛走了看不见」的

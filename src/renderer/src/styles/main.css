@@ -129,6 +129,11 @@ a {
   display: flex;
   align-items: baseline;
   gap: 8px;
+  /* 允许换行：tagline 独占一行（见下一条的 flex-basis）。
+     ⚠️ 这里**只动 CSS、不动模板** —— 模板里那三兄弟（品牌名 / tagline / 折叠按钮）
+     必须保持同一个父容器、且顺序不变，否则折叠按钮会被重建，
+     morph 变形就静默失效（D75，M5.5 踩过两次）。 */
+  flex-wrap: wrap;
   padding: 4px 10px 16px;
 }
 
@@ -139,8 +144,20 @@ a {
 }
 
 .app-brand-tagline {
+  /* 208px 宽的侧边栏里，"Tsumigeya" + tagline 放不进同一行 ——
+     原来没有 nowrap 也没有 basis，浏览器按词折行 → 「DLsite / 游戏启 / 动器」三行。
+     order:10 让它排到最后（视觉顺序仍是"名字 + 按钮在上、副标题在下"），
+     flex-basis:100% 强制它独占一行；nowrap + ellipsis 兜住更长的文案。 */
+  order: 10;
+  flex: 0 0 100%;
+  min-width: 0;
   font-size: 11px;
   color: var(--tsmg-text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* 名字与副标题之间留一点呼吸（它是换行后的第二行） */
+  margin-top: 2px;
 }
 
 .app-nav-item {
@@ -165,126 +182,153 @@ a {
   font-weight: 600;
 }
 
-/* ===== M5.0 S7（U2）：侧边栏分类 ===== */
+/* ===== M5.0 S12（U2 迁移）：库页顶部的横向分类筛选栏 =====
+ *
+ * 原来这里是一整套 `.app-categories` / `.app-category-item` 等侧边栏分类样式
+ * （M5.0 S7）。用户 2026-11-05 拍板把分类挪到库页顶部后，那批样式全部作废
+ * —— **不要留着**（留着就等于给"加回侧边栏"铺路，与新版语义冲突）。
+ *
+ * 现在的形态：一串横向 chip（「全部 / 未分类 / 动作类 / …」），
+ * 分类多了**换行**而不是横向滚动 —— 藏起来的 chip 正是用户找不到的那个。
+ */
 
-.app-categories {
-  /*
-   * 可滚动 + 限高：分类是用户会长期累积的（可能几十个），
-   * 不设限高会把「引擎管理 / 设置」两个导航推到看不见的地方。
-   * min-height: 0 是 flex 容器里让子元素真能滚的必要条件（经典坑）。
-   */
-  margin-top: 12px;
-  padding-top: 10px;
-  border-top: 1px solid var(--el-border-color-lighter);
-  overflow-y: auto;
-  min-height: 0;
-  flex: 1 1 auto;
-}
-
-.app-categories-title {
-  padding: 0 12px 6px;
-  font-size: 11px;
-  letter-spacing: 0.06em;
-  color: var(--tsmg-text-dim);
-  text-transform: uppercase;
-}
-
-.app-category-row {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-}
-
-.app-category-item {
-  /* button 重置：它本来是块级按钮，要长成与导航项一样 */
+.category-bar {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex: 1 1 auto;
-  min-width: 0;
-  padding: 7px 12px;
-  border: 0;
-  border-radius: var(--tsmg-radius);
+  flex-wrap: wrap;
+  /* 与下面的搜索工具条拉开一点：它是"入口级筛选"，搜索是"在结果里收窄" */
+  margin-bottom: 14px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--tsmg-border);
+}
+
+/* 一个 chip。既有纯 button（全部/未分类/新建），也有包着 button + ⋯ 的用户分类。 */
+.category-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border: 1px solid var(--tsmg-border);
+  border-radius: 999px;
   background: transparent;
   color: var(--tsmg-text);
   cursor: pointer;
   font-size: 13px;
   font-family: inherit;
-  text-align: left;
-  transition: background 0.15s ease;
+  line-height: 1.5;
+  white-space: nowrap;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
-.app-category-item:hover {
+.category-chip:hover {
   background: color-mix(in srgb, var(--tsmg-accent) 10%, transparent);
+  border-color: color-mix(in srgb, var(--tsmg-accent) 40%, var(--tsmg-border));
 }
 
-.app-category-item.is-active {
+/* 选中态：填充强调色。**选中了哪个分类不用展开任何控件就能看见**
+ * —— 这正是 chip 比下拉好的地方。 */
+.category-chip.is-active {
+  background: color-mix(in srgb, var(--tsmg-accent) 16%, transparent);
+  border-color: color-mix(in srgb, var(--tsmg-accent) 55%, transparent);
+  color: var(--tsmg-accent);
+  font-weight: 600;
+}
+
+/* 用户分类的容器：padding 在 .category-chip-main 里，
+ * 否则 ⋯ 也会被选中态染色。 */
+.category-chip-group {
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+}
+
+.category-chip-group.is-active {
+  /* 容器只负责边框，底色/文字色由内部的 main 给（见下一条） */
+  background: transparent;
+  font-weight: 400;
+}
+
+.category-chip-group.is-active .category-chip-main {
   background: color-mix(in srgb, var(--tsmg-accent) 16%, transparent);
   color: var(--tsmg-accent);
   font-weight: 600;
 }
 
-.app-category-name {
-  /* 长分类名截断而不是把侧边栏撑宽 */
+/* 用户分类主体（点它就是筛这个分类）。button 重置成 chip 的一部分。 */
+.category-chip-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-size: 13px;
+  font-family: inherit;
+  line-height: 1.5;
+  white-space: nowrap;
+  transition: background 0.15s ease;
+}
+
+.category-chip-main:hover {
+  background: color-mix(in srgb, var(--tsmg-accent) 10%, transparent);
+}
+
+/* 长分类名截断（横向栏里别把整行撑爆） */
+.category-chip-name {
+  max-width: 160px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.app-category-count {
-  margin-left: auto;
+.category-chip-count {
   color: var(--tsmg-text-dim);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
 
-.app-category-more {
-  padding: 4px 6px;
-  border-radius: 4px;
+/* 选中态的计数不要用 dim 色（会和强调色背景糊在一起看不清） */
+.category-chip.is-active .category-chip-count,
+.category-chip-group.is-active .category-chip-count {
+  color: inherit;
+  opacity: 0.75;
+}
+
+/* ⋯ 菜单触发器：只在 hover 时出现（不 hover 时是纯视觉噪音） */
+.category-chip-more {
+  padding: 5px 10px 5px 2px;
   color: var(--tsmg-text-dim);
   cursor: pointer;
-  font-size: 12px;
+  font-size: 13px;
+  line-height: 1.5;
   opacity: 0;
   transition: opacity 0.15s ease;
 }
 
-/* ⋯ 只在 hover 那一行时出现：不 hover 时它是纯视觉噪音 */
-.app-category-row:hover .app-category-more {
+.category-chip:hover .category-chip-more,
+.category-chip-group:hover .category-chip-more {
   opacity: 1;
 }
 
-.app-categories-divider {
-  height: 1px;
-  margin: 6px 12px;
-  background: var(--el-border-color-lighter);
-}
-
-.app-category-add {
-  width: 100%;
-  padding: 7px 12px;
-  border: 0;
-  border-radius: var(--tsmg-radius);
-  background: transparent;
+/* 新建分类按钮：比普通 chip 弱化（它是动作，不是筛选目标） */
+.category-chip-add {
+  border-style: dashed;
   color: var(--tsmg-text-dim);
-  cursor: pointer;
-  font-size: 12px;
-  font-family: inherit;
-  text-align: left;
 }
 
-.app-category-add:hover {
-  background: color-mix(in srgb, var(--tsmg-accent) 10%, transparent);
+.category-chip-add:hover {
   color: var(--tsmg-accent);
 }
 
-.app-category-new {
-  padding: 4px 8px 8px;
-}
-
-.app-category-new-actions {
+/* 新建分类的输入态（inline，不弹窗：建分类是高频小动作） */
+.category-new {
   display: flex;
-  gap: 4px;
-  margin-top: 6px;
+  align-items: center;
+  gap: 6px;
 }
 
 .app-sidebar-footer {

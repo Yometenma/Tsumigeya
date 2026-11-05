@@ -4,13 +4,16 @@
 //
 // 「侧边栏能折叠」看起来只是两个宽度 + 一个布尔，但它有一条**完全不报错**的坑：
 //
-//     折叠后只把宽度改窄、没把内容一起收起 → 分类名 / 计数 / 「新建分类」
-//     全部溢出或被裁掉。页面照常渲染、typecheck / build / 其它测试全绿，
-//     只是界面变得没法用。
+//     折叠后只把宽度改窄、没把内容一起收起 → 文字全部溢出或被裁掉。
+//     页面照常渲染、typecheck / build / 其它测试全绿，只是界面变得没法用。
 //
 // 所以「折叠时哪些块该隐藏」被写成**数据**（SIDEBAR_HIDDEN_WHEN_COLLAPSED），
 // 再用判据核对「每个侧边栏块都恰好被归到显示/隐藏其中一边」。
 // 新增一块侧边栏内容却忘了归类 → 这条测试红（D68 同一取向）。
+//
+// ⚠️ **M5.0 S12：分类区（'categories'）已从侧边栏移除**，搬到库页顶部的
+// 横向筛选栏（components/CategoryFilterBar.vue）。所以这里的清单少了它 ——
+// 若有人把分类加回侧边栏，下面那条「不重不漏」会先红。
 //
 // 另一半是**方向**容易搞反的地方：
 //   · 图标：折叠后显示 X（"我可以关掉"）
@@ -33,8 +36,8 @@ describe('★ 折叠态：哪些块该收起（漏一个就溢出，而且不报
     expect(sidebarPartsVisibleWhenCollapsed()).toEqual(['navIcon'])
   })
 
-  test('品牌行、导航文字、分类区、页脚全部收起', () => {
-    for (const part of ['brand', 'navLabel', 'categories', 'footer'] as SidebarPart[]) {
+  test('品牌行、导航文字、页脚全部收起', () => {
+    for (const part of ['brand', 'navLabel', 'footer'] as SidebarPart[]) {
       expect(sidebarPartVisible(part, true), `${part} 在折叠态应该是隐藏的`).toBe(false)
     }
   })
@@ -56,11 +59,13 @@ describe('★ 折叠态：哪些块该收起（漏一个就溢出，而且不报
     expect(union.size, '有块被同时归到了显示与隐藏').toBe(SIDEBAR_PARTS.length)
   })
 
-  test('分类区必须在隐藏清单里（它是最容易被忘掉的那一块）', () => {
-    // 这一条的独立价值：分类区是后加的（M5.0 S7），折叠是 M5.5 ——
-    // 后加的功能最容易被忘。"分类区收不收"这件事单独钉一条，
-    // 免得上面那条"不重不漏"被顺手改成两遍都符合的形式而失去意义。
-    expect(SIDEBAR_HIDDEN_WHEN_COLLAPSED).toContain('categories')
+  test('★ 侧边栏**不再有分类区**（S12 搬到了库页顶部）', () => {
+    // 这条是反向判据：分类搬走后，'categories' 必须彻底消失。
+    // 若有人（或下个会话）"顺手"把分类加回侧边栏，这里会当场红 ——
+    // 否则会出现「两个地方都能筛分类」的双入口，而且状态是同一个 store，
+    // 表现是"点侧边栏的分类、库页顶部的 chip 也变了"这种没人能解释的联动。
+    expect(SIDEBAR_PARTS as readonly string[]).not.toContain('categories')
+    expect(SIDEBAR_HIDDEN_WHEN_COLLAPSED as readonly string[]).not.toContain('categories')
   })
 })
 

@@ -33,8 +33,6 @@ export type SidebarPart =
   | 'navIcon'
   /** 三个导航项的**文字标签**（折叠态收起，图标仍在） */
   | 'navLabel'
-  /** 分类区（用户的整理体系，含新建分类） */
-  | 'categories'
   /** 底部的版本号 / 平台信息 */
   | 'footer'
 
@@ -46,11 +44,15 @@ export type SidebarPart =
  *
  * ⚠️ 注意 `navLabel` 与 `brand` 都在里面：折叠后只留图标。
  * 图标本身靠 `title` 提供提示（见 App.vue 的 `title` 绑定）。
+ *
+ * ⚠️ M5.0 S12：`categories` 这一块**已从侧边栏整体移除**（分类搬到了
+ * 库页顶部的横向筛选栏，见 components/CategoryFilterBar.vue）。
+ * 所以这里不再有 'categories' —— 侧边栏现在只有品牌行、导航、页脚三块。
+ * 若有人把分类加回侧边栏，下面的「不重不漏」单测会先红。
  */
 export const SIDEBAR_HIDDEN_WHEN_COLLAPSED: readonly SidebarPart[] = [
   'brand',
   'navLabel',
-  'categories',
   'footer'
 ]
 
@@ -75,7 +77,6 @@ export const SIDEBAR_PARTS: readonly SidebarPart[] = [
   'brand',
   'navIcon',
   'navLabel',
-  'categories',
   'footer'
 ]
 

@@ -3,14 +3,13 @@
 // 首次 snapshot 在这里拉取，并把 settings 同步给 settings store。
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRoute, useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { useRoute } from 'vue-router'
+import { ElMessage } from 'element-plus'
 import AppIcon from '@/components/AppIcon.vue'
 import SidebarToggle from '@/components/SidebarToggle.vue'
 import ProgressOverlay from '@/components/ProgressOverlay.vue'
 import CoreDialogHost from '@/components/CoreDialogHost.vue'
 import { api, translateError } from '@/api/client'
-import { UNCATEGORIZED_ID } from '../../shared/categories'
 import { morphIcon } from '../../shared/icon-nodes'
 import {
   sidebarPartVisible,
@@ -25,7 +24,6 @@ import { useCoreDialogsStore } from '@/stores/coreDialogs'
 
 const { t } = useI18n()
 const route = useRoute()
-const router = useRouter()
 const library = useLibraryStore()
 const settings = useSettingsStore()
 const engines = useEnginesStore()
@@ -70,7 +68,6 @@ const sidebarPx = computed(() => sidebarWidth(sidebarCollapsed.value))
  */
 const brandVisible = computed(() => sidebarPartVisible('brand', sidebarCollapsed.value))
 const navLabelVisible = computed(() => sidebarPartVisible('navLabel', sidebarCollapsed.value))
-const categoriesVisible = computed(() => sidebarPartVisible('categories', sidebarCollapsed.value))
 const footerVisible = computed(() => sidebarPartVisible('footer', sidebarCollapsed.value))
 
 /**
@@ -102,111 +99,19 @@ const navItems = computed(() => [
 const appVersion = computed(() => (window.tsumi?.appVersion ? `v${window.tsumi.appVersion}` : ''))
 const platform = computed(() => window.tsumi?.platform ?? '')
 
-// ===== M5.0 S7（U2）：侧边栏的分类 =====
+// ===== M5.0 S12：分类从侧边栏搬到了库页顶部的筛选栏 =====
 //
-// 分类是「用户自己的整理体系」，所以它出现在**侧边栏**（导航层）而不是库页的工具栏：
-// 那是它与「标签」（卡片上的小标记）在语义上的区别 —— 方案 §4.2 特意分开了这两者。
+// 原来这里是一整套分类的增删改 + 点选筛选（约 110 行）。用户 2026-11-05 的实测反馈
+// 把这件事推翻了：侧边栏与「游戏库 / 引擎 / 设置」三个导航挤在一起，分类越攒越多，
+// 导航项被挤得越远，而分类**只是库页的一种筛选** —— 在引擎页/设置页看着
+// 一长条不可用的分类，等于用导航的可用度换了筛选器的可见度。
 //
-// 点分类 → 设 `library.categoryFilter` 并确保回到库页；不改路由参数
-// （用户点了分类还是停在库页，URL 不该为了筛选而变复杂）。
-
-/** 新建分类的输入框（null = 不在编辑态）。 */
-const newCategoryName = ref<string | null>(null)
-const categoryBusy = ref(false)
-
-/** 当前是否停在库页（分类筛选只在那儿有意义）。 */
-const onLibrary = computed(() => route.path === '/library' || route.path.startsWith('/game'))
-
-/** 点某个分类。 */
-function selectCategory(id: string | null): void {
-  library.setCategoryFilter(id)
-  // 不在库页就跳回去（在详情/编辑页点分类时，用户想看的是「这一类有哪些游戏」）
-  if (!onLibrary.value) void router.push('/library')
-}
-
-/** 打开新建分类的输入态。 */
-function startCreateCategory(): void {
-  newCategoryName.value = ''
-}
-
-/** 提交新建。 */
-async function submitCreateCategory(): Promise<void> {
-  const name = (newCategoryName.value ?? '').trim()
-  if (!name) {
-    newCategoryName.value = null
-    return
-  }
-  categoryBusy.value = true
-  try {
-    await library.createCategory(name)
-    newCategoryName.value = null
-    ElMessage.success(t('category.created', { name }))
-  } catch (error) {
-    ElMessage.error(translateError(error, t))
-  } finally {
-    categoryBusy.value = false
-  }
-}
-
-/** 重命名（用 ElMessageBox 的 prompt：不新增一个对话框组件）。 */
-async function renameCategory(id: string, current: string): Promise<void> {
-  try {
-    const result = await ElMessageBox.prompt(t('category.renamePrompt'), t('category.renameTitle'), {
-      inputValue: current,
-      confirmButtonText: t('common.ok'),
-      cancelButtonText: t('common.cancel'),
-      inputValidator: (value) => (!!value && !!value.trim() ? true : t('category.nameRequired'))
-    })
-    await library.renameCategory(id, result.value)
-    ElMessage.success(t('category.renamed'))
-  } catch {
-    /* 用户取消（ElMessageBox 取消会抛 'cancel'）—— 什么都不做 */
-  }
-}
-
-/**
- * 删分类。
- *
- * ⚠️ 二次确认里必须说清「**游戏不会被删**」——这是用户最容易误解的一点：
- * 删掉一个分类看起来像"删掉这一类"，而里面的游戏一个都不该少（方案 §4.2.2 / D31）。
- */
-async function deleteCategory(id: string, name: string, gameCount: number): Promise<void> {
-  try {
-    await ElMessageBox.confirm(
-      gameCount > 0
-        ? t('category.deleteConfirmWithGames', { name, count: gameCount })
-        : t('category.deleteConfirm', { name }),
-      t('category.deleteTitle'),
-      { type: 'warning', confirmButtonText: t('common.delete'), cancelButtonText: t('common.cancel') }
-    )
-  } catch {
-    return
-  }
-  try {
-    await library.deleteCategory(id)
-    // 正在筛这个分类的话要清掉筛选（否则筛一个不存在的分类 = 空列表）
-    if (library.categoryFilter === id) library.setCategoryFilter(null)
-    ElMessage.success(t('category.deleted', { name }))
-  } catch (error) {
-    ElMessage.error(translateError(error, t))
-  }
-}
-
-/** 某个分类下有几个游戏（删确认要用）。 */
-function countInCategory(id: string): number {
-  return library.games.filter((game) => library.categoriesOf(game.id).includes(id)).length
-}
-
-/**
- * 分类 ⋯ 菜单的分发。
- *
- * ⚠️ 写成函数而不是在模板里写箭头函数：模板里只留简单调用，
- * 复杂表达式进 `<script setup>`（AGENTS.md 已知坑，模板表达式最容易白屏）。
- */
-function onCategoryMenu(category: { id: string; name: string }, command: string): void {
-  if (command === 'rename') void renameCategory(category.id, category.name)
-  else if (command === 'delete') void deleteCategory(category.id, category.name, countInCategory(category.id))
-}
+// 现在分类整体搬到 `components/CategoryFilterBar.vue`（由 LibraryPage 渲染），
+// 侧边栏**只留导航**。语义一条没变（多归属 / 虚拟"未分类" / 删分类不删游戏，D31）。
+//
+// ⚠️ 这个文件里**不许再出现分类代码**：`sidebar-collapse.ts` 的 SIDEBAR_PARTS
+//   曾经有 'categories' 这一块（折叠时收起），现在已经删掉了 ——
+//   若把分类加回侧边栏，那条「每个侧边栏块恰好归到一边」的单测会先红。
 
 onMounted(async () => {
   // 事件订阅先装（core 可能在 snapshot 之前就发 dialog）
@@ -317,86 +222,10 @@ function isActive(path: string): boolean {
         <span v-if="navLabelVisible">{{ item.label }}</span>
       </RouterLink>
 
-      <!-- M5.0 S7（U2）：分类区（侧边栏 = 用户的整理体系，与"标签"是不同的东西）。
-           多归属：一个游戏可同时出现在多个分类下。
-           「未分类」是**虚拟分类**（不进定义表），判据是某个归属都没有。
-           M5.5：折叠态整块收起 —— 56px 宽度里分类名 / 计数 / 「新建分类」
-           全都放不下（不收起只会溢出或被裁，而且**不报错**，
-           判据见 shared/sidebar-collapse.ts 的 SIDEBAR_HIDDEN_WHEN_COLLAPSED）。 -->
-      <div v-if="categoriesVisible" class="app-categories">
-        <div class="app-categories-title">{{ t('category.sidebarTitle') }}</div>
-
-        <button
-          type="button"
-          class="app-category-item"
-          :class="{ 'is-active': onLibrary && library.categoryFilter === null }"
-          @click="selectCategory(null)"
-        >
-          <span class="app-category-name">{{ t('category.all') }}</span>
-        </button>
-
-        <button
-          type="button"
-          class="app-category-item"
-          :class="{ 'is-active': onLibrary && library.categoryFilter === UNCATEGORIZED_ID }"
-          @click="selectCategory(UNCATEGORIZED_ID)"
-        >
-          <span class="app-category-name">{{ t('category.uncategorized') }}</span>
-          <span v-if="library.uncategorizedTotal > 0" class="app-category-count">
-            {{ library.uncategorizedTotal }}
-          </span>
-        </button>
-
-        <div class="app-categories-divider" />
-
-        <div v-for="category in library.categoryList" :key="category.id" class="app-category-row">
-          <button
-            type="button"
-            class="app-category-item"
-            :class="{ 'is-active': onLibrary && library.categoryFilter === category.id }"
-            @click="selectCategory(category.id)"
-          >
-            <span class="app-category-name">{{ category.name }}</span>
-            <span v-if="countInCategory(category.id) > 0" class="app-category-count">
-              {{ countInCategory(category.id) }}
-            </span>
-          </button>
-          <!-- ⋯ 菜单：重命名 / 删除（方案 §4.2.3）。
-               传的是 category 对象本身，不在模板里拼箭头函数（AGENTS.md：模板禁复杂表达式）。 -->
-          <el-dropdown trigger="click" placement="right" @command="onCategoryMenu(category, $event)">            <span class="app-category-more">{{ t('library.moreActions') }}</span>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item command="rename">{{ t('category.rename') }}</el-dropdown-item>
-                <el-dropdown-item command="delete" divided>{{ t('category.delete') }}</el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
-        </div>
-
-        <!-- 新建分类：输入态与按钮态两种。用 inline input 而不是弹窗
-             —— 建分类是高频小动作，弹窗只为收一个名字太重。 -->
-        <div v-if="newCategoryName !== null" class="app-category-new">
-          <el-input
-            v-model="newCategoryName"
-            :placeholder="t('category.namePlaceholder')"
-            size="small"
-            :disabled="categoryBusy"
-            @keyup.enter.prevent="submitCreateCategory"
-            @keyup.esc.prevent="newCategoryName = null"
-          />
-          <div class="app-category-new-actions">
-            <el-button size="small" type="primary" :loading="categoryBusy" @click="submitCreateCategory">
-              {{ t('common.ok') }}
-            </el-button>
-            <el-button size="small" text :disabled="categoryBusy" @click="newCategoryName = null">
-              {{ t('common.cancel') }}
-            </el-button>
-          </div>
-        </div>
-        <button v-else type="button" class="app-category-add" @click="startCreateCategory">
-          {{ t('category.create') }}
-        </button>
-      </div>
+      <!-- M5.0 S12：分类区**已从侧边栏移除**，搬到库页顶部的横向筛选栏
+           （components/CategoryFilterBar.vue）。侧边栏只留导航 ——
+           游戏库 / 引擎 / 设置三个入口不该被一串分类挤得东倒西歪。
+           折叠态因此也少了一块要收的东西（见 shared/sidebar-collapse.ts）。 -->
 
       <!-- 折叠态收起：版本号/平台是两行短文本，56px 宽度放不下 -->
       <div v-if="footerVisible" class="app-sidebar-footer">

@@ -21,8 +21,8 @@
   M3（故障自愈）、M2.6（海报墙与详情页）、M2.7（编辑页重构）、M3.5（进程管理）、M4.0（自实现启动）、
   M4.1（引擎清单自己维护）、**M4.2（彻底零上游）**、**M5.5（动态图标 / Lucide 图标体系）**
 - **已发布**：**v0.5.3**（含 M4.2 + 两个启动修复；GitHub `Yometenma/Tsumigeya`）
-- **测试**：**1359 个 / 60 文件**全绿；`typecheck` / `test` / `build` 三绿
-- **M5.0 进行中**（`docs/M5.0-实施方案.md`）：12 项体验优化，**逐条提交**（用户拍板）
+- **测试**：**1377 个 / 63 文件**全绿；`typecheck` / `test` / `build` 三绿
+- **M5.0 已完成**（`docs/M5.0-实施方案.md`）：12 项体验优化 + **S12 分类迁移**，逐条提交（用户拍板）
   - 顺序见方案 §12：B1 版本号 → U3+U4 筛选 → U5 选文件 → U6 去跳过 → N1 游玩时间
     → U1 批量 → U2 分类 → U10 全部安装 → U9 设置页 → U7 抽组件 → U8 编辑页重构
   - **B2（VX Ace 打不开）已在 v0.5.3 修复**，不在本轮范围
@@ -37,8 +37,9 @@
     （判据抽到 `shared/play-time.ts`，17 条单测 + snapshot 端到端 4 条）
   - ✅ **S6 / U1 已提交**：库页批量模式（多选 + 批量删除 + 逐个进度）
     （判据抽到 `shared/bulk-select.ts`，22 条单测；**顺带修掉删游戏不清 play-stats 的真 bug**）
-  - ✅ **S7 / U2 已提交**：自定义分类（多归属 / 扁平）：数据层 + 侧边栏 + 批量归入
+  - ✅ **S7 / U2 已提交**：自定义分类（多归属 / 扁平）：数据层 + 批量归入
     （判据抽到 `shared/categories.ts`，46 条单测；**修掉删游戏不清分类归属的真 bug**）
+    ⚠️ 当时分类放在**侧边栏**，S12 已搬到库页顶部（见下条 / D84）
   - ✅ **S8 / U10 已提交**：引擎页「可安装」加「全部安装」（与「全部更新」对称）
     （判据抽到 `shared/install-all.ts`，20 条单测）
   - ✅ **S9 / U9 已提交**：设置页分组化（5 组可折叠）
@@ -47,7 +48,10 @@
     （bound/staged 双模式判据抽到 `shared/gameinfo-form.ts`，26 条单测）
   - ✅ **S11 / U8 已提交**：编辑页重构（保存合一 + 区块重排 + 折叠 + **拆 5 文件**）
     （`GameEditPage.vue` 1109 → 295 行；新增 `test/vue-handler-exists.test.ts` 守模板-脚本一致性）
-  - **M5.0 全部 11 步已完成**（S1–S11），v0.5.4 待发布
+  - ✅ **S12 / U2 迁移已提交**：分类**从侧边栏搬到库页顶部**的横向筛选栏（用户 2026-11-05 拍板）
+    （新组件 `components/CategoryFilterBar.vue`；侧边栏只留导航；`sidebar-collapse.ts` 的
+    `'categories'` 已删，有反向判据守着；判据 `test/category-filter-bar.test.ts`）
+  - **M5.0 全部 12 步已完成**（S1–S12），v0.6.1 之后待发布
 
 ### 各模块在哪（一句话）
 
@@ -69,6 +73,7 @@
 | 游玩时间展示 | `src/shared/play-time.ts` | 时长分级 + 「无记录」vs「0 秒」的区分；`snapshot.playStats` 供详情页读 |
 | 批量选择/确认 | `src/shared/bulk-select.ts` | 选中集∩可见集（防误删）；确认弹窗列前 3 + 等 N；三态全选 |
 | 自定义分类 | `src/main/category-store.ts` + `src/shared/categories.ts` | **分离式存储**（顶层 categories/assignments，不改条目形状）；删分类绝不删游戏 |
+| **分类筛选栏** | `src/renderer/src/components/CategoryFilterBar.vue` | **M5.0 S12 从侧边栏搬来**（用户拍板）：横向 chip「全部 / 未分类 / 动作类…」，分类多了换行不横向滚动。侧边栏只留导航 |
 | 全部安装编排 | `src/shared/install-all.ts` | **失败不中断**（与 `updateAllEngines` 的 throw 策略刻意不同）；逐个 + 进度 |
 | 设置页分组 | `src/shared/settings-groups.ts` | 分组是**数据**；`SETTINGS_KEYS` + 源码级核对防「搬家漏项」；`BOOL_DEFAULTS` 是主进程镜像（有测试对齐） |
 | 游戏信息表单 | `src/renderer/src/components/GameInfoForm.vue` + `src/shared/gameinfo-form.ts` | **编辑页与向导共用**；`bound`（有 id，立刻落盘）/ `staged`（没 id，暂存到游戏保存后提交）。编辑页用 staged 实现「全页一个保存」 |
@@ -293,6 +298,7 @@ Vue → Pinia → api/client → preload(window.tsumi.invoke)
 | D81 | **存档导出打「整个存档目录」，不是只打槽** | 用户真机 `Karryn's Prison/www/save/` 里有 `lastsave.autobak` / `sync_data.rpgsave` —— 那是**游戏插件写的文件**，也是存档数据。只打 `file*.rpgsave` 会让用户换机后少东西（插件数据丢了，游戏行为就不一样），而他不会怀疑"包少了东西"。与 S1 判据「宁可多认，不能漏」同一取向 |
 | D82 | **游戏运行中禁止导出/导入**，判据在主进程（`exportBlocked` + `registry.has`），UI 只是提前禁用 | 运行中的存档可能正在写：导出的包会是**半截文件**（头对、尾缺）。用户带着它换机，导入后游戏报存档损坏 —— 而他完全想不到问题出在"当初导出时游戏没关"。这类故障**没有自愈余地**（我们不解析也不修存档，方案 §6），所以必须在源头拦住。UI 拦不住所有路径，主进程那一层不能省 |
 | D83 | **存档同步只留接口，不接任何云**；设置里只有 `none` / `manual` | 方案 §3.5 + D31 的精神（绝不动用户的东西）。云要账号、要冲突处理、要把存档传上去（里面可能有用户不想上传的东西）；而手动导入导出已能解决"换机防丢档"。一个半成品云比没有更糟 —— 用户会以为存档在云上，从而**不再手动备份**。判据是**结构性**的：`save-sync.ts` 里不许出现任何网络能力（源码级测试守），不许有实现类 |
+| D84 | **分类是库页的筛选器，不是侧边栏的导航**（推翻了 S7 的初始位置） | S7 把分类放侧边栏的出发点是「它是用户的整理体系」（与标签相对的语义区分），那个语义仍然成立。但**位置错了**：侧边栏同时装着「游戏库 / 引擎 / 设置」三个真正的导航，分类越攒越多，导航就被挤得越远；更糟的是在引擎页/设置页时，那一长条分类**点不动也没意义**。用户 2026-11-05 实测后拍板改成库页顶部的横向 chip 栏。判据落在 `shared/sidebar-collapse.ts` 的 `SIDEBAR_PARTS`（**不许再有 'categories'**，有反向单测）+ `test/category-filter-bar.test.ts`（库页必须渲染、App.vue 不许残留分类代码） |
 
 ## 里程碑路线图
 
@@ -303,7 +309,7 @@ Vue → Pinia → api/client → preload(window.tsumi.invoke)
 > 这期间换图标体系（Element Plus → Lucide）会和布局改动互相干扰。
 
 - **M1–M4.2（已完成）**：见「当前状态」。实现细节与探针结论在 `docs/M*.md`
-- **M5.0（进行中）**：体验优化 —— 见 `docs/M5.0-实施方案.md`
+- **M5.0（已完成，S1–S12）**：体验优化 —— 见 `docs/M5.0-实施方案.md`
   - **B1 版本号永久 v0.0.0**（preload 用了 `npm_package_version`，打包后不存在 → 构建时注入）
   - ~~B2 VX Ace 放了 Data 仍报错~~ ✅ **已修（v0.5.3：中文路径 + GBK Game.ini，D71/D72）**
   - **U8 编辑页重构**（用户最不满意）：两种保存合一 + DLsite 从附录提到主数据 + 拆 4 个组件
