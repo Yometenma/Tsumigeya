@@ -1093,6 +1093,68 @@ a {
   font-size: 12px;
 }
 
+/* ===== M4 S2：详情页「存档」区块 ===== */
+
+/*
+ * 三列对齐（文件名 / 大小 / 时间）。
+ *
+ * 用 grid 而不是 flex：文件名长度差很多（`file1.rpgsave` vs `lastsave.autobak`），
+ * flex 会让每一行的大小/时间列**各对各的**，整块看起来歪着。
+ * `minmax(0, 1fr)` 是给超长文件名留的收缩余地（否则它会撑破容器）。
+ */
+.save-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 72px 148px;
+  gap: 10px;
+  align-items: baseline;
+  padding: 4px 0;
+  font-size: 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--tsmg-border) 60%, transparent);
+}
+
+.save-row:last-child {
+  border-bottom: 0;
+}
+
+.save-name {
+  color: var(--tsmg-text);
+  word-break: break-all;
+}
+
+.save-size {
+  color: var(--el-text-color-secondary);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.save-time {
+  color: var(--el-text-color-secondary);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* 配置项整块压暗一点：它们**不是存档**，视觉上要和槽拉开距离（否则会被当成第 0 号档） */
+.save-row.is-config .save-name {
+  color: var(--el-text-color-secondary);
+}
+
+.save-configs {
+  margin-top: 10px;
+}
+
+.save-configs-title {
+  margin-bottom: 2px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+
+.save-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
 /* ===== M5.0 S9（U9）：设置页分组 ===== */
 
 .settings-group {

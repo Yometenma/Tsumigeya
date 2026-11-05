@@ -614,6 +614,16 @@ export const api = {
   // ===== M3.5：进程管理（全部走既有 tsumi:invoke，无新 preload channel）=====
 
   /**
+   * M4：列出一个游戏的存档（只读、绕队列、毫秒级）。
+   *
+   * ⚠️ `location: null` 与 `empty: true` 是**两件不同的事**：
+   *   · `location === null` → 不知道这个游戏的存档在哪（引擎未识别 / Ren'Py 在游戏目录外）
+   *   · `empty === true`     → 位置找到了，只是还没有存档
+   * 渲染层用 `shared/save-view.ts` 的 `saveSectionView` 把它们分成三种形态（有单测）。
+   */
+  listSaves: (gameId: string): Promise<SaveListing> => bridge().invoke<SaveListing>('listSaves', { id: gameId }),
+
+  /**
    * M3.5：正在运行的游戏（只读内存里的进程表、绕队列、毫秒级）。
    * UI 平时读 `snapshot.running`；这条命令留给「运行中定时刷新」与探针。
    */

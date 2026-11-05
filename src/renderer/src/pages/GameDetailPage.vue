@@ -18,6 +18,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import AppIcon from '@/components/AppIcon.vue'
 import DiagnosisDialog from '@/components/DiagnosisDialog.vue'
+import SaveSection from '@/components/SaveSection.vue'
 import { api, iconUrl, translateError, type Diagnosis } from '@/api/client'
 import { isAdultWork } from '../../../shared/age-rating'
 import { languageShortName } from '../../../shared/game-language'
@@ -613,6 +614,13 @@ async function resolveLaunchTarget(id: string): Promise<string> {
             </el-button>
           </template>
         </section>
+
+        <!-- M4 S2：存档区块（用户原话「可以统一管理存档之类的」）。
+             ⚠️ 抽成组件而不是写在这里：这一页已经 600 多行，而存档区块自己
+             有「三种状态 + 拉列表 + 打开目录」一整套动作。
+             三种状态的判据在 shared/save-view.ts（纯函数 + 18 条单测），
+             绝不写进模板（模板里判 = 没法单测，而这三条分支正是最容易糊掉的地方）。 -->
+        <SaveSection :game-id="id" :running="runningNow" />
       </div>
     </div>
 

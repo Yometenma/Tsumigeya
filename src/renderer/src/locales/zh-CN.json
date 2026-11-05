@@ -531,6 +531,11 @@
     "collapseSummary": "收起",
     "refreshDone": "已重新获取 DLsite 信息",
     "refreshFailed": "重新获取失败",
+    "saves": "存档",
+    "savesUnknown": "没找到这个游戏的存档位置（这个引擎的存档目录不在游戏目录里，或者引擎还没识别出来）",
+    "savesEmpty": "存档会出现在这里：玩到能存档的地方就有了",
+    "savesConfigsTitle": "配置文件（不是存档，删掉会丢设置）",
+    "revealInFinder": "在访达中显示",
     "workType": {
       "ACN": "动作",
       "QIZ": "问答",
