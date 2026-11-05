@@ -24,29 +24,40 @@ struct EnginesPage: View {
     @EnvironmentObject private var store: AppStore
 
     var body: some View {
-        List {
-            Section {
-                ForEach(store.engineEntries) { entry in
-                    EngineRow(entry: entry)
-                }
-            } header: {
-                HStack {
-                    Text("引擎运行时")
-                    Spacer()
-                    Text("已装 \(EngineStatus.installedCount(store.engineEntries)) / \(EngineRegistry.launchable.count)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            } footer: {
-                Text("引擎运行时是启动游戏的必需品。装好对应的运行时之后，游戏就能用你自己的 Mac 跑起来。")
+        // ⚠️ **不再依赖 navigationTitle**（v2 布局里没有 NavigationStack/SplitView 容器了，
+        //    那个修饰符不会生效，也不会显示标题）。
+        //    改成页面自己的标题行 —— 与库页顶部的分段控件同一视觉层级。
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                Text("引擎运行时")
+                    .font(.system(size: 15, weight: .semibold))
+                Text("已装 \(EngineStatus.installedCount(store.engineEntries)) / \(EngineRegistry.launchable.count)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                Spacer()
             }
+            .padding(.horizontal, 20)
+            .padding(.top, 14)
+            .padding(.bottom, 8)
+
+            List {
+                Section {
+                    ForEach(store.engineEntries) { entry in
+                        EngineRow(entry: entry)
+                    }
+                } footer: {
+                    Text("引擎运行时是启动游戏的必需品。装好对应的运行时之后，游戏就能用你自己的 Mac 跑起来。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(.vertical, 6)
+                }
+            }
+            .listStyle(.inset)
         }
-        .listStyle(.inset)
-        .navigationTitle("引擎")
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .task {
             store.refreshInstalledEngines()
+            store.refreshEngineEntries()
         }
     }
 }
@@ -99,8 +110,11 @@ struct EngineRow: View {
 
     private var statusColor: Color {
         if !entry.definition.launchable { return .gray }
-        if entry.installed { return .green }
-        return .orange
+        // 复用运行时的引擎：颜色跟随它复用的那个（不独立表达「已装」）
+        if EngineStatus.reusesRuntime(of: entry.definition) != nil {
+            return entry.installed ? .green : .orange
+        }
+        return entry.installed ? .green : .orange
     }
 
     // MARK: 操作区
@@ -112,8 +126,21 @@ struct EngineRow: View {
             Text("需要 Windows 兼容层")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+        } else if let reused = EngineStatus.reusesRuntime(of: entry.definition) {
+            // ⚠️ **复用别的运行时的引擎**（Tyrano → NW.js）：
+            //
+            //    它**没有自己的运行时**，所以既不该显示「已装」（假阳性，
+            //    用户会以为能点重装）、也不该显示「安装」（点了装的是 NW.js）。
+            //    正确表达：告诉用户「用的是 NW.js」，并把他引到那一项。
+            HStack(spacing: 5) {
+                Text("复用 \(EngineRegistry.find(folder: reused)?.name ?? reused)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Image(systemName: entry.installed ? "checkmark.circle.fill" : "exclamationmark.circle")
+                    .font(.caption)
+                    .foregroundStyle(entry.installed ? .green : .orange)
+            }
         } else if store.engineProgress[entry.id] != nil {
-            // 安装中：显示取消
             Button("取消") {
                 store.cancelEngineInstall(entry.id)
             }
@@ -157,6 +184,13 @@ struct EngineRow: View {
                     Text("未在真实游戏上验证过启动")
                         .font(.caption)
                     Text("运行时的安装路径已实测；启动参数沿用通用约定，还没有真实游戏样本。")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                case .unverifiedLaunchOnly:
+                    // Tyrano：运行时（NW.js）是验过的，没验的是「怎么把 Tyrano 游戏拉起来」
+                    Text("启动参数未在真实游戏上验证")
+                        .font(.caption)
+                    Text("运行时（NW.js）已在 5 个真实游戏上验证过；TyranoScript 的启动方式还没样本。")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 case .upstreamGate(let reason):

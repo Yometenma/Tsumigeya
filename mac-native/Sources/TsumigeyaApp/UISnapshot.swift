@@ -60,22 +60,58 @@ enum UISnapshot {
         failures += captureWindow(
             RootViewRepresentable(store: store),
             size: CGSize(width: 1280, height: 800),
-            name: "01-root-with-selection",
+            name: "01-library",
             dir: directory, appearance: appearance)
 
         failures += captureWindow(
             RootViewRepresentable(store: store, selectFirst: false),
             size: CGSize(width: 1280, height: 800),
-            name: "02-root-no-selection",
+            name: "02-library-no-selection",
+            dir: directory, appearance: appearance)
+
+        // ⚠️ **引擎页必须单独渲染**（用户 2026-11-06 报「引擎页有问题」——
+        //    那时它是空白侧边栏。加了这张图，下次改布局能直接看到）
+        //
+        // ⚠️ 渲染前**必须刷新引擎状态表**：`engineEntries` 是懒加载的，
+        //    store 刚建时它是空的 → List 空 → 页面纯色（本鱼实测踩到）。
+        store.refreshEngineEntries()
+        print("引擎条目数: \(store.engineEntries.count)")
+        for e in store.engineEntries {
+            print("  \(e.definition.name.padding(toLength: 12, withPad: " ", startingAt: 0))"
+                  + "\(e.installed ? "已装" : "未装")"
+                  + (e.warning.map { w in
+                      switch w {
+                      case .unverified: return "  [未验证]"
+                      case .unverifiedLaunchOnly: return "  [启动未验证]"
+                      case .upstreamGate: return "  [上游限制]"
+                      }
+                  } ?? ""))
+        }
+        failures += captureWindow(
+            EnginesPageRepresentable(store: store),
+            size: CGSize(width: 1000, height: 800),
+            name: "03-engines",
             dir: directory, appearance: appearance)
 
         if let first = store.games.first {
             failures += captureWindow(
                 GameDetailRepresentable(game: first, store: store),
                 size: CGSize(width: 900, height: 760),
-                name: "03-detail-\(first.id)",
+                name: "04-detail-\(first.id)",
                 dir: directory, appearance: appearance)
         }
+
+        // ⚠️ 设置页也要渲染 —— 它是「分组漏项」这类 bug 的可视化检查入口
+        store.loadSettings()
+        print("设置项数: \(store.settings.count)  分组数: \(SettingsGroups.groups.count)")
+        for g in SettingsGroups.groups {
+            print("  分组「\(g.id.title)」: \(g.keys.count) 项")
+        }
+        failures += captureWindow(
+            SettingsPageRepresentable(store: store),
+            size: CGSize(width: 900, height: 900),
+            name: "05-settings",
+            dir: directory, appearance: appearance)
 
         // 引擎页还写着 P5，但先渲染一个「未实现」占位以证明多页渲染通路通了
         print("")
@@ -166,74 +202,127 @@ enum UISnapshot {
     /// 检查位图是否是「纯色」（= 布局没跑）。
     ///
     /// 判据：采样若干点，如果**所有采样点颜色都一样** → 判空白。
-    /// 这比「有没有 alpha 0」更可靠（纯色图也可能全不透明）。
+    ///
+    /// ⚠️ **阈值不能太松**。本鱼第一版用 `dr+dg+db > 0.06`，
+    ///    结果设置页渲染出一张**全白**的图却**判过了** ——
+    ///    因为纯白背景上的抗锯齿文字边缘产生了极小的色差（不到 0.06），
+    ///    采样网格恰好扫到那些边缘，于是被判成「有内容」。
+    ///
+    ///    现在的判据更严：`0.02`（约 5 个灰阶值），并且**要求至少 3 个明显不同的点**
+    ///    （单个边缘像素不够，要有实质内容）。
     private static func checkBlank(_ rep: NSBitmapImageRep) -> Bool {
         let w = rep.pixelsWide, h = rep.pixelsHigh
         guard w > 4, h > 4 else { return true }
 
         var first: NSColor?
         var distinct = 0
-        // 采一个网格（不是全量遍历 —— 1920×1080 全扫太慢）
-        for yi in stride(from: h / 10, to: h, by: max(1, h / 10)) {
-            for xi in stride(from: w / 10, to: w, by: max(1, w / 10)) {
+        // 采一个更密的网格（12×12 = 144 点）—— 太稀会漏掉小内容
+        for yi in stride(from: h / 8, to: h, by: max(1, h / 12)) {
+            for xi in stride(from: w / 8, to: w, by: max(1, w / 12)) {
                 guard let color = rep.colorAt(x: xi, y: yi) else { continue }
                 let rgb = color.usingColorSpace(.deviceRGB) ?? color
                 if let f = first {
                     let dr = abs(rgb.redComponent - f.redComponent)
                     let dg = abs(rgb.greenComponent - f.greenComponent)
                     let db = abs(rgb.blueComponent - f.blueComponent)
-                    if dr + dg + db > 0.06 { distinct += 1 }
+                    if dr + dg + db > 0.02 { distinct += 1 }
                 } else {
                     first = rgb
                 }
             }
         }
-        return distinct == 0
+        // 至少 3 个明显不同的采样点才算「有内容」
+        return distinct < 3
     }
 }
 
 // MARK: - 渲染用的包装视图
 
 /// 让 `RootView` 能指定「选中第一个游戏」的状态。
+///
+/// ⚠️ 与 v2 布局（顶部分段控件 + 一层 HSplitView）对齐。
+///    不能直接复用 `RootView`：它的 `@State selection` 私有，渲染时无法从外部指定。
 struct RootViewRepresentable: View {
     let store: AppStore
     var selectFirst: Bool = true
 
     var body: some View {
-        NavigationSplitView {
-            List(selection: .constant(selectFirst ? store.games.first?.id : nil)) {
-                ForEach(store.groups, id: \.id) { group in
-                    Section {
-                        ForEach(group.games, id: \.id) { game in
-                            GameListRow(
-                                game: game,
-                                isRunning: store.runningGames[game.id] != nil
-                            )
-                            .tag(game.id)
-                        }
-                    } header: {
-                        HStack(spacing: 6) {
-                            Text(group.title)
-                            Text("\(group.games.count)")
-                                .font(.caption2)
-                                .foregroundStyle(.tertiary)
+        VStack(spacing: 0) {
+            // 模拟顶部工具条（渲染出来便于检查分段控件样子）
+            HStack(spacing: 12) {
+                Picker("", selection: .constant(RootView.AppPage.library)) {
+                    Text("游戏库").tag(RootView.AppPage.library)
+                    Text("引擎").tag(RootView.AppPage.engines)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(width: 180)
+                Spacer()
+                SearchField(text: .constant(""))
+                    .frame(width: 240)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            Divider()
+
+            HSplitView {
+                List(selection: .constant(selectFirst ? store.games.first?.id : nil)) {
+                    ForEach(store.groups, id: \.id) { group in
+                        Section {
+                            ForEach(group.games, id: \.id) { game in
+                                GameListRow(
+                                    game: game,
+                                    isRunning: store.runningGames[game.id] != nil
+                                )
+                                .tag(game.id)
+                            }
+                        } header: {
+                            HStack(spacing: 6) {
+                                Text(group.title)
+                                Text("\(group.games.count)")
+                                    .font(.caption2)
+                                    .foregroundStyle(.tertiary)
+                            }
                         }
                     }
                 }
-            }
-            .listStyle(.sidebar)
-            .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 320)
-            .searchable(text: .constant(""), placement: .sidebar,
-                        prompt: "搜索游戏名、路径或引擎")
-        } detail: {
-            if let id = store.games.first?.id, selectFirst, let game = store.game(id: id) {
-                GameDetailView(game: game).environmentObject(store)
-            } else {
-                WelcomeView().environmentObject(store)
+                .listStyle(.sidebar)
+                .frame(minWidth: 190, idealWidth: 230, maxWidth: 320)
+
+                Group {
+                    if let id = store.games.first?.id, selectFirst, let game = store.game(id: id) {
+                        GameDetailView(game: game).environmentObject(store)
+                    } else {
+                        WelcomeView().environmentObject(store)
+                    }
+                }
+                .frame(minWidth: 400, maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .environmentObject(store)
         .frame(width: 1280, height: 800)
+    }
+}
+
+/// 引擎页的渲染包装（直接就是 EnginesPage，它已经自包含）。
+struct EnginesPageRepresentable: View {
+    let store: AppStore
+
+    var body: some View {
+        EnginesPage()
+            .environmentObject(store)
+            .frame(width: 1000, height: 800)
+    }
+}
+
+/// 设置页的渲染包装。
+struct SettingsPageRepresentable: View {
+    let store: AppStore
+
+    var body: some View {
+        SettingsPage()
+            .environmentObject(store)
+            .frame(width: 900, height: 900)
     }
 }
 

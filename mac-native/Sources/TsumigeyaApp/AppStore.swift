@@ -508,6 +508,58 @@ final class AppStore: ObservableObject {
         refreshEngineEntries()
     }
 
+    // MARK: - 设置（P5 设置页）
+
+    /// 当前设置（原样保存的 JSON，含未知键）。
+    ///
+    /// ⚠️ **必须是原始字典而不是强类型 struct**：
+    ///    Electron 版用 `[key: string]: unknown` 兜住未知键（D10 的取向），
+    ///    强类型 struct 会**静默丢掉**它不认识的键（用户从旧版带来的设置会消失）。
+    @Published private(set) var settings: [String: JSONValue] = [:]
+
+    /// 设置文件路径。
+    private var settingsURL: URL {
+        URL(fileURLWithPath: dataDir).appendingPathComponent("global-settings.json")
+    }
+
+    /// 读设置。
+    func loadSettings() {
+        if case .loaded(let map) = JSONStore.load([String: JSONValue].self, from: settingsURL) {
+            settings = map
+        } else {
+            // 没有 / 损坏 → 空字典（所有项回落到默认值）
+            settings = [:]
+        }
+    }
+
+    /// 读一个布尔设置。
+    func settingBool(_ key: SettingsGroups.Key) -> Bool {
+        SettingsDefaults.boolean(key, from: settings)
+    }
+
+    /// 读一个字符串设置。
+    func settingString(_ key: SettingsGroups.Key) -> String {
+        SettingsDefaults.string(key, from: settings)
+    }
+
+    /// 写一个设置（**立刻落盘**）。
+    ///
+    /// ⚠️ 立刻落盘而不是「点保存才写」：设置项是**离散的开关**，
+    ///    用户改完就期望它生效。攒着等一个保存按钮反而是 mac 上少见的做法
+    ///    （系统偏好设置也是改完立刻生效）。
+    func setSetting(_ key: SettingsGroups.Key, _ value: JSONValue) {
+        settings[key.rawValue] = value
+        persistSettings()
+    }
+
+    /// 落盘。
+    ///
+    /// ⚠️ **保留未知键**：写出的就是 `settings` 原始字典，
+    ///    包括我们不认识的（可能是旧版本写的、或未来版本写的）。
+    private func persistSettings() {
+        _ = JSONStore.save(JSONValue.object(settings), to: settingsURL)
+    }
+
     // MARK: - 分类操作
 
     /// 保存分类（**保留其他所有顶层键**，见 LibraryMetaStore 的注释）。
