@@ -125,7 +125,7 @@ func runDependencyCheck() -> Int {
             continue
         }
         print("\n\(engine)  (\(m.name) v\(m.version))  依赖 \(m.dependencyOrder.count) 个")
-        if m.dependencyOrder.isEmpty {
+        if m.dependencyOrder.isEmpty && engine != "tyrano" {
             print("  ⚠️ 没有依赖（如果这个引擎该有运行时，说明解析漏了）")
         }
         for (name, spec) in m.orderedDependencies {
@@ -137,6 +137,30 @@ func runDependencyCheck() -> Int {
             // 预检：能不能为当前架构选出下载地址
             if EngineInstaller.pickBuild(spec: spec, arch: currentArch()) == nil {
                 print("      ⚠️ 当前架构（\(currentArch())）选不出下载地址")
+                failures += 1
+            }
+        }
+
+        // ⚠️ **二进制路径检查**（P3 加）：依赖装好了但路径找不到 = 白装。
+        // 这是端到端测试抓到的真问题（siglus 落地多一层子目录）。
+        //
+        // ⚠️ nwjs 需要**版本号**才能拼路径（`deps/version/v0.106.1/...`），
+        //    而这里没有 gameArgs。所以对 nwjs 用「扫版本目录取最新」兜住 ——
+        //    真正的启动路径由 `resolveNwjsVersion` 从游戏参数解析，这里只是健康检查。
+        let arch = currentArch()
+        var version = ""
+        if engine == "nwjs" {
+            version = resolveNwjsVersion(dir.path, current: nil) ?? ""
+        }
+        if let binary = BinaryPaths.binary(
+            for: engine, dataDir: dir.path, version: version, arch: arch) {
+            let exec = FileManager.default.isExecutableFile(atPath: binary)
+            print("  二进制: \(exec ? "✅" : "⚠️ 存在但不可执行") \(binary)")
+            if !exec { failures += 1 }
+        } else {
+            // tyrano 复用 nwjs，没自己的二进制；只识别引擎不参与
+            if EngineRegistry.find(folder: engine)?.launchable == true && engine != "tyrano" {
+                print("  ❌ 找不到二进制（依赖装了但路径不对）")
                 failures += 1
             }
         }

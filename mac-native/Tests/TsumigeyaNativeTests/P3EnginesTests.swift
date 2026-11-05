@@ -25,11 +25,28 @@ struct KirikiriPathTests {
 
     /// 实测结构：包解开是**单个裸二进制** `krkrsdl2`，没有 .app。
     /// ⚠️ 守的是：别套用 `.app` 的拼法（那会拼出不存在的路径）。
-    @Test("二进制是 deps 根下的裸 krkrsdl2")
+    ///
+    /// ⚠️ 也守「两种落点都要兜住」：依赖名叫 `krkrsdl2`，
+    /// 所以二进制可能在 `deps/krkr*/krkrsdl2`（子目录）或 `deps/krkrsdl2`（根）。
+    @Test("二进制是 deps 下的裸 krkrsdl2")
     func binaryIsBareFile() {
-        let p = BinaryPaths.kirikiriBinary("/data")
-        #expect(p == "/data/modules/kirikiri/deps/krkrsdl2")
-        #expect(!p.contains(".app"), "kirikiri 不是 .app 布局")
+        // 落点 ①：deps 根（依赖名不带子目录）
+        let rootFS = FakeFS(["/data/modules/kirikiri/deps/krkrsdl2"])
+        let p1 = BinaryPaths.kirikiriBinary(
+            "/data", fileExists: rootFS.exists, listDir: { _ in [] })
+        #expect(p1 == "/data/modules/kirikiri/deps/krkrsdl2")
+        #expect(p1?.contains(".app") == false, "kirikiri 不是 .app 布局")
+
+        // 落点 ②：deps 子目录（依赖名当子目录 —— siglus 真装时就是这种）
+        let subFS = FakeFS(["/data/modules/kirikiri/deps/krkr/krkrsdl2"])
+        let p2 = BinaryPaths.kirikiriBinary(
+            "/data", fileExists: subFS.exists,
+            listDir: { path in
+                if path.hasSuffix("/deps") { return ["krkr"] }
+                if path.hasSuffix("/krkr") { return ["krkrsdl2"] }
+                return []
+            })
+        #expect(p2 == "/data/modules/kirikiri/deps/krkr/krkrsdl2")
     }
 }
 
@@ -39,12 +56,14 @@ struct KirikiriPathTests {
 struct NScripterPathTests {
 
     /// 实测结构：包解开是**两个裸二进制**，用 `onscripter`（非 `-sdl2` 那个）。
-    @Test("二进制是 deps 根下的 onscripter")
+    @Test("二进制是 deps 下的 onscripter")
     func binaryIsOnscripter() {
-        let p = BinaryPaths.nscripterBinary("/data")
+        let rootFS = FakeFS(["/data/modules/nscripter/deps/onscripter"])
+        let p = BinaryPaths.nscripterBinary(
+            "/data", fileExists: rootFS.exists, listDir: { _ in [] })
         #expect(p == "/data/modules/nscripter/deps/onscripter")
-        #expect(!p.contains("onscripter-sdl2"), "用 onscripter，不用 sdl2 版")
-        #expect(!p.contains(".app"))
+        #expect(p?.contains("onscripter-sdl2") == false, "用 onscripter，不用 sdl2 版")
+        #expect(p?.contains(".app") == false)
     }
 }
 
@@ -56,13 +75,34 @@ struct SiglusPathTests {
     /// 实测结构：`Siglus-arm64.app/Contents/MacOS/Siglus`。
     ///
     /// ⚠️ **app 名带架构后缀**（`-arm64` / `-x86_64`），所以不能写死名字 —— 要扫目录。
-    @Test("能扫到带架构后缀的 .app")
+    ///
+    /// ⚠️ **落地位置多一层**（真装才发现）：依赖名 `siglus_rs` 当子目录，
+    /// 所以实际是 `deps/siglus_rs/Siglus-arm64.app/...`。
+    @Test("能扫到带架构后缀的 .app（子目录落点，实测）")
     func findsArchSuffixedApp() {
+        let sub = "/data/modules/siglus/deps/siglus_rs"
+        let fake = FakeFS(["\(sub)/Siglus-arm64.app/Contents/MacOS/Siglus"])
+        let p = BinaryPaths.siglusBinary(
+            "/data", fileExists: fake.exists,
+            listDir: { path in
+                if path.hasSuffix("/deps") { return ["siglus_rs"] }
+                if path.hasSuffix("/siglus_rs") { return ["Siglus-arm64.app"] }
+                return []
+            })
+        #expect(p == "\(sub)/Siglus-arm64.app/Contents/MacOS/Siglus")
+    }
+
+    /// 另一种落点：依赖名不带子目录（直接落 deps 根）也要兜住。
+    @Test("也能扫到 deps 根的 .app")
+    func findsAppAtDepsRoot() {
         let deps = "/data/modules/siglus/deps"
         let fake = FakeFS(["\(deps)/Siglus-arm64.app/Contents/MacOS/Siglus"])
         let p = BinaryPaths.siglusBinary(
             "/data", fileExists: fake.exists,
-            listDir: { _ in ["Siglus-arm64.app"] })
+            listDir: { path in
+                if path == deps { return ["Siglus-arm64.app"] }
+                return []
+            })
         #expect(p == "\(deps)/Siglus-arm64.app/Contents/MacOS/Siglus")
     }
 

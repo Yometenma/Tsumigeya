@@ -29,6 +29,12 @@ func main() {
         exit(f == 0 ? 0 : 1)
     case "deps":
         exit(runDependencyCheck() == 0 ? 0 : 1)
+    case "install":
+        // install <引擎> [--dry-run]
+        let rest = Array(args.dropFirst())
+        let engineArg = rest.first { !$0.hasPrefix("--") }
+        let dryRun = rest.contains("--dry-run")
+        exit(runInstall(engine: engineArg, dryRun: dryRun) == 0 ? 0 : 1)
     case "plan":
         exit(runLaunchPlanPreview() == 0 ? 0 : 1)
     case "launch":

@@ -188,40 +188,94 @@ public enum BinaryPaths {
 
     // MARK: - 其余四个引擎（P3 实测补齐）
 
-    /// KiriKiri 的可执行文件（`deps/krkrsdl2`）。
+    /// KiriKiri 的可执行文件（`deps/krkr*/krkrsdl2`）。
     ///
-    /// ===== 实测（2026-11-06，真下载包）=====
-    /// 包 `krkrsdl2-macos.zip` 解开后是**单个裸二进制**，没有 .app 包：
+    /// ===== 实测（2026-11-06，真下载包 + 真安装）=====
+    /// 包 `krkrsdl2-macos.zip` 解开后是**单个裸二进制**：
     ///     krkrsdl2        （16.5MB，可执行）
     ///
-    /// ⚠️ 这与其他引擎（都是 `.app` 包）**布局完全不同** —— 别套用 `.app` 的拼法。
-    public static func kirikiriBinary(_ dataDir: String) -> String {
-        (depsDir(dataDir, "kirikiri") as NSString).appendingPathComponent("krkrsdl2")
+    /// ⚠️ **依赖名会多一层子目录**：依赖名叫 `krkrsdl2`，
+    /// 所以二进制可能落在 `deps/krkr*/krkrsdl2`（与 siglus 同一个道理）。
+    /// 两种落点都兜住：先扫子目录，再看 deps 根。
+    public static func kirikiriBinary(
+        _ dataDir: String,
+        fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) },
+        listDir: (String) -> [String] = { dir in
+            (try? FileManager.default.contentsOfDirectory(atPath: dir)) ?? []
+        }
+    ) -> String? {
+        let deps = depsDir(dataDir, "kirikiri")
+        return findBareBinary(
+            deps: deps, binaryName: "krkrsdl2",
+            fileExists: fileExists, listDir: listDir)
     }
 
-    /// NScripter 的可执行文件（`deps/onscripter`）。
+    /// NScripter 的可执行文件（`deps/onscripter*/onscripter`）。
     ///
     /// ===== 实测（2026-11-06，真下载包）=====
     /// 包 `onscripter-20230825bin.tar.bz2` 解开是**两个裸二进制**：
-    ///     onscripter         （3.9MB，SDK 1.2 版）
-    ///     onscripter-sdl2    （5.1MB，SDL2 版）
+    ///     onscripter         （3.9MB）
+    ///     onscripter-sdl2    （5.1MB）
     ///
     /// ⚠️ 用 `onscripter` 而不是 `onscripter-sdl2`：
-    /// Electron 版的 registry 里这个依赖就叫 `onscripter`，
-    /// 而且 SDL2 版在无窗口/远程会话下更容易出问题。
-    /// 两个都在 `deps/` 根下，不需要子目录。
-    public static func nscripterBinary(_ dataDir: String) -> String {
-        (depsDir(dataDir, "nscripter") as NSString).appendingPathComponent("onscripter")
+    /// SDL2 版在无窗口/远程会话下更容易出问题。
+    public static func nscripterBinary(
+        _ dataDir: String,
+        fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) },
+        listDir: (String) -> [String] = { dir in
+            (try? FileManager.default.contentsOfDirectory(atPath: dir)) ?? []
+        }
+    ) -> String? {
+        let deps = depsDir(dataDir, "nscripter")
+        return findBareBinary(
+            deps: deps, binaryName: "onscripter",
+            fileExists: fileExists, listDir: listDir)
+    }
+
+    /// 在 deps 及其子目录里找一个**裸二进制**（没有 .app 包装的那种）。
+    ///
+    /// 判据：先扫 `deps/*/`（依赖名当子目录时），再扫 `deps/` 根。
+    /// ⚠️ **子目录优先**：如果依赖名带子目录，二进制就在那里；
+    ///    直接扫根会找不到（siglus 真装时就踩了这个）。
+    static func findBareBinary(
+        deps: String, binaryName: String,
+        fileExists: (String) -> Bool, listDir: (String) -> [String]
+    ) -> String? {
+        // ① deps 根（依赖名不带子目录时）
+        let rootCandidate = (deps as NSString).appendingPathComponent(binaryName)
+        if fileExists(rootCandidate) { return rootCandidate }
+
+        // ② deps 下每个子目录（依赖名带子目录时 —— 实测 siglus 就是这样）
+        //
+        // ⚠️ 这里**不能**用 `fileExists(sub)` 判它是目录：
+        //    注入的 fileExists 只回答「路径存不存在」，答不了「是不是目录」。
+        //    正确做法是直接拿 listDir 试探 —— 它能列出说明是目录。
+        for name in listDir(deps).sorted() where !name.hasPrefix(".") {
+            let sub = (deps as NSString).appendingPathComponent(name)
+            // listDir 对文件会返回空数组，对目录返回内容 → 内容非空说明是目录
+            let entries = listDir(sub)
+            guard !entries.isEmpty else { continue }
+            let candidate = (sub as NSString).appendingPathComponent(binaryName)
+            if fileExists(candidate) { return candidate }
+        }
+        return nil
     }
 
     /// Siglus 的可执行文件。
     ///
-    /// ===== 实测（2026-11-06，真下载包）=====
+    /// ===== 实测（2026-11-06，真下载包 + 真安装）=====
     /// 包 `siglus-macos-arm64.app.tar.gz` 解开：
     ///     Siglus-arm64.app/Contents/MacOS/Siglus
     ///
-    /// ⚠️ **app 名里带架构后缀**（`-arm64` / `-x86_64`），所以**不能写死名字**。
-    /// 判据：扫 `deps/` 下第一个 `Siglus*.app`，取它里面的 `Contents/MacOS/Siglus`。
+    /// ⚠️ 但**落地位置多一层**（真装才发现）：依赖名叫 `siglus_rs`，
+    /// 所以实际路径是
+    ///     deps/siglus_rs/Siglus-arm64.app/Contents/MacOS/Siglus
+    ///     注意 `deps/siglus_rs/` 这一层 —— 它是**依赖名**，不是包内目录。
+    ///
+    /// ⚠️ 而且 **app 名里带架构后缀**（`-arm64` / `-x86_64`），所以不能写死名字。
+    ///
+    /// 判据：先看 `deps/<依赖名>/` 下，再看 `deps/` 根（两种布局都要兜住 ——
+    /// 依赖名可能不带子目录，那时它就落在 deps 根）。
     ///
     /// - Returns: 二进制路径；找不到 .app 时返回 nil（由调用方报「引擎没装好」）
     public static func siglusBinary(
@@ -233,17 +287,31 @@ public enum BinaryPaths {
     ) -> String? {
         let deps = depsDir(dataDir, "siglus")
 
-        // 扫 deps 下的 Siglus*.app
-        let apps = listDir(deps)
-            .filter { $0.hasPrefix("Siglus") && $0.hasSuffix(".app") }
-            .sorted()
-        guard let app = apps.first else { return nil }
+        // ⚠️ 两种可能的落点：
+        //   ① deps/siglus_rs/Siglus-*.app   ← 实测的（依赖名当子目录）
+        //   ② deps/Siglus-*.app             ← 依赖名不带子目录时
+        var searchRoots = [deps]
+        var subdirs: [String] = []
+        for name in listDir(deps) where name.hasPrefix("siglus") || name.hasPrefix("Siglus") {
+            let candidate = (deps as NSString).appendingPathComponent(name)
+            subdirs.append(candidate)
+        }
+        // 子目录优先（实测这才是对的）
+        searchRoots = subdirs + [deps]
 
-        let binary = ((((deps as NSString).appendingPathComponent(app) as NSString)
-            .appendingPathComponent("Contents") as NSString)
-            .appendingPathComponent("MacOS") as NSString)
-            .appendingPathComponent("Siglus")
-        return fileExists(binary) ? binary : nil
+        for root in searchRoots {
+            let apps = listDir(root)
+                .filter { $0.hasPrefix("Siglus") && $0.hasSuffix(".app") }
+                .sorted()
+            guard let app = apps.first else { continue }
+
+            let binary = ((((root as NSString).appendingPathComponent(app) as NSString)
+                .appendingPathComponent("Contents") as NSString)
+                .appendingPathComponent("MacOS") as NSString)
+                .appendingPathComponent("Siglus")
+            if fileExists(binary) { return binary }
+        }
+        return nil
     }
 
     /// Godot 的可执行文件。
@@ -323,11 +391,11 @@ public enum BinaryPaths {
         case "renpy":
             return renpySh(dataDir, fileExists: fileExists, listDir: listDir)
         case "kirikiri":
-            let p = kirikiriBinary(dataDir)
-            return fileExists(p) ? p : nil
+            return kirikiriBinary(
+                dataDir, fileExists: fileExists, listDir: listDir)
         case "nscripter":
-            let p = nscripterBinary(dataDir)
-            return fileExists(p) ? p : nil
+            return nscripterBinary(
+                dataDir, fileExists: fileExists, listDir: listDir)
         case "siglus":
             return siglusBinary(dataDir, fileExists: fileExists, listDir: listDir)
         case "godot":

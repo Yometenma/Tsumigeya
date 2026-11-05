@@ -51,16 +51,45 @@ public struct EngineDefinition: Sendable, Equatable {
     public let launchable: Bool
     /// 只识别引擎的「为什么不能跑」说明键（用于 UI 文案）。
     public let detectOnlyReasonKey: String?
+    /// 依赖表（**顺序有意义**：安装时用户看到进度条先动主二进制）。
+    ///
+    /// ⚠️ P1 时这里是空的（那时搬了也验证不了）。**P3 补上**：
+    /// 这些 URL 是纯数据，与 `src/main/engines/registry.ts` 一一对应。
+    public let dependencies: [(name: String, spec: DependencySpec)]
 
     public init(
         folder: String, name: String, autodetect: DetectRule?,
-        launchable: Bool = true, detectOnlyReasonKey: String? = nil
+        launchable: Bool = true, detectOnlyReasonKey: String? = nil,
+        dependencies: [(name: String, spec: DependencySpec)] = []
     ) {
         self.folder = folder
         self.name = name
         self.autodetect = autodetect
         self.launchable = launchable
         self.detectOnlyReasonKey = detectOnlyReasonKey
+        self.dependencies = dependencies
+    }
+
+    public static func == (a: EngineDefinition, b: EngineDefinition) -> Bool {
+        a.folder == b.folder && a.name == b.name && a.launchable == b.launchable
+    }
+}
+
+// MARK: - 依赖表的便捷构造
+
+extension DependencySpec {
+    /// 通用包（`universal` 键）—— mkxpz / RTP / easyrpg / renpy / kirikiri / nscripter / godot 都是这种。
+    static func universal(_ url: String, unzip: Bool = true, optional: Bool = false) -> DependencySpec {
+        DependencySpec(builds: ["universal": DependencyBuild(link: url, unzip: unzip)],
+                       optional: optional)
+    }
+
+    /// 分架构包（`arm64` + `x86_64`）—— nwjs / siglus 是这种。
+    static func split(arm64: String, x86_64: String, unzip: Bool = true) -> DependencySpec {
+        DependencySpec(builds: [
+            "arm64": DependencyBuild(link: arm64, unzip: unzip),
+            "x86_64": DependencyBuild(link: x86_64, unzip: unzip),
+        ])
     }
 }
 
@@ -145,6 +174,15 @@ public enum EngineRegistry {
     /// 按 folder 查引擎。
     public static func find(folder: String) -> EngineDefinition? {
         all.first { $0.folder == folder }
+    }
+
+    /// 取某个引擎的依赖表（**P3 的接线点**）。
+    ///
+    /// ⚠️ 为什么不直接放在 `EngineDefinition.dependencies`：
+    /// 那张表在 `EngineDependencies.swift`（纯数据、单独一篇便于改 URL）。
+    /// 这里做一个转发，让调用方（安装流程）不用知道数据分在哪。
+    public static func dependencies(for folder: String) -> [(name: String, spec: DependencySpec)] {
+        EngineDependencies.dependencies(for: folder)
     }
 }
 
