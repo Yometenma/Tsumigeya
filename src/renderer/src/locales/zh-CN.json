@@ -6,7 +6,9 @@
   "nav": {
     "library": "游戏库",
     "engines": "引擎管理",
-    "settings": "设置"
+    "settings": "设置",
+    "expandSidebar": "展开侧边栏",
+    "collapseSidebar": "收起侧边栏"
   },
   "common": {
     "ok": "确定",

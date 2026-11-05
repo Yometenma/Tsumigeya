@@ -16,13 +16,14 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowLeft, Top, Bottom, Refresh } from '@element-plus/icons-vue'
+import AppIcon from '@/components/AppIcon.vue'
 import DiagnosisDialog from '@/components/DiagnosisDialog.vue'
 import { api, iconUrl, translateError, type Diagnosis } from '@/api/client'
 import { isAdultWork } from '../../../shared/age-rating'
 import { languageShortName } from '../../../shared/game-language'
 import { decideLaunchTarget } from '../../../shared/launch-language'
 import { durationShape, hasValidPlayedAt, playTimeView } from '../../../shared/play-time'
+import { morphIcon } from '../../../shared/icon-nodes'
 import {
   buildDetailFields,
   canRefreshMeta,
@@ -225,6 +226,39 @@ function formatDuration(totalSeconds: number): string {
   return rest > 0
     ? t('library.runningHoursMinutes', { hours, minutes: rest })
     : t('library.runningHours', { hours })
+}
+
+/**
+ * 简介展开/收起的图标数据（**数据**，不是组件 —— Morphicons 要的就是这个）。
+ *
+ * ⚠️ 必须是 computed 那一边的"两个稳定引用"：MorphIcon 拿到**新对象**就会变形。
+ * 如果每次渲染都新建一个数组字面量，即使状态没变也会触发一次无意义的动画。
+ *
+ * ⚠️ 这段必须在下面那个 `watch({ immediate: true })` **之前**声明：
+ * 组件 setup 是同步执行的，immediate watch 会立刻读它 —— 放到 watch 后面就是
+ * TDZ 白屏（AGENTS.md 已知坑）。本鱼把它放在这里，不是随手放的。
+ */
+const summaryIcon = computed(() => morphIcon('summary', summaryExpanded.value))
+
+/**
+ * 启动/停止按钮的图标（**数据**，M5.5）。
+ *
+ * `morphIcon('launch', true)` = 运行中 → `Square`（停止）；false → `Play`。
+ * 与简介折叠同理：状态一变数据就是**新引用**，MorphIcon 才会变形。
+ */
+const launchIcon = computed(() => morphIcon('launch', runningNow.value))
+
+/**
+ * 启动/停止按钮的唯一入口。
+ *
+ * 为什么合成一个函数：按钮现在只有一个实例（morph 要求），
+ * 它承载的动作却随运行态反转 —— 模板里写
+ * `@click="runningNow ? stopGame : launch"` 是复杂表达式（AGENTS.md 已知坑：
+ * 模板表达式最容易白屏）。所以判据搬到脚本里，模板只留一个名字。
+ */
+function onLaunchButton(): void {
+  if (runningNow.value) void stopGame()
+  else void launch()
 }
 
 /** 换了游戏就重置所有视图状态（否则上一个游戏的封面失败标记会残留）。 */
@@ -433,9 +467,17 @@ async function resolveLaunchTarget(id: string): Promise<string> {
 
   <template v-else>
     <header class="detail-header">
-      <el-button text :icon="ArrowLeft" @click="backToLibrary">{{ t('detail.backToLibrary') }}</el-button>
+      <!-- M5.5：图标换成 Lucide（经 AppIcon 收口）。
+           ⚠️ 用具名插槽 `#icon` 而不是 el-button 的 `:icon` prop ——
+           后者要的是**组件**，而我们的图标以**名字**（数据）为单位。
+           插槽由 el-button 自己包进 ElIcon，间距规则照旧生效。 -->
+      <el-button text @click="backToLibrary">
+        <template #icon><AppIcon name="ArrowLeft" :size="16" /></template>
+        {{ t('detail.backToLibrary') }}
+      </el-button>
       <div class="toolbar-spacer" />
-      <el-button :icon="Refresh" :loading="refreshing" :disabled="!refreshable" @click="refreshMeta">
+      <el-button :loading="refreshing" :disabled="!refreshable" @click="refreshMeta">
+        <template #icon><AppIcon name="RefreshCw" :size="16" :stroke-width="1.75" /></template>
         {{ t('common.refreshMeta') }}
       </el-button>
       <el-button type="primary" plain @click="toEdit">{{ t('detail.edit') }}</el-button>
@@ -453,20 +495,29 @@ async function resolveLaunchTarget(id: string): Promise<string> {
           <span v-else class="detail-cover-placeholder">{{ placeholder }}</span>
         </div>
 
-        <!-- M3.5 §7.1：未运行 → 启动按钮；运行中 → 运行态 + 关闭游戏 -->
-        <template v-if="runningNow">
-          <div class="detail-running">
-            <span class="detail-running-dot" aria-hidden="true" />
-            <span class="detail-running-text">
-              {{ t('library.runningSince', { duration: runningDurationText }) }}
-            </span>
-          </div>
-          <el-button class="detail-launch" :loading="stopping" @click="stopGame">
-            {{ t('library.stopGame') }}
-          </el-button>
-        </template>
-        <el-button v-else class="detail-launch" type="primary" size="large" @click="launch">
-          {{ t('detail.launch') }}
+        <!-- M3.5 §7.1：未运行 → 启动按钮；运行中 → 运行态 + 关闭游戏。
+             M5.5：**按钮必须合成同一个实例**，否则 morph 看不到 ——
+             原来这里是两个 <el-button>（v-if / v-else）。两个实例意味着运行态一变，
+             旧按钮连同里面的 MorphIcon 一起销毁、新按钮重新挂载：
+             MorphIcon 的变形靠 `icon` prop 换新引用（同一个实例内），
+             实例都没了，就只会看到一次生硬的替换（正是要消灭的那个闪烁）。 -->
+        <div v-if="runningNow" class="detail-running">
+          <span class="detail-running-dot" aria-hidden="true" />
+          <span class="detail-running-text">
+            {{ t('library.runningSince', { duration: runningDurationText }) }}
+          </span>
+        </div>
+        <el-button
+          class="detail-launch"
+          :type="runningNow ? undefined : 'primary'"
+          :size="runningNow ? undefined : 'large'"
+          :loading="stopping"
+          @click="onLaunchButton"
+        >
+          <template #icon>
+            <AppIcon :icon="launchIcon" :size="18" />
+          </template>
+          {{ runningNow ? t('library.stopGame') : t('detail.launch') }}
         </el-button>
 
         <!-- M5.0 N1：游玩时间统计（用户要求放在启动按钮下方）。
@@ -515,8 +566,14 @@ async function resolveLaunchTarget(id: string): Promise<string> {
             <div class="detail-summary" :class="{ 'is-collapsed': summaryCollapsible && !summaryExpanded }">
               {{ summary }}
             </div>
+            <!-- M5.5：**同一个按钮的两种状态**（展开 ←→ 收起），用 morph 变形。
+                 原来是 el-icon 里按状态换 <Top/> / <Bottom/> 两个组件 —— 那是硬切，
+                 用户看到的是一次闪烁；morph 是同一个路径连续变形过去。
+                 传的是**数据**（summaryIcon），模板里没有任何类型断言或下标运算。 -->
             <el-button v-if="summaryCollapsible" text size="small" @click="toggleSummary">
-              <el-icon><Top v-if="summaryExpanded" /><Bottom v-else /></el-icon>
+              <template #icon>
+                <AppIcon :icon="summaryIcon" :size="16" />
+              </template>
               {{ summaryExpanded ? t('detail.collapseSummary') : t('detail.expandSummary') }}
             </el-button>
           </template>

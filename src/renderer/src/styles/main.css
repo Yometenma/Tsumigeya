@@ -2,6 +2,11 @@
    暗色走 html.dark + Element Plus 的 dark css-vars。 */
 
 :root {
+:root {
+  /* M5.5：侧边栏宽度的**唯一来源**是 shared/sidebar-collapse.ts 的 SIDEBAR_WIDTH
+     （折叠态会变，所以宽度由 App.vue 内联给出）。这个变量只作**首屏兜底**：
+     Vue 挂载前的第一帧用它，避免"侧边栏先窄一下再变宽"的闪动。
+     ⚠️ 改那里的 expanded 值时，这里要同步（有测试锁 SIDEBAR_WIDTH 的数值）。 */
   --tsmg-sidebar-width: 208px;
   --tsmg-radius: 10px;
   --tsmg-gap: 16px;
@@ -65,6 +70,54 @@ a {
   padding: 18px 12px;
   background: var(--tsmg-panel);
   border-right: 1px solid var(--tsmg-border);
+  /* M5.5 折叠态：宽度与 flex-basis 由 App.vue 内联给出（判据在
+     shared/sidebar-collapse.ts），这里只负责过渡与内容变化。
+     时长取 0.42s ≈ AppIcon 的 morph 弹簧停稳时间（0.48s，见那里的实测表）——
+     两者**必须大致同步**：图标还在变形、面板已经"啪"地收完，
+     看起来就像两件不相干的事在不断闪烁。 */
+  transition: width 0.42s ease, flex-basis 0.42s ease;
+  overflow: hidden;
+}
+
+/* 折叠态：导航项只留图标，居中。
+   文字由 v-if 收起（不是 CSS 隐藏）—— 折叠态没有它们的语义位置。 */
+.app-sidebar.is-collapsed .app-nav-item {
+  justify-content: center;
+  padding: 9px 0;
+}
+
+/* 折叠按钮：一个安静的小方块，hover 才显色（它不该抢品牌名的注意力） */
+.app-sidebar-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--tsmg-text-dim);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.app-sidebar-toggle:hover {
+  background: color-mix(in srgb, var(--tsmg-accent) 12%, transparent);
+  color: var(--tsmg-accent);
+}
+
+/* 折叠态：品牌行整块收起，按钮独占一行居中。
+   这里必须清掉 margin-left: auto —— 那会把它推到最右，压出图标列之外。 */
+.app-brand-collapsed {
+  display: flex;
+  justify-content: center;
+  padding: 4px 0 12px;
+}
+
+.app-brand-collapsed .app-sidebar-toggle {
+  margin-left: 0;
 }
 
 .app-brand {

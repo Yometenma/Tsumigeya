@@ -5,10 +5,18 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import AppIcon from '@/components/AppIcon.vue'
+import SidebarToggle from '@/components/SidebarToggle.vue'
 import ProgressOverlay from '@/components/ProgressOverlay.vue'
 import CoreDialogHost from '@/components/CoreDialogHost.vue'
 import { api, translateError } from '@/api/client'
 import { UNCATEGORIZED_ID } from '../../shared/categories'
+import { morphIcon } from '../../shared/icon-nodes'
+import {
+  sidebarPartVisible,
+  sidebarToggleLabelKey,
+  sidebarWidth
+} from '../../shared/sidebar-collapse'
 import { useLibraryStore } from '@/stores/library'
 import { useSettingsStore } from '@/stores/settings'
 import { useEnginesStore } from '@/stores/engines'
@@ -24,10 +32,71 @@ const engines = useEnginesStore()
 const task = useTaskStore()
 const coreDialogs = useCoreDialogsStore()
 
+// ===== M5.5：侧边栏折叠 =====
+//
+// 折叠态**只在内存里**：它是「我现在想多看点内容区」这个临时的视图选择，
+// 不是用户配置。落盘会让"打开应用时侧边栏是收着的"变成一个需要解释的谜
+// （用户忘了自己折过）。与 D50（进程状态只在内存）是同一取向：
+// 临时的界面状态不该假装成持久偏好。
+//
+// ⚠️ 必须在任何 immediate watch 之前声明（本页没有 immediate watch，
+// 但保持这个顺序，将来加的时候不会踩 TDZ）。
+const sidebarCollapsed = ref(false)
+
+/** 折叠开关。模板只调这个名字（不内联 `!sidebarCollapsed` 赋值）。 */
+function toggleSidebar(): void {
+  sidebarCollapsed.value = !sidebarCollapsed.value
+}
+
+/**
+ * 侧边栏的折叠/展开**图标数据**（M5.5 的第一处 morph）。
+ *
+ * 这是「同一个按钮的两种状态」的典型：Menu（展开中，点了会收起）
+ * ←→ X（已收起，点了会展开）。传**数据**给 AppIcon，状态一变就变形。
+ */
+const sidebarToggleIcon = computed(() => morphIcon('sidebarCollapse', sidebarCollapsed.value))
+
+/** 折叠按钮的无障碍标签（折叠后动作变成"展开"，与图标方向相反，见 shared 模块）。 */
+const sidebarToggleLabel = computed(() => t(sidebarToggleLabelKey(sidebarCollapsed.value)))
+
+/** 侧边栏宽度（px，展开 208 / 折叠 56）。 */
+const sidebarPx = computed(() => sidebarWidth(sidebarCollapsed.value))
+
+/**
+ * 各块在折叠态是否可见。
+ *
+ * 全部经 `sidebarPartVisible`（判据在 shared，有单测）——
+ * 模板里不写 `collapsed && part !== ...` 这类表达式（禁复杂表达式）。
+ */
+const brandVisible = computed(() => sidebarPartVisible('brand', sidebarCollapsed.value))
+const navLabelVisible = computed(() => sidebarPartVisible('navLabel', sidebarCollapsed.value))
+const categoriesVisible = computed(() => sidebarPartVisible('categories', sidebarCollapsed.value))
+const footerVisible = computed(() => sidebarPartVisible('footer', sidebarCollapsed.value))
+
+/**
+ * 品牌行的 class（展开态是 `app-brand` 横排，折叠态是 `app-brand-collapsed` 居中）。
+ *
+ * 做成 computed 而不是模板里写三元：模板禁复杂表达式（AGENTS.md 已知坑）。
+ * 关键是这一行**永远渲染** —— 折叠态只是换 class、收起文字，
+ * 折叠按钮本身不能重建（重建就看不到 morph，见模板处注释）。
+ */
+const brandRowClass = computed(() => (sidebarCollapsed.value ? 'app-brand-collapsed' : 'app-brand'))
+
+/**
+ * 导航项。
+ *
+ * M5.5：emoji（🎮 ⚙️ 🛠️）换成 Lucide 的图标**名字**。
+ * 为什么必须换：emoji 是彩色字形，跨平台渲染不一致，和暗色 UI 不搭，
+ * 且没法控制粗细 —— 换图标体系时顺手解决（方案 §4.2 列了这个额外收益）。
+ *
+ * 这里存**图标名**（字符串），不是组件、也不是数据：
+ * 三个导航都是一次性跳转（点一下就到对应页面），**没有"两种状态"**，
+ * 所以不该走 morph 管线（方案 §5：硬塞是滥用）。
+ */
 const navItems = computed(() => [
-  { path: '/library', label: t('nav.library'), icon: '🎮' },
-  { path: '/engines', label: t('nav.engines'), icon: '⚙️' },
-  { path: '/settings', label: t('nav.settings'), icon: '🛠️' }
+  { path: '/library', label: t('nav.library'), icon: 'Gamepad2' as const },
+  { path: '/engines', label: t('nav.engines'), icon: 'Settings' as const },
+  { path: '/settings', label: t('nav.settings'), icon: 'Wrench' as const }
 ])
 
 const appVersion = computed(() => (window.tsumi?.appVersion ? `v${window.tsumi.appVersion}` : ''))
@@ -210,10 +279,29 @@ function isActive(path: string): boolean {
 
 <template>
   <div class="app-shell">
-    <aside class="app-sidebar">
-      <div class="app-brand">
-        <span class="app-brand-name">{{ t('app.name') }}</span>
-        <span class="app-brand-tagline">{{ t('app.tagline') }}</span>
+    <!-- M5.5：折叠态宽度由 shared/sidebar-collapse.ts 的判据算（展开 208 / 折叠 56）。
+         `width` 与 `flex-basis` 必须同时给 —— 只给一个会出现"宽度变了但没变全"
+         （flex 子项的 basis 优先于 width）。 -->
+    <aside
+      class="app-sidebar"
+      :class="{ 'is-collapsed': sidebarCollapsed }"
+      :style="{ width: sidebarPx + 'px', flexBasis: sidebarPx + 'px' }"
+    >
+      <!-- M5.5：品牌行 + 折叠按钮。
+           ⚠️ **必须只有一个容器、不拆成 v-if/v-else 两个 div**：
+           折叠时品牌文字收起，但折叠按钮**不能跟着重建** ——
+           两个容器意味着按钮（连同里面的 MorphIcon）被销毁再挂载，
+           用户看不到变形（这正是本鱼第一版犯的错，探针实测 `d` 属性没变）。
+           所以：外层 div 永远在，只换 class 与内部文字的显隐。 -->
+      <div :class="brandRowClass">
+        <span v-if="brandVisible" class="app-brand-name">{{ t('app.name') }}</span>
+        <span v-if="brandVisible" class="app-brand-tagline">{{ t('app.tagline') }}</span>
+        <SidebarToggle
+          :collapsed="sidebarCollapsed"
+          :label="sidebarToggleLabel"
+          :icon="sidebarToggleIcon"
+          @toggle="toggleSidebar"
+        />
       </div>
 
       <RouterLink
@@ -222,15 +310,20 @@ function isActive(path: string): boolean {
         :to="item.path"
         class="app-nav-item"
         :class="{ 'is-active': isActive(item.path) }"
+        :title="item.label"
       >
-        <span>{{ item.icon }}</span>
-        <span>{{ item.label }}</span>
+        <!-- 图标名是**常量**（三个导航都是一次性跳转，没有两种状态）→ 不 morph -->
+        <AppIcon :name="item.icon" :size="18" />
+        <span v-if="navLabelVisible">{{ item.label }}</span>
       </RouterLink>
 
       <!-- M5.0 S7（U2）：分类区（侧边栏 = 用户的整理体系，与"标签"是不同的东西）。
            多归属：一个游戏可同时出现在多个分类下。
-           「未分类」是**虚拟分类**（不进定义表），判据是某个归属都没有。 -->
-      <div class="app-categories">
+           「未分类」是**虚拟分类**（不进定义表），判据是某个归属都没有。
+           M5.5：折叠态整块收起 —— 56px 宽度里分类名 / 计数 / 「新建分类」
+           全都放不下（不收起只会溢出或被裁，而且**不报错**，
+           判据见 shared/sidebar-collapse.ts 的 SIDEBAR_HIDDEN_WHEN_COLLAPSED）。 -->
+      <div v-if="categoriesVisible" class="app-categories">
         <div class="app-categories-title">{{ t('category.sidebarTitle') }}</div>
 
         <button
@@ -305,7 +398,8 @@ function isActive(path: string): boolean {
         </button>
       </div>
 
-      <div class="app-sidebar-footer">
+      <!-- 折叠态收起：版本号/平台是两行短文本，56px 宽度放不下 -->
+      <div v-if="footerVisible" class="app-sidebar-footer">
         <div>{{ appVersion }}</div>
         <div>{{ platform }}</div>
       </div>

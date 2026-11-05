@@ -19,9 +19,9 @@
 
 - **已完成**：M1（游戏库/识别/装引擎/启动）、M2（DLsite 元数据）、M2.5（搜索/可编辑元数据/多语言）、
   M3（故障自愈）、M2.6（海报墙与详情页）、M2.7（编辑页重构）、M3.5（进程管理）、M4.0（自实现启动）、
-  M4.1（引擎清单自己维护）、**M4.2（彻底零上游）**
+  M4.1（引擎清单自己维护）、**M4.2（彻底零上游）**、**M5.5（动态图标 / Lucide 图标体系）**
 - **已发布**：**v0.5.3**（含 M4.2 + 两个启动修复；GitHub `Yometenma/Tsumigeya`）
-- **测试**：**1164 个 / 51 文件**全绿；`typecheck` / `test` / `build` 三绿
+- **测试**：**1198 个 / 53 文件**全绿；`typecheck` / `test` / `build` 三绿
 - **M5.0 进行中**（`docs/M5.0-实施方案.md`）：12 项体验优化，**逐条提交**（用户拍板）
   - 顺序见方案 §12：B1 版本号 → U3+U4 筛选 → U5 选文件 → U6 去跳过 → N1 游玩时间
     → U1 批量 → U2 分类 → U10 全部安装 → U9 设置页 → U7 抽组件 → U8 编辑页重构
@@ -73,6 +73,9 @@
 | 设置页分组 | `src/shared/settings-groups.ts` | 分组是**数据**；`SETTINGS_KEYS` + 源码级核对防「搬家漏项」；`BOOL_DEFAULTS` 是主进程镜像（有测试对齐） |
 | 游戏信息表单 | `src/renderer/src/components/GameInfoForm.vue` + `src/shared/gameinfo-form.ts` | **编辑页与向导共用**；`bound`（有 id，立刻落盘）/ `staged`（没 id，暂存到游戏保存后提交）。编辑页用 staged 实现「全页一个保存」 |
 | 编辑页容器 | `src/renderer/src/pages/GameEditPage.vue`（295 行） | 只做路由/保存/表单状态；区块拆成 `GameLocalSection` / `GameTagsSection` / `GameEngineArgsSection` / `GameDiagnosisSection` /（`GameInfoForm`） |
+| **图标数据**（M5.5） | `src/shared/icon-nodes.ts` | **图标几何的唯一来源**（12 个图标）。`ICON_NODES` + `MORPH_PAIRS` + `morphIcon()`。手抄 Lucide 常量，有测试与包内真实数据**逐字节**比对（包一升级就红） |
+| **图标渲染**（M5.5） | `src/renderer/src/components/AppIcon.vue` | 收口所有图标渲染。`<AppIcon name="Ellipsis" />` = 静态；`<AppIcon :icon="数据" />` = 走 morph。**弹簧与 stroke 默认值在这里**（`SPRING` / `strokeWidth`） |
+| **侧边栏折叠**（M5.5） | `src/shared/sidebar-collapse.ts` + `SidebarToggle.vue` | 折叠态**只在内存**（不落盘）；判据是「折叠时哪些块收起」（漏一个会溢出且不报错）；宽度 208↔56 |
 
 ## 开发命令
 
@@ -121,6 +124,8 @@ Vue → Pinia → api/client → preload(window.tsumi.invoke)
 | **响应式 Proxy 传给 IPC → `An object could not be cloned.`** | 走 store 层统一 `toPlain()`（D44）；**逐字段拷贝会漏** |
 | `el-dropdown-item` 的 `aria-disabled` 是**字符串** `"false"` | 判据用 `=== 'true'`，别用 `!!getAttribute()` |
 | `settings-row` 塞 array 编辑块 → 布局错乱 | `DynamicArgsForm` 把它放 `settings-row` 外面 |
+| **`v-if`/`v-else` 两个容器各放一个 morph 图标 → 变形静默失效** | 状态一变就销毁旧组件、新建新的，MorphIcon 的实例没了 → 只看到硬切（**不报错、不警告**）。必须**合成一个实例**：一个 button、只换 `:type`/`:size`/`@click`，或外层 div 常驻只换 class。M5.5 踩了两次（侧边栏折叠按钮、详情页启动/停止），探针实测 `d` 属性不变才发现 |
+| **探针用 `show:false` 的窗口验 morph → 永远读到"没变"** | Chromium 在隐藏窗口里**暂停 rAF**，而 morphicons 全靠 1 个 rAF 驱动。探针要 `show:true` + `backgroundThrottling:false`，并先自检 `rafAlive`（M5.5 被这个假阴性坑过一次） |
 
 ### 主进程 / Electron
 
@@ -263,6 +268,11 @@ Vue → Pinia → api/client → preload(window.tsumi.invoke)
 | D70 | ⚠️ **已作废（被 D72 取代）**：曾把 mkxp.json 写到游戏目录 | 那次方向是错的 —— 实测那份 mkxp-z **根本不看 cwd**，只读 app 包内 `Contents/Game/mkxp.json`。判据：把 Game.ini 删掉、cwd 换成纯 ASCII 临时目录，它照旧报同一句错 |
 | D71 | **`Game.ini` 的 `Title=` 是 GBK 时，启动前自动改成纯 ASCII**（先备份 `.tsumigeya-bak`，幂等） | 实测日志：`Could not read Game.ini` + `Game.ini: Could not determine encoding of Game.Title` → **整份 ini 都读不出来** → 回落到 RGSS 1 (XP) → 找不到 `Scripts.rxdata` → mkxp-z 弹「No script file has been specified」。改完 Title 后 ini 能正常读、版本判对。`Title` 只是显示用，不参与启动逻辑 |
 | D72 | **mkxp-z 的 `gameFolder` 遇到非 ASCII 路径时用 ASCII 符号链接**（`/tmp/tsumigeya-<base>-<sha1前12>`）；配置仍写 app 包内、**不传 cwd** | 实测对照：`/tmp/mkxp-ascii-test` → ✅ `RGSS version 3`；中文路径 → ❌ `Failed to parse mkxp.json : Unknown encoding`（它的 JSON 读取器先做编码嗅探，见到非 ASCII 字节就判失败，即使文件是合法 UTF-8）。写成 \uXXXX 转义更糟 —— 直接 crash（`-[NSURL initFileURLWithPath:]: nil string parameter`）。符号链接让 mkxp-z 全程只见 ASCII |
+| D73 | **图标体系换 Lucide，图标几何「手抄常量 + 与包内数据逐字节比对的测试」**（`shared/icon-nodes.ts`）；不用 `lucide`（数据包，要第二份依赖），也不从组件里运行时抠 `iconNode`（赌内部结构，坏了**静默不画**） | morphicons 要**数据**（IconNode），而 `lucide-vue-next` 只导出**组件**。三种取法里，手抄 + 漂移测试是唯一"坏了会红"的：包升级改了路径，`test/icon-nodes.test.ts` 当场报出「该抄成什么」。实测这条判据抓到了本鱼抄错的两个图标（Gamepad2 / Settings） |
+| D74 | **只在「同一个按钮有两种状态」处用 morph**；一次性动作（添加/删除/导航跳转）用普通 Lucide | 变形是**状态信息**，不是装饰。给"点一下就走"的按钮加变形，用户得到的是噪音（方案 §5 的使用原则）。判据落到 `MORPH_PAIRS` 数据 + 单测核对「morph 图标集与静态图标集不重不漏」 |
+| D75 | **morph 的宿主必须是一个实例**：不用 `v-if`/`v-else` 两个容器各放一个图标 | 两个容器 = 状态一变就销毁旧组件重建新的，MorphIcon 实例没了 → 只看到硬切，而且**不报错、不警告**。M5.5 踩了两次（侧边栏折叠、详情页启动/停止） |
+| D76 | **侧边栏折叠态只在内存**，不落盘 | 它是"我现在想多看点内容区"的临时视图选择，不是用户配置。落盘会让"打开就是收着的"变成需要解释的谜（用户忘了自己折过）。与 D50 同一取向 |
+| D77 | morph 弹簧用**显式 `{stiffness:400, damping:40}`**，不用官方 `smooth` 预设 | 用户要"无回弹"，但官方 `smooth`(k=170,c=26) 实测 **0.72s** 太慢 —— 面板宽度过渡都收完了，图标还在飞。保持 ζ=1（`c=2√k`，零回弹）只提刚度 → **0.48s**。实测表在 `AppIcon.vue` 注释里 |
 
 ## 里程碑路线图
 
@@ -281,12 +291,15 @@ Vue → Pinia → api/client → preload(window.tsumi.invoke)
   - U1 批量管理 / U2 自定义分类 / U3 去标签筛选 / U4「只看未绑定」/ U5 只留选文件 / U6 去跳过+可改引擎
   - U9 设置页分组 / U10 引擎页「全部安装」
   - N1 详情页游玩时间 / N2 存档管理 / N3 汉化作弊（参考 RPGMakerUtils）
-- **M5.5 动态图标**（`docs/M5.5-动态图标.md`，方案已就绪，**M5.0 完成后做**）：
-  接入 [Morphicons](https://www.morphicons.com/)（**MIT**，gzip 10 KB，零依赖）做状态切换的图标变形。
-  - 用户已拍板：**图标体系换成 Lucide**（Morphicons 原生支持它的 IconNode 格式）
-  - 现状成本很低：Element Plus 图标只有 **2 个文件 5 个图标**；侧边栏用的是 emoji（顺带换掉）
-  - **只在「同一按钮有两种状态」处用 morph**（菜单←→X、播放←→停止、展开←→收起）；
-    一次性动作按钮（添加/删除）不该变形 —— 硬塞是滥用
+- **M5.5 动态图标**（`docs/M5.5-动态图标.md`，**已实施**，待发布）：
+  接入 [Morphicons](https://www.morphicons.com/)（**MIT**，零依赖）做状态切换的图标变形。
+  - ✅ 图标体系已换成 **Lucide**（`lucide-vue-next@1.0.0`；`@element-plus/icons-vue` 已从直接依赖移除）
+  - ✅ 5 个 Element 图标全换 + 侧边栏 emoji 换成 Gamepad2/Settings/Wrench
+  - ✅ 三处 morph：侧边栏折叠 `Menu`←→`X`、启动/停止 `Play`←→`Square`、简介展开 `ChevronDown`←→`ChevronUp`
+  - ✅ **侧边栏折叠是新建功能**（原计划以为它已存在，见 docs §9.3）
+  - ✅ +33 条测试（`icon-nodes` 21 / `sidebar-collapse` 12）
+  - ⚠️ **动效手感与暗色粗细待用户真机确认**（`AppIcon.vue` 的 `SPRING` / `strokeWidth` 可直接调）
+  - **仍只在「同一按钮有两种状态」处用 morph**（D74）；一次性动作不变形 —— 硬塞是滥用
 - **M4**：存档管理（查看/备份/导出）+ 增强（Cheat 注入/变速）
 - **M5**：手柄、无边框全屏、像素缩放、dmg 公证分发
 
@@ -321,6 +334,11 @@ Vue → Pinia → api/client → preload(window.tsumi.invoke)
   需要在有画面的机器上确认按钮的显隐与配色仍然合理
 - **mac 上真引擎能否 spawn 起来**（Windows 只验到错误路径与中文文案）
 - 不做 chromium-args 篡改后，NW.js 行为是否与之前一致（待 mac 真机对比）
+- **M5.5 图标动效手感**（本机已验「图标画出来了、变形确实在跑、落回规范形态、零 console 错误」，
+  但**观感**只能在真机看）：
+  ① 弹簧 0.48s 的快慢与阻尼是否舒服（`AppIcon.vue` 的 `SPRING = {stiffness:400, damping:40}`）
+  ② 暗色 UI 上 `stroke 1.5` 是否偏细（`AppIcon.vue` 的 `strokeWidth` 默认值）
+  ③ 折叠面板宽度过渡 0.42s 与图标变形 0.48s 是否协调
 
 ## 上游参考（仅历史）
 

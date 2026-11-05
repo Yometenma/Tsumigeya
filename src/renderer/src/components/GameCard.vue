@@ -13,7 +13,7 @@
 // ⚠️ 模板禁 TS 类型断言（会白屏）；所有 ref/computed 都声明在任何 watch 之前（TDZ 白屏）。
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { MoreFilled } from '@element-plus/icons-vue'
+import AppIcon from '@/components/AppIcon.vue'
 import { iconUrl, type GameLanguage, type GameMeta, type GameRecord } from '@/api/client'
 import { isAdultWork } from '../../../shared/age-rating'
 import { GAME_LANGUAGES, languageShortName } from '../../../shared/game-language'
@@ -201,7 +201,7 @@ function toggleSelect(): void {
       <div v-if="!batchMode" class="game-card-menu" @click.stop>
         <el-dropdown trigger="click" placement="bottom-end" @command="onMenuCommand">
           <span class="game-card-menu-trigger" :title="t('library.moreActions')">
-            <el-icon><MoreFilled /></el-icon>
+            <AppIcon name="Ellipsis" :size="16" />
           </span>
           <template #dropdown>
             <el-dropdown-menu>
@@ -266,7 +266,7 @@ function toggleSelect(): void {
     <div v-if="!batchMode" class="game-row-actions" @click.stop>
       <el-dropdown trigger="click" placement="bottom-end" @command="onMenuCommand">
         <span class="game-card-menu-trigger" :title="t('library.moreActions')">
-          <el-icon><MoreFilled /></el-icon>
+          <AppIcon name="Ellipsis" :size="16" />
         </span>
         <template #dropdown>
           <el-dropdown-menu>
