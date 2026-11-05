@@ -12,8 +12,10 @@
 import { easyrpgPlan } from './easyrpg'
 import { kirikiriPlan } from './kirikiri'
 import { mkxpzPlan } from './mkxpz'
+import { nscripterPlan } from './nscripter'
 import { nwjsPlan } from './nwjs'
 import { renpyPlan } from './renpy'
+import { siglusPlan } from './siglus'
 import { tyranoPlan } from './tyrano'
 import type { EngineId } from './binary-paths'
 import type { EnginePlanner, LaunchContext, LaunchPlan } from './types'
@@ -21,7 +23,9 @@ import type { EnginePlanner, LaunchContext, LaunchPlan } from './types'
 /**
  * 支持自实现启动的引擎（D57：不回退到任何别的引擎）。
  *
- * **M6 从 4 个扩到 6 个**（tyrano / kirikiri，见 docs/引擎范围扩展-实施方案.md）。
+ * **M6 从 4 个扩到 6 个**（tyrano / kirikiri），**M6.5 扩到 8 个**（nscripter / siglus）。
+ * 见 docs/引擎范围扩展-实施方案.md §10。
+ *
  * 顺序与 `engines/registry.ts` 的 `ENGINES` **同源** —— 有测试逐个核对，
  * 加引擎时漏改一处会当场红。
  *
@@ -35,7 +39,9 @@ export const LAUNCHABLE_ENGINES: readonly EngineId[] = [
   'easyrpg',
   'renpy',
   'tyrano',
-  'kirikiri'
+  'kirikiri',
+  'nscripter',
+  'siglus'
 ]
 
 /** 引擎 → 实现。用 Map 而不是对象字面量：查表时不会撞上 `constructor` / `__proto__`。 */
@@ -45,7 +51,9 @@ const PLANNERS: ReadonlyMap<string, EnginePlanner> = new Map<string, EnginePlann
   ['easyrpg', easyrpgPlan],
   ['renpy', renpyPlan],
   ['tyrano', tyranoPlan],
-  ['kirikiri', kirikiriPlan]
+  ['kirikiri', kirikiriPlan],
+  ['nscripter', nscripterPlan],
+  ['siglus', siglusPlan]
 ])
 
 /** 这个引擎能不能自实现启动（供 IPC 与 UI 共用的唯一判据）。 */

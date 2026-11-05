@@ -228,6 +228,12 @@
     },
     "kirikiri": {
       "fullscreen": "全屏启动"
+    },
+    "nscripter": {
+      "fullscreen": "全屏启动"
+    },
+    "siglus": {
+      "fullscreen": "全屏启动"
     }
   },
   "engines": {
@@ -271,7 +277,9 @@
       "easyrpg": "运行 RPG Maker 2000 / 2003 游戏。",
       "renpy": "运行 Ren'Py 视觉小说。",
       "tyrano": "运行 TyranoScript（ティラノスクリプト）HTML5 游戏。复用 NW.js 运行时，无需单独下载。",
-      "kirikiri": "运行吉里吉里（KiriKiri）游戏。⚠️ 实验性：所用运行时 krkrsdl2 的作者声明不承诺商用游戏兼容。"
+      "kirikiri": "运行吉里吉里（KiriKiri）游戏。⚠️ 实验性：所用运行时 krkrsdl2 的作者声明不承诺商用游戏兼容。",
+      "nscripter": "运行 NScripter 视觉小说（经 ONScripter）。",
+      "siglus": "运行 Siglus / UK2 / AVG32 / RealLive 游戏（经 siglus_rs）。"
     },
     "experimental": "实验性",
     "noDependencies": "无需单独下载"

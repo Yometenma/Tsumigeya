@@ -519,6 +519,131 @@ const kirikiri: EngineDefinition = {
   experimental: true
 }
 
+// ===== NScripter（ONScripter）=====
+//
+// ===== 判据 A（资源跨平台）=====
+//
+// NScripter 的游戏是 `nscript.dat`（脚本，简单加密）+ `arc.nsa`（归档）+ 图片音频，
+// 全是数据。ONScripter 直接读这些文件，**不需要任何 Windows 二进制**。
+//
+// ===== 判据 B（有 macOS 运行时）=====
+//
+// **ONScripter** 是 NScripter 的开源兼容实现，本体 **GPL-2+**。
+// ⚠️ 许可证本鱼核过 Debian 官方版权文件（onscripter 包）：
+//    「either version 2 of the License, **or (at your option) any later version**」
+//    → 是 `GPL-2+` 而不是 `GPL-2.0-only` → **允许按 GPL-3.0 使用，与本项目兼容**。
+//    （普通法理上「GPLv2-only 与 GPLv3 不兼容」是对的，但这个包带 `+`，结论相反。）
+//
+// macOS 二进制来源：**tmkk 的 ONSLauncher 项目**（https://tmkk.undo.jp/onscripter/）
+//   · 2023-07-08 起 **Apple Silicon 原生**（arm64）
+//   · 双架构 universal binary，OSX 10.4+ / 10.9+ 分别对应两个二进制
+//   · 提供 `onscripter-sdl2`（通过 sdl12-compat 走 SDL2），这是现代 macOS 唯一能正常渲染的
+//
+// ===== ⚠️ 两个「不处理就静默失败」的点（launcher 的 prepare 必须管）=====
+//
+//   ① **缺 `default.ttf` 根本启动不了**（不是警告，是起不来）
+//   ② **缺 `game.id` 会把存档丢进随机命名的目录**（用户的档还在，但他找不到）
+//
+// 这两个都由 `launchers/nscripter.ts` 的 prepare 处理（**写进 `<dataDir>`，绝不碰游戏目录**）。
+//
+// ===== 存档（可纳入现有管理）=====
+//
+// ONScripter 支持 `--save=<路径>`（命令行）或 `ons.cfg` 的 `save=`。
+// 默认落点是 Windows `C:\ProgramData\` / Linux `~/` 下按 `game.id` 命名的子目录
+// （macOS 具体默认路径 —— **未查到**，所以**一律显式传 `--save`**，不靠默认）。
+// → 显式指定后，存档管理就能像 nwjs/renpy 一样接入。
+const nscripter: EngineDefinition = {
+  folder: 'nscripter',
+  name: 'NScripter',
+  version: '1.0.0',
+  description: 'A module to launch NScripter visual novels with ONScripter.',
+  descriptionKey: 'engines.desc.nscripter',
+  autodetect: {
+    // 强命中：`nscript.dat`（脚本）或 `arc.nsa`（归档）—— 这两个是 NScripter 的标志产物。
+    // ⚠️ `all_required: false`：因为有些游戏两者只出现其中一个
+    //    （散装素材的游戏可能没有 arc.nsa）。用打分而不是硬门槛。
+    //    但它仍然赢不过别的强命中，符合 pickBestRule 的规则。
+    files: ['nscript.dat', 'arc.nsa'],
+    all_required: false
+  },
+  gameArgs: {
+    fullscreen: {
+      type: 'boolean',
+      label: 'Start in Fullscreen',
+      labelKey: 'args.fullscreen',
+      default: false
+    }
+  },
+  dependencies: {
+    // ⚠️ 这是 **tar.bz2** 而不是 zip。系统 bsdtar（mac /usr/bin/tar）原生支持，
+    //    与 zip 走同一条 extractArchive 路径，不需要额外依赖。
+    onscripter: {
+      universal: {
+        link: 'https://tmkk.undo.jp/onscripter/onscripter-20230825bin.tar.bz2',
+        unzip: true
+      }
+    }
+  }
+}
+
+// ===== Siglus（siglus_rs）=====
+//
+// ===== 为什么它是「性价比最高」的一条 =====
+//
+// **siglus_rs**（https://github.com/xmoezzz/siglus_rs）是一个 Rust 重实现，
+// 一个引擎同时覆盖 **四种** 日本 VN 引擎格式：
+//
+//   · UK2
+//   · AVG32
+//   · **RealLive**（所以 RealLive 可能不需要单独做 —— 见下）
+//   · SiglusEngine
+//
+// 许可证 **MPL-2.0**（与 GPL-3.0 兼容，且 MPL 是文件级 copyleft，不传染整个项目）。
+// macOS 支持：README 明写 **aarch64 app / x86_64 app / universal DMG app bundle**，
+// 且有预编译 Releases、README 里带「SiglusEngine running natively on macOS」截图。
+//
+// ===== ⚠️ 唯一的技术门槛：`key.toml` =====
+//
+// SiglusEngine 的游戏资源是加密的，需要一个 16 字节副密钥（`key.toml`）。
+// siglus_rs 支持**自动爆破**（README 有说明），所以不是硬阻塞，但要在启动前处理。
+//
+// ===== 关于 RealLive 是否单独做 =====
+//
+// siglus_rs 已经覆盖 RealLive。所以**先用 siglus_rs 跑 RealLive 游戏**，
+// 跑不动再考虑 rlvm（后者许可证/存档路径/arm64 全都未核实，风险更高）。
+// 这条写在这里是为了避免下个会话又去做一遍 rlvm。
+const siglus: EngineDefinition = {
+  folder: 'siglus',
+  name: 'Siglus',
+  version: '1.0.0',
+  description: 'A module to launch Siglus / UK2 / AVG32 / RealLive games with siglus_rs.',
+  descriptionKey: 'engines.desc.siglus',
+  autodetect: {
+    // SiglusEngine 的标志产物：`Scene.pck`（主归档）+ `Gameexe.dat`（配置）。
+    // ⚠️ RealLive 的旧格式是 `Seen.txt` + `Gameexe.ini`，见下一条。
+    files: ['Scene.pck', 'Gameexe.dat'],
+    all_required: false
+  },
+  gameArgs: {
+    fullscreen: {
+      type: 'boolean',
+      label: 'Start in Fullscreen',
+      labelKey: 'args.fullscreen',
+      default: false
+    }
+  },
+  dependencies: {
+    // ⚠️ 下载地址必须 pin 到具体 release（不用 `latest` 浮动 tag —— D60 的取向）。
+    //    这里是 README 里的通用发布位置，实际安装时由 versions 逻辑决定具体产物。
+    siglus_rs: {
+      universal: {
+        link: 'https://github.com/xmoezzz/siglus_rs/releases/latest/download/siglus_engine-macos-universal.dmg',
+        unzip: true
+      }
+    }
+  }
+}
+
 // ===== 只识别、不启动的引擎（DETECT_ONLY）=====
 //
 // ===== 为什么需要这张表 =====
@@ -605,16 +730,26 @@ export const DETECT_ONLY: readonly DetectOnlyEngine[] = [
 ]
 
 /**
- * ★ 四个引擎的唯一来源（D60）→ **现在是六个**（M6：加 tyrano / kirikiri）。
+ * ★ 引擎的唯一来源（D60 / D87）。
  *
- * 顺序 = 引擎页的展示顺序。**只有这六个**：ruffle（Flash）/ wine（Windows）/ macos
- * 不在**这里**，也不是被 `.filter()` 挡掉的 —— 它们在这个代码库里没有任何定义、
- * 没有任何下载地址、没有任何名字（有测试扫描源码钉死这条）。
+ * 顺序 = 引擎页的展示顺序。**现在是 8 个**（M6 加了 tyrano/kirikiri，M6.5 加了 nscripter/siglus）。
+ *
+ * ruffle（Flash）/ wine（Windows）/ macos 不在**这里**，也不是被 `.filter()` 挡掉的 ——
+ * 它们在这个代码库里没有任何定义、没有任何下载地址、没有任何名字（有测试扫描源码钉死这条）。
  *
  * ⚠️ 新增引擎时**必须同步**：`launchers/binary-paths.ts` 的 `ENGINE_IDS` 与
  * `launchers/index.ts` 的 `LAUNCHABLE_ENGINES`（两处都有测试核对同源）。
  */
-export const ENGINES: readonly EngineDefinition[] = [nwjs, mkxpz, easyrpg, renpy, tyrano, kirikiri]
+export const ENGINES: readonly EngineDefinition[] = [
+  nwjs,
+  mkxpz,
+  easyrpg,
+  renpy,
+  tyrano,
+  kirikiri,
+  nscripter,
+  siglus
+]
 
 /** 引擎目录名集合（`gameEngine` 的合法值）。 */
 export const ENGINE_FOLDERS: readonly string[] = ENGINES.map((engine) => engine.folder)

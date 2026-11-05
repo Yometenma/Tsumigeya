@@ -108,7 +108,10 @@ describe('S1 参数：精简后的数量与必须保留项', () => {
     renpy: 2,
     // M6 新增：Tyrano 几乎无用户可调参数（只有 fullscreen），吉里吉里同理
     tyrano: 1,
-    kirikiri: 1
+    kirikiri: 1,
+    // M6.5 新增：NScripter / Siglus 同样只留 fullscreen（其余靠命令行默认）
+    nscripter: 1,
+    siglus: 1
   }
 
   const REQUIRED: Record<string, string[]> = {
@@ -118,7 +121,9 @@ describe('S1 参数：精简后的数量与必须保留项', () => {
     easyrpg: ['encoding', 'language', 'rtpPath', 'soundfontPath', 'vsync', 'showFps'],
     renpy: ['savedir', 'command'],
     tyrano: ['fullscreen'],
-    kirikiri: ['fullscreen']
+    kirikiri: ['fullscreen'],
+    nscripter: ['fullscreen'],
+    siglus: ['fullscreen']
   }
 
   test('每个引擎的参数数量不超上限（防「59 个全倒回来」）', () => {

@@ -30,9 +30,19 @@ export const MODULES_DIR_NAME = 'modules'
  * 引擎文件夹名（= manifest / 数据目录里的目录名，也是 gameEngine 字段的值）。
  *
  * ⚠️ **M6 加到六个**：tyrano 复用 nwjs 的二进制（没有自己的），kirikiri 用 krkrsdl2。
+ * ⚠️ **M6.5 加到八个**：nscripter 用 ONScripter，siglus 用 siglus_rs。
  * 顺序与 `engines/registry.ts` 的 `ENGINES` **必须同源** —— 有测试逐个核对。
  */
-export const ENGINE_IDS = ['nwjs', 'mkxpz', 'easyrpg', 'renpy', 'tyrano', 'kirikiri'] as const
+export const ENGINE_IDS = [
+  'nwjs',
+  'mkxpz',
+  'easyrpg',
+  'renpy',
+  'tyrano',
+  'kirikiri',
+  'nscripter',
+  'siglus'
+] as const
 
 export type EngineId = (typeof ENGINE_IDS)[number]
 
@@ -237,6 +247,117 @@ export function krkrsdl2BinaryPath(dataDir: string): string | null {
 /** krkrsdl2 的「本该在那」的路径（找不到时用它拼可读错误，让用户知道装到哪了）。 */
 export function krkrsdl2ExpectedPath(dataDir: string): string {
   return path.join(kirikiriDepsDir(dataDir), 'krkrsdl2.app', 'Contents', 'MacOS', 'krkrsdl2')
+}
+
+// ===== NScripter（ONScripter）=====
+
+/** NScripter 的依赖根目录（`deps/onscripter`）。 */
+export function nscripterDepsDir(dataDir: string): string {
+  return depsDir(dataDir, 'nscripter', 'onscripter')
+}
+
+/**
+ * 找 ONScripter 的可执行文件。
+ *
+ * tmkk 的 binary 包（`onscripter-YYYYMMDDbin.tar.bz2`）解压后**直接是两个顶层文件**：
+ *
+ *   onscripter           ← PowerPC / 32 位 Intel 版（SDL 1.2）
+ *   onscripter-sdl2      ← **64 位 Intel + Apple Silicon 版**（经 sdl12-compat 走 SDL2）
+ *
+ * ⚠️ **必须优先 `onscripter-sdl2`**：tmkk 的原话是「最近の macOS で SDL 1.2 を使うと
+ * 正しく描画が行われない」，而 Apple Silicon 上只能跑 64 位 → 只有 sdl2 版可用。
+ * 选错的表现是**画面画不出来**（不报错、不崩溃，就是黑屏）。
+ *
+ * 两种布局都认（直放 / 解压后多一层），照 `renpyBinaryPath` 的取向：找不到返回 null，不造路径。
+ */
+export function onscripterBinaryPath(dataDir: string): string | null {
+  const root = nscripterDepsDir(dataDir)
+
+  // 直放（解压后两个文件就在 deps/onscripter/ 下 —— tar.bz2 没有包裹目录）
+  for (const name of ['onscripter-sdl2', 'onscripter']) {
+    const direct = path.join(root, name)
+    if (isFileSafe(direct)) return direct
+  }
+
+  // 多一层（万一将来换了打包方式，顶层有个目录）
+  let entries: fs.Dirent[]
+  try {
+    entries = fs.readdirSync(root, { withFileTypes: true })
+  } catch {
+    return null
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue
+    for (const name of ['onscripter-sdl2', 'onscripter']) {
+      const candidate = path.join(root, entry.name, name)
+      if (isFileSafe(candidate)) return candidate
+    }
+  }
+  return null
+}
+
+/** ONScripter 的「本该在那」的路径（找不到时拼可读错误用）。 */
+export function onscripterExpectedPath(dataDir: string): string {
+  return path.join(nscripterDepsDir(dataDir), 'onscripter-sdl2')
+}
+
+// ===== Siglus（siglus_rs）=====
+
+/** Siglus 的依赖根目录（`deps/siglus_rs`）。 */
+export function siglusDepsDir(dataDir: string): string {
+  return depsDir(dataDir, 'siglus', 'siglus_rs')
+}
+
+/**
+ * 找 siglus_rs 的可执行文件（`siglus_engine`）。
+ *
+ * 官方发布三种 macOS 产物（aarch64 app / x86_64 app / universal DMG app bundle），
+ * 所以布局可能是：
+ *
+ *   deps/siglus_rs/siglus_engine                                  ← 裸二进制
+ *   deps/siglus_rs/siglus_engine.app/Contents/MacOS/siglus_engine ← app bundle
+ *   deps/.../<解压出来的子目录>/...                                 ← DMG 解开后可能多一层
+ */
+export function siglusBinaryPath(dataDir: string): string | null {
+  const root = siglusDepsDir(dataDir)
+
+  const candidates = [
+    path.join(root, 'siglus_engine.app', 'Contents', 'MacOS', 'siglus_engine'),
+    path.join(root, 'siglus_engine')
+  ]
+  for (const candidate of candidates) {
+    if (isFileSafe(candidate)) return candidate
+  }
+
+  // 多一层（DMG 里常有个卷名目录）
+  let entries: fs.Dirent[]
+  try {
+    entries = fs.readdirSync(root, { withFileTypes: true })
+  } catch {
+    return null
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue
+    const nested = path.join(root, entry.name)
+    for (const name of [
+      path.join(nested, 'siglus_engine.app', 'Contents', 'MacOS', 'siglus_engine'),
+      path.join(nested, 'siglus_engine')
+    ]) {
+      if (isFileSafe(name)) return name
+    }
+  }
+  return null
+}
+
+/**
+ * siglus_engine 的「本该在那」的路径（找不到时拼可读错误用）。
+ *
+ * ⚠️ 指向 **app bundle 内**那一层，而不是裸二进制 —— 因为官方发布的三种 macOS 产物里，
+ * app bundle 是默认形态（`--project-dir` 的用法也是按 app 跑的）。
+ * 让「期望路径」与「实际找到的路径」对得上，错误文案才不会误导用户去找一个不存在的位置。
+ */
+export function siglusExpectedPath(dataDir: string): string {
+  return path.join(siglusDepsDir(dataDir), 'siglus_engine.app', 'Contents', 'MacOS', 'siglus_engine')
 }
 
 /** 存在且是文件（不抛）。 */
