@@ -22,8 +22,17 @@ export type Appearance = 'light' | 'dark' | 'system'
 /** M2.5-C：可识别的语言。 */
 export type GameLanguage = 'zh' | 'ja' | 'en' | 'ko'
 
-/** M2.5-C：语言偏好值（`none` = 不启用）。 */
+/** M2.5-C：语言偏好值（`none` = 不启用该功能）。 */
 export type LanguagePreference = GameLanguage | 'none'
+
+/**
+ * M4 S5：存档同步模式。
+ *
+ * 从 `shared/save-sync.ts` **只引类型**（`import type`）—— 那个文件是纯判据，
+ * 引它的类型不会把任何实现带进渲染层的包里。判据本身（`validSaveSyncMode` 等）
+ * 由设置页按需 import（它有 21 条单测）。
+ */
+export type SaveSyncMode = 'none' | 'manual'
 
 export interface Settings {
   listView: boolean
@@ -47,6 +56,13 @@ export interface Settings {
   languageSwitchPrompt: boolean
   /** M3：启动前是否自动跑故障诊断（默认 true）。 */
   diagnoseBeforeLaunch: boolean
+  /**
+   * M4 S5：存档同步模式（默认 `none`）。
+   *
+   * ⚠️ **不接任何云**：`manual` 的意思就是「用详情页那两个导出/导入按钮」，
+   * 不发任何网络请求。判据在 `shared/save-sync.ts`（有单测守「源码里没有任何网络能力」）。
+   */
+  saveSyncMode: SaveSyncMode
 }
 
 export interface GameArgDef {

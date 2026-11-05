@@ -5,6 +5,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { validSaveSyncMode } from '../shared/save-sync'
 
 /** 主进程侧的宽松类型（渲染层唯一类型来源是 api/client.ts，那边是严格版）。 */
 export interface GameRecord {
@@ -55,6 +56,18 @@ export interface Settings {
    * 但没有大量样本前不承诺具体耗时，所以留这个开关作为逃生口。
    */
   diagnoseBeforeLaunch: boolean
+  /**
+   * M4 S5：存档同步模式（`none` / `manual`）。
+   *
+   * ⚠️ **不接任何云**（D31 的精神 + 方案 §3.5）：`manual` 的语义就是
+   * 「用详情页那两个导出/导入按钮」，**不发任何网络请求**。
+   * 这个字段现在只影响设置页的说明文案（`none` 时不显示"不会上传"那句）。
+   *
+   * 校验见 `shared/save-sync.ts` 的 `validSaveSyncMode`：非法值**静默落回 none**
+   * （与语言偏好那几项刻意不同 —— 那几个键决定"启动会不会被提示"，
+   * 静默改正会让用户以为没保存；这个只是提示文案）。
+   */
+  saveSyncMode: string
   /** 保留上游 / 未来版本写入的未知键（例如旧的 darkTheme）。 */
   [key: string]: unknown
 }
@@ -216,7 +229,10 @@ export function normalizeSettings(saved: Record<string, unknown> = {}): Settings
     // 默认 true = 弹确认（§7-⑤ 用户确认「弹，可不再询问」）
     languageSwitchPrompt: saved.languageSwitchPrompt === false ? false : true,
     // M3：启动前诊断默认开（§4.3）。旧库没有这个键 → true。
-    diagnoseBeforeLaunch: saved.diagnoseBeforeLaunch === false ? false : true
+    diagnoseBeforeLaunch: saved.diagnoseBeforeLaunch === false ? false : true,
+    // M4 S5：存档同步模式默认 none（"默认不替用户做主"，与"不接任何云"同一取向）。
+    // 非法值静默落回 none（见 shared/save-sync.ts 的 validSaveSyncMode）。
+    saveSyncMode: validSaveSyncMode(saved.saveSyncMode)
   } as Settings
 }
 
@@ -331,6 +347,13 @@ export function createGameStore(dataDir: string): GameStore {
       throw failure('error.languagePreference', 'Invalid diagnose flag', {
         value: String(partial.diagnoseBeforeLaunch)
       })
+    }
+    // M4 S5：存档同步模式。**静默落回默认**（不报错）—— 这个开关只影响设置页文案，
+    // 它不像语言偏好那几项会改变"启动时会不会被提示"，报错只会让用户在一个
+    // 无关操作里莫名失败。归一化在 normalizeSettings（validSaveSyncMode）里做，
+    // 这里只挡"传了非字符串"那种明显的脏值。
+    if (Object.hasOwn(partial, 'saveSyncMode') && typeof partial.saveSyncMode !== 'string') {
+      delete next.saveSyncMode
     }
     writeJSON(settingsFile, next)
     return normalizeSettings(next)

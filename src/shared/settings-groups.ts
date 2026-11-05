@@ -33,6 +33,7 @@ export type SettingKey =
   | 'fallbackLanguage'
   | 'languageSwitchPrompt'
   | 'diagnoseBeforeLaunch'
+  | 'saveSyncMode'
 
 /**
  * 全部设置项的唯一清单。
@@ -55,7 +56,10 @@ export const SETTINGS_KEYS: readonly SettingKey[] = [
   'preferredLanguage',
   'fallbackLanguage',
   'languageSwitchPrompt',
-  'diagnoseBeforeLaunch'
+  'diagnoseBeforeLaunch',
+  // M4 S5：存档同步模式（none / manual）。归在「游戏库」组：
+  // 它管的是"存档怎么带出去"，与删确认/R18 封面同属"库里的日常行为"。
+  'saveSyncMode'
 ]
 
 /** 只读信息项（不是开关，单独一组展示）。 */
@@ -99,7 +103,11 @@ export interface SettingsGroup {
  */
 export const SETTINGS_GROUPS: readonly SettingsGroup[] = [
   { id: 'appearance', keys: ['appearance', 'listView'], defaultOpen: true },
-  { id: 'library', keys: ['deletionConfirmation', 'showAdultCovers'], defaultOpen: true },
+  {
+    id: 'library',
+    keys: ['deletionConfirmation', 'showAdultCovers', 'saveSyncMode'],
+    defaultOpen: true
+  },
   {
     id: 'language',
     keys: ['language', 'preferredLanguage', 'fallbackLanguage', 'languageSwitchPrompt'],

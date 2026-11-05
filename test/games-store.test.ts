@@ -175,7 +175,9 @@ describe('settings', () => {
       fallbackLanguage: 'ja',
       languageSwitchPrompt: true,
       // M3 §4.3：启动前自动诊断默认开（嫌慢可在设置页关掉）
-      diagnoseBeforeLaunch: true
+      diagnoseBeforeLaunch: true,
+      // M4 S5：存档同步模式默认 none（不接任何云；判据见 shared/save-sync.ts）
+      saveSyncMode: 'none'
     })
   })
 

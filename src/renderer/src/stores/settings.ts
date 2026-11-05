@@ -18,7 +18,10 @@ const DEFAULT_SETTINGS: Settings = {
   // §7-⑤ 用户确认：弹确认，但可以「不再询问」。
   languageSwitchPrompt: true,
   // M3：启动前自动诊断，默认开（方案 §4.3；嫌慢可在设置页关掉）。
-  diagnoseBeforeLaunch: true
+  diagnoseBeforeLaunch: true,
+  // M4 S5：存档同步模式默认 none（"默认不替用户做主"，与"不接任何云"同一取向）。
+  // 判据与常量在 shared/save-sync.ts（DEFAULT_SAVE_SYNC_MODE，有测试对齐）。
+  saveSyncMode: 'none'
 }
 
 export const useSettingsStore = defineStore('settings', () => {

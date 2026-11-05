@@ -323,6 +323,13 @@
     "saved": "设置已保存",
     "showAdultCovers": "显示 R18 作品封面",
     "showAdultCoversHint": "关闭时（默认）会把 R18 作品的封面替换为占位图；作品信息照常获取，打开开关后立即显示。",
+    "saveSync": "存档同步方案",
+    "saveSyncHint": "选「手动导入导出」只是把详情页那两个按钮的说明写清楚一点。两种选择都不会上传你的存档。",
+    "saveSyncManualDisclaimer": "手动模式：存档只在本机与你自己选的文件夹之间搬运，不发任何网络请求。",
+    "saveSyncModes": {
+      "none": "无",
+      "manual": "手动导入导出"
+    },
     "preferredLanguage": "首选游戏语言",
     "fallbackLanguage": "次选",
     "languagePreferenceHint": "当库里同一个游戏有多个语言版本时，启动非首选版本会提示你切换。选「不启用」可整体关闭这个功能。",

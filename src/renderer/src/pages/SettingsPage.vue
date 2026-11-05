@@ -7,6 +7,7 @@ import { ElMessage } from 'element-plus'
 import { api, translateError, type Appearance, type Settings } from '@/api/client'
 import { useSettingsStore } from '@/stores/settings'
 import { SETTINGS_GROUPS, groupHasCustom, isEmptyGroup, type SettingsGroupId } from '../../../shared/settings-groups'
+import { SAVE_SYNC_MODES, needsManualDisclaimer, saveSyncModeLabelKey, type SaveSyncMode } from '../../../shared/save-sync'
 
 const { t } = useI18n()
 const settings = useSettingsStore()
@@ -90,7 +91,26 @@ async function copyDataPath(): Promise<void> {
     ElMessage.error(t('error.network'))
   }
 }
-</script>
+
+// ===== M4 S5：存档同步（**占位**，不接任何云）=====
+
+/**
+ * 下拉选项（标签走 i18n，值来自 shared/save-sync.ts 的唯一清单）。
+ *
+ * ⚠️ 这里**只有两个选项**，没有第三个。方案 §3.5 与 D31：只留接口不实现云同步。
+ * 加第三个之前先读 `shared/save-sync.ts` 的文件头（那里面写了为什么不能接）。
+ */
+const saveSyncOptions = computed<Array<{ label: string; value: SaveSyncMode }>>(() =>
+  SAVE_SYNC_MODES.map((mode) => ({ label: t(saveSyncModeLabelKey(mode)), value: mode }))
+)
+
+/** 选 `manual` 时显示一句「不会上传任何东西」—— 让用户明白我们没偷偷联网。 */
+const showSyncDisclaimer = computed(() => needsManualDisclaimer(settings.settings.saveSyncMode))
+
+/** 下拉变更（写成函数而不是在模板里内联断言，见外观那一段的注释）。 */
+function onSaveSyncChange(value: unknown): void {
+  void patch({ saveSyncMode: value as SaveSyncMode })
+}</script>
 
 <template>
   <h1 class="page-title">{{ t('settings.title') }}</h1>
@@ -186,6 +206,32 @@ async function copyDataPath(): Promise<void> {
             :model-value="settings.settings.showAdultCovers"
             @update:model-value="patch({ showAdultCovers: $event === true })"
           />
+        </div>
+        <!-- M4 S5：存档同步**占位**（不接任何云，方案 §3.5 / D31）。
+             只有「无 / 手动导入导出」两个值 —— 手动那两个入口就是详情页的
+             导出/导入按钮，这里只是让用户选"要不要那个概念"。
+             ⚠️ `none` 也照样显示那两个按钮（showsManualButtons 恒 true）：
+             `none` 的语义是"我不需要同步方案"，**不是**"我不想备份"。 -->
+        <div v-if="group.id === 'library'" class="settings-row">
+          <div class="settings-row-main">
+            <div class="settings-row-title">{{ t('settings.saveSync') }}</div>
+            <div class="settings-row-hint">{{ t('settings.saveSyncHint') }}</div>
+          </div>
+          <el-select
+            :model-value="settings.settings.saveSyncMode"
+            style="width: 200px"
+            @update:model-value="onSaveSyncChange($event)"
+          >
+            <el-option
+              v-for="option in saveSyncOptions"
+              :key="option.value"
+              :label="option.label"
+              :value="option.value"
+            />
+          </el-select>
+        </div>
+        <div v-if="group.id === 'library' && showSyncDisclaimer" class="settings-row">
+          <div class="settings-row-hint">{{ t('settings.saveSyncManualDisclaimer') }}</div>
         </div>
 
         <!-- ===== 语言 ===== -->
