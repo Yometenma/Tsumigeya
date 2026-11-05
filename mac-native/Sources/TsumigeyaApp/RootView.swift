@@ -45,6 +45,15 @@ struct RootView: View {
         }
         .task {
             await store.load()
+            store.refreshInstalledEngines()
+        }
+        // 添加游戏向导（sheet）
+        //
+        // ⚠️ 用 `sheet` 而不是新窗口：向导是**模态任务**，
+        //    用户必须走完或取消，期间不该去点库里别的东西（改到一半容易乱）。
+        .sheet(isPresented: $store.isAddingGame) {
+            AddGameWizard()
+                .environmentObject(store)
         }
     }
 }
@@ -92,11 +101,29 @@ struct GameListView: View {
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button {
-                        // TODO(P5)：添加游戏向导
+                        store.openAddGame()
                     } label: {
                         Label("添加游戏", systemImage: "plus")
                     }
-                    .help("添加游戏（P5 实现）")
+                    .help("添加游戏")
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    // 引擎页入口（P5）
+                    Menu {
+                        ForEach(EngineRegistry.launchable, id: \.folder) { e in
+                            Button {
+                                // TODO(P5)：跳转引擎页
+                            } label: {
+                                Label(
+                                    e.name + (store.isEngineInstalled(e.folder) ? "（已装）" : ""),
+                                    systemImage: store.isEngineInstalled(e.folder)
+                                        ? "checkmark.circle" : "arrow.down.circle")
+                            }
+                        }
+                    } label: {
+                        Label("引擎", systemImage: "wrench.and.screwdriver")
+                    }
+                    .help("引擎运行时管理")
                 }
             }
     }

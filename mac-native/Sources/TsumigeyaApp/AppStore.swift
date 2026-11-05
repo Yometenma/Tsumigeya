@@ -226,6 +226,127 @@ final class AppStore: ObservableObject {
         }
     }
 
+    // MARK: - 添加游戏（P5）
+
+    /// 添加游戏向导是否打开。
+    @Published var isAddingGame = false
+    /// 上次添加失败的原因（向导里显示）。
+    @Published private(set) var lastAddGameError: String?
+    /// 引擎安装状态（folder → 已装）。懒加载 + 缓存。
+    @Published private(set) var installedEngines: Set<String> = []
+
+    /// 打开 / 关闭添加向导。
+    func openAddGame() {
+        lastAddGameError = nil
+        isAddingGame = true
+    }
+
+    func closeAddGame() {
+        isAddingGame = false
+    }
+
+    /// 引擎运行时是否已装。
+    ///
+    /// ⚠️ 判据是「**二进制能找到**」而不是「目录存在」——
+    ///    目录存在但二进制缺失（下载中断）的情况实际发生过。
+    func isEngineInstalled(_ folder: String) -> Bool {
+        installedEngines.contains(folder)
+    }
+
+    /// 重新扫描已装引擎（打开引擎页 / 添加向导时调）。
+    func refreshInstalledEngines() {
+        var set: Set<String> = []
+        for engine in EngineRegistry.launchable {
+            var version = ""
+            if engine.folder == "nwjs" {
+                version = NwjsVersion.resolve(dataDir: dataDir, current: nil) ?? ""
+            }
+            if BinaryPaths.binary(
+                for: engine.folder, dataDir: dataDir,
+                version: version, arch: Arch.current().rawValue) != nil {
+                set.insert(engine.folder)
+            }
+        }
+        installedEngines = set
+    }
+
+    /// 保存一个新游戏。
+    ///
+    /// - Returns: 是否成功。失败原因写在 `lastAddGameError`。
+    ///
+    /// ⚠️ **四处旁挂数据**（D18/D31 的取向）：
+    ///    新增时不涉及删除，所以只需要写 `games.json`。
+    ///    但**保存后要重新加载分类**（新游戏 id 可能影响归属视图）。
+    func addGame(title: String, folder: String, engine: String) -> Bool {
+        lastAddGameError = nil
+
+        // 读当前 games.json（**不能用内存里的 games** —— 可能已被外部改动）
+        let url = URL(fileURLWithPath: dataDir).appendingPathComponent("games.json")
+        var map: GameMap
+        if case .loaded(let loaded) = JSONStore.load(GameMap.self, from: url) {
+            map = loaded
+        } else {
+            map = GameMap()
+        }
+
+        // 组装 draft
+        //
+        // ⚠️ `gamePath` 存的是**游戏目录下的入口占位**，不是目录本身 ——
+        //    这与 Electron 版一致（它存的是 `…/Game.exe` 这种）。
+        //    真正的启动路径由 `LaunchPlanner` 按引擎规则拼。
+        let entry = (folder as NSString).appendingPathComponent("Game.exe")
+        let draft = GameRecord(
+            id: "", gameTitle: title, gamePath: entry, gameEngine: engine,
+            gameArgs: [:]   // 空 = 用 manifest 的缺省值（补缺省值在启动时做）
+        )
+
+        let result = GameLibrary.save(into: map, draft: draft)
+        switch result {
+        case .failure(let err):
+            lastAddGameError = err.message
+            return false
+        case .success(let saved):
+            if let writeError = JSONStore.save(saved.map, to: url) {
+                lastAddGameError = "写 games.json 失败：\(writeError)"
+                return false
+            }
+            // 重新加载（拿到排序后的新列表）
+            Task { await self.load() }
+            return true
+        }
+    }
+
+    /// 删游戏（**清四处旁挂数据**）。
+    ///
+    /// ⚠️ 这条是本文件最容易漏的地方（Electron 版踩过）：
+    ///    `saveGame` 用 `max+1` 生成 id，**容易落回刚删的号** →
+    ///    新游戏继承上一个游戏的游玩历史和分类归属。
+    ///    所以删的时候必须清：games.json / library-meta（元数据）/
+    ///    play-stats（游玩记录）/ **assignments（分类归属）**。
+    ///
+    ///    本鱼现在只实现前两项（元数据与分类）—— play-stats 要等 P6。
+    ///    **但这里要留一个显式的 TODO 注释**，不能悄悄少做一件事。
+    func deleteGame(id: String) {
+        let url = URL(fileURLWithPath: dataDir).appendingPathComponent("games.json")
+        guard case .loaded(let map) = JSONStore.load(GameMap.self, from: url) else { return }
+
+        let updated = GameLibrary.remove(from: map, id: id)
+        _ = JSONStore.save(updated, to: url)
+
+        // ② 分类归属（必须清，否则 id 复用会把旧归属安到新游戏）
+        var newAssignments = assignments
+        newAssignments.removeValue(forKey: id)
+        assignments = newAssignments
+
+        // TODO(P6)：③ play-stats（游玩记录）与 ④ library-meta 里的 DLsite 元数据
+        //           现在 P4/P5 还没有这两层的写入口，等实现时**必须**一起加上。
+        persistCategories()
+
+        games = updated.ordered
+        runningGames.removeValue(forKey: id)
+        lastLaunchFailure.removeValue(forKey: id)
+    }
+
     // MARK: - 分类操作
 
     /// 保存分类（**保留其他所有顶层键**，见 LibraryMetaStore 的注释）。
