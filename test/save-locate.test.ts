@@ -1,13 +1,17 @@
 // M4 S1：存档位置探测的判据。
 //
 // 这些测试是照着**用户 Mac 上的真实目录结构**写的（2026-11-05 实测）：
-//   Karryn's Prison（MV） → www/save/  + .rpgsave
+//   Karryn's Prison（MV） → www/save/  + .rpgsave（main = www/index.html）
 //   艾妮希雅（MZ）        → save/      + .rmmzsave
 //   傭兵の冒険（MKXP-Z）  → Data/ 存在但还没有存档
-//   **苍蓝星（MV）**      → **save/（不是 www/save/）** + .rpgsave
-//                          ↑ 这条是本轮实测才发现的第 4 种形态，见下方回归测试
+//   苍蓝星（MV）          → www/save/（**用户还没存过档，所以目录还不存在**）
+//                           ⚠️ 它的根 `save/` 里有 5 个 2022 年的 .rpgsave ——
+//                           那是**作者打包时塞进去的残留**，不是用户的档。
+//                           本鱼曾把它当成"MV 也可能放根 save"的证据，被用户当场纠正。
+//                           见下方「作者塞进包里的残留存档」那条回归。
 //
-// 判据错了**不会报错**：列表空着，用户只会以为「我没存过档」。
+// 判据错了**不会报错**：列表空着，用户只会以为「我没存过档」；
+// 更糟的是**列出别人的旧档**——那会让用户以为自己的档丢了。
 
 import { describe, expect, test } from 'vitest'
 import { classifySaveEntries, detectSaveLocation, naturalCompare } from '../src/shared/save-locate'
@@ -54,31 +58,75 @@ describe('nwjs：同一引擎两种布局（最容易踩的一条）', () => {
     expect(mz!.layout).toBe('nwjs-mz')
   })
 
-  test('★ 回归（Mac 真机）：MV 游戏把存档放在 <游戏>/save/（苍蓝星）', () => {
-    // 真机实测 2026-11-05：`~/games/苍蓝星/` 有 www/，但 **www/save/ 不存在**；
-    // 存档全在 `<游戏>/save/` 里，后缀是 `.rpgsave`（MV），不是 `.rmmzsave`。
+  test('★ 回归（Mac 真机）：作者塞进包里的残留存档不能当成用户的存档', () => {
+    // ===== 这条是一个**判断错误**的回归（本鱼 2026-11-05 亲自踩的）=====
     //
-    // 修复前的表现（本鱼实测复现过）：走到「save/ 目录存在」那条兜底分支 →
-    // 报 layout `nwjs-mz` + MZ 的判据 → 那一堆 `.rpgsave` **一个都匹配不上**
-    // → 用户看到「目录已就绪，还没有存档」，而那儿躺着 20 多个档。
-    // 不报错、只安静地少列东西 —— 本模块最怕的那一类。
+    // 真机事实（`~/games/苍蓝星`）：
+    //   www/            存在，main = www/index.html
+    //   www/save/       **不存在**（用户没存过档）
+    //   save/           存在，里面有 5 个 .rpgsave（**2022 年的时间戳**）
+    //   save/ 目录本身  出生时间 = 解压那一刻（2026-11-05）
+    //
+    // 本鱼当时看到「根 save/ 里有 .rpgsave」就断言「MV 也可能把存档放在根 save/」，
+    // 还加了一条判据让它们显示出来。用户一句「我没存过档」把整条判断推翻。
+    //
+    // 真相：MV 的 `StorageManager.localFileDirectoryPath()` 是
+    //   path.join(path.dirname(process.mainModule.filename), 'save/')
+    // main = `www/index.html` → 存档基准是 **www/** → 真实位置 `www/save/`。
+    // 那几个文件是**作者打包时塞进去的旧档**，游戏运行时不读也不写它们。
+    //
+    // 若把它们当成"这个游戏的存档"，用户真玩到存档（写到 www/save）之后
+    // 详情页仍显示这几份 2022 年别人的档，他自己的一个都看不到 ——
+    // **比"列表为空"更糟：空列表只是没有，错的列表会让人以为档丢了**。
+    const loc = detectSaveLocation({
+      engine: 'nwjs',
+      // www/save 不存在（用户还没存过档）
+      wwwSave: null,
+      // 根 save 里有残留的 .rpgsave
+      gameSave: dir(['file1.rpgsave', 'file2.rpgsave', 'config.rpgsave']),
+      // package.json 的 main 指向 www/
+      packageMain: 'www/index.html'
+    })
+    expect(loc, '认不出位置').not.toBeNull()
+    // 关键：位置必须是 **www/save**（引擎真实会写的那个），不是根 save
+    expect(loc!.layout).toBe('nwjs-mv')
+    expect(loc!.relativeDir, '把作者残留的存档目录当成了用户的存档位置').toBe('www/save')
+  })
+
+  test('★ main 就在根时（`"main": "index.html"`），存档确实在根 save/', () => {
+    // 反向一半：有些 MV 包把 main 放在根，那时存档就在 `<游戏>/save/`
     const loc = detectSaveLocation({
       engine: 'nwjs',
       wwwSave: null,
-      gameSave: dir(['file1.rpgsave', 'file2.rpgsave', 'config.rpgsave', 'global.rpgsave'])
+      gameSave: dir(['file1.rpgsave']),
+      packageMain: 'index.html'
     })
-    expect(loc, 'save/ 里有 .rpgsave 却没认出位置').not.toBeNull()
-    // 关键：布局是 MV（后缀说的），相对路径是 save（目录说的）—— 两者独立
     expect(loc!.layout).toBe('nwjs-mv')
     expect(loc!.relativeDir).toBe('save')
+  })
 
-    // 而且槽必须真的列出来（这才是用户能看到的那个判据）
-    const { slots, configs } = classifySaveEntries(
-      ['file1.rpgsave', 'file2.rpgsave', 'config.rpgsave', 'global.rpgsave'],
-      loc!
-    )
-    expect(slots).toEqual(['file1.rpgsave', 'file2.rpgsave'])
-    expect(configs.sort()).toEqual(['config.rpgsave', 'global.rpgsave'])
+  test('读不到 package.json → 退回目录启发式（不会崩，也不会空）', () => {
+    // 老包 / 被改过的包：没有 main 可读。这时只能靠目录判断 ——
+    // 与 M4 S1 的「宁可多认，不能漏」一致（列表最多多一项，不会少）。
+    const loc = detectSaveLocation({
+      engine: 'nwjs',
+      wwwSave: null,
+      gameSave: dir(['file1.rpgsave']),
+      packageMain: null
+    })
+    expect(loc).not.toBeNull()
+    expect(loc!.relativeDir).toBe('save')
+  })
+
+  test('main 在 www/ 下时，即使 www/save 还不存在也指向它（用户还没存档）', () => {
+    // 这一条最容易写成 bug：如果只按"哪个目录有文件"判，会掉进根 save 的残留
+    const loc = detectSaveLocation({
+      engine: 'nwjs',
+      wwwSave: null,
+      gameSave: null,
+      packageMain: 'www/index.html'
+    })
+    expect(loc!.relativeDir).toBe('www/save')
   })
 
   test('目录空着（还没存过档）也报出来，但槽是空的', () => {

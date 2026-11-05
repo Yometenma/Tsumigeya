@@ -81,7 +81,7 @@
 | **图标数据**（M5.5） | `src/shared/icon-nodes.ts` | **图标几何的唯一来源**（12 个图标）。`ICON_NODES` + `MORPH_PAIRS` + `morphIcon()`。手抄 Lucide 常量，有测试与包内真实数据**逐字节**比对（包一升级就红） |
 | **图标渲染**（M5.5） | `src/renderer/src/components/AppIcon.vue` | 收口所有图标渲染。`<AppIcon name="Ellipsis" />` = 静态；`<AppIcon :icon="数据" />` = 走 morph。**弹簧与 stroke 默认值在这里**（`SPRING` / `strokeWidth`） |
 | **侧边栏折叠**（M5.5） | `src/shared/sidebar-collapse.ts` + `SidebarToggle.vue` | 折叠态**只在内存**（不落盘）；判据是「折叠时哪些块收起」（漏一个会溢出且不报错）；宽度 208↔56 |
-| **存档探测**（M4 S1） | `src/shared/save-locate.ts` + `src/main/save-store.ts` | 判据是纯函数（**按后缀判，不按目录名猜**）；**nwjs 有 3 种真机布局**：MV 在 `www/save`、MZ 在 `save`（`.rmmzsave`）、**MV 也可能在 `save`（`苍蓝星`）**。`location:null`（不知道在哪）与 `empty:true`（还没存档）是两件事 |
+| **存档探测**（M4 S1） | `src/shared/save-locate.ts` + `src/main/save-store.ts` | 判据是纯函数（**按后缀判，不按目录名猜**）；**nwjs 的存档位置由 `package.json` 的 `main` 决定**（D85）：`main` 在 `www/index.html` → `www/save/`，在根 → `save/`。**绝不按「哪个目录有 `.rpgsave`」判**（作者塞进包里的残留档会骗过它）。`location:null`（不知道在哪）与 `empty:true`（还没存档）是两件事 |
 | **存档展示**（M4 S2） | `src/shared/save-view.ts` + `SaveSection.vue` | `saveSectionView()` → `unknown` / `empty` / `list` 三态（前两者**必须分开**）；`formatByteSize` 是 1024 进制确定性输出；槽与配置分开列 |
 | **存档导出/导入**（M4 S3/S4） | `src/shared/save-archive.ts` + `src/main/save-archive-io.ts` | 打**整个目录**（含 `lastsave.autobak` 这类插件文件）；导入顺序**先校验 sha256 → 再备份 → 才写**；`exportBlocked()` 运行中禁止导出。zip 用 `fflate`（纯 JS，零原生依赖） |
 | **同步占位**（M4 S5） | `src/shared/save-sync.ts` | **只留接口不实现**（`SaveSyncProvider` 无实现类）；源码里**禁止出现任何网络能力**（有源码级测试守着）；模式只有 `none` / `manual` |
@@ -299,7 +299,7 @@ Vue → Pinia → api/client → preload(window.tsumi.invoke)
 | D82 | **游戏运行中禁止导出/导入**，判据在主进程（`exportBlocked` + `registry.has`），UI 只是提前禁用 | 运行中的存档可能正在写：导出的包会是**半截文件**（头对、尾缺）。用户带着它换机，导入后游戏报存档损坏 —— 而他完全想不到问题出在"当初导出时游戏没关"。这类故障**没有自愈余地**（我们不解析也不修存档，方案 §6），所以必须在源头拦住。UI 拦不住所有路径，主进程那一层不能省 |
 | D83 | **存档同步只留接口，不接任何云**；设置里只有 `none` / `manual` | 方案 §3.5 + D31 的精神（绝不动用户的东西）。云要账号、要冲突处理、要把存档传上去（里面可能有用户不想上传的东西）；而手动导入导出已能解决"换机防丢档"。一个半成品云比没有更糟 —— 用户会以为存档在云上，从而**不再手动备份**。判据是**结构性**的：`save-sync.ts` 里不许出现任何网络能力（源码级测试守），不许有实现类 |
 | D84 | **分类是库页的筛选器，不是侧边栏的导航**（推翻了 S7 的初始位置） | S7 把分类放侧边栏的出发点是「它是用户的整理体系」（与标签相对的语义区分），那个语义仍然成立。但**位置错了**：侧边栏同时装着「游戏库 / 引擎 / 设置」三个真正的导航，分类越攒越多，导航就被挤得越远；更糟的是在引擎页/设置页时，那一长条分类**点不动也没意义**。用户 2026-11-05 实测后拍板改成库页顶部的横向 chip 栏。判据落在 `shared/sidebar-collapse.ts` 的 `SIDEBAR_PARTS`（**不许再有 'categories'**，有反向单测）+ `test/category-filter-bar.test.ts`（库页必须渲染、App.vue 不许残留分类代码） |
-| D85 | **nwjs 的存档布局有 3 种，判据只能是「目录里是什么后缀」**：`www/save`+`.rpgsave`（MV 常规）、`save`+`.rmmzsave`（MZ）、**`save`+`.rpgsave`（MV 把存档放在根 `save/`）** | Mac 真机实测（2026-11-05）：`苍蓝星` 的 `www/` 存在但 **`www/save/` 不存在**，5 个存档全在 `<游戏>/save/` 且是 `.rpgsave`。修复前走到「save 目录存在」的兜底分支 → 报 `nwjs-mz` + MZ 判据 → 那堆 `.rpgsave` **一个都匹配不上** → 详情页显示「目录已就绪，还没有存档」，而那儿躺着 5 个档。**不报错、只安静地少列东西**（本模块最怕的一类）。判据落 `test/save-locate.test.ts` 的回归 3 条（含「MZ 的 save 仍判成 MZ」，防修 bug 压坏正常路径） |
+| D85 | **nwjs 的存档位置由 `package.json` 的 `main` 决定，不是「哪个目录有 `.rpgsave`」**：MV 的 `StorageManager.localFileDirectoryPath()` = `dirname(process.mainModule.filename) + '/save'`。`main` 在 `www/index.html` → **`www/save/`**；`main` 就在根 → `save/`。读不到 `main` 才退回目录启发式 | ⚠️ **这条是本鱼判断错误的更正**：2026-11-05 在 Mac 真机上看到 `苍蓝星/save/` 里有 5 个 `.rpgsave`，就断言「MV 也可能把存档放根 `save/`」并据此加了判据。用户一句「我没存过档」把整条推翻。核实事实：`save/` 目录**出生时间 = 解压那一刻**、里面文件内容时间戳是 **2022 年**、`debug.log` 是 **2021 年**、而 `main = www/index.html` —— 那几个是**作者打包时塞进去的残留档**，游戏运行时根本不读它们。后果比"列表为空"更糟：用户真存了档（写到 `www/save`）之后，详情页仍显示别人的 2022 年旧档，他自己的一个都看不到 —— **空列表只是没有，错的列表会让人以为档丢了**。判据 `test/save-locate.test.ts` 4 条（残留档不被误认 / main 在根时确实在 `save/` / 读不到 main 退回启发式 / www/save 不存在也指向它） |
 | D86 | **存档目录里的点开头文件一律跳过**（`isNoiseFile`：`._*` AppleDouble / `.DS_Store`），列表与导出**两条路径都要过** | 逻辑上"整个目录都打"（D81），但那只针对**用户看得见的存档数据**。`._file1.rpgsave` 是 macOS 资源分叉镜像（163B），跨机后是垃圾且让包体积翻倍。⚠️ 更关键的是**列表这条**：MV 的槽判据是「任意 `.rpgsave` 但排除 config/global」，所以 `._file1.rpgsave` **会命中槽判据** → 用户看到一个点「在访达中显示」指向 163 字节元数据的幽灵存档。判据**只排除"点开头"**，绝不按扩展名白名单收窄（那正是 D81 拒绝的做法）。实测记录：Mac 的 `readdirSync` 不返回 `._*`（那些是 tar 传输途中生成的），所以这是**防御性**判据，不是当前故障 |
 
 ## 里程碑路线图
@@ -398,8 +398,10 @@ Vue → Pinia → api/client → preload(window.tsumi.invoke)
     · 本机探针：`_xeno` 假存档 5 文件 → 导出 → **zip 里每个 sha256 与源文件逐个一致** →
       破坏源档 → 导入 → **每个文件精确还原**、生成 5 个 `.tsumigeya-bak`、
       第二次导入 `backups: []`（**备份幂等**）
-    · **mac 真机**（`ssh yometenma@192.168.1.86`，v0.6.1）：`苍蓝星`（MV 把 save 放根 `save/`）
-      与 `Karryn's Prison`（`www/save/` + 插件文件）两种真实布局都验了判据与列表
+    · **mac 真机**（`ssh yometenma@192.168.1.86`，v0.6.1）：
+      `苍蓝星`（`main=www/index.html`，`www/save/` 尚未创建 = 用户没存过档 →
+      判据正确指向 `www/save/`，**不再把根 `save/` 里作者残留的 2022 年旧档当成用户的**）
+      与 `Karryn's Prison`（`www/save/` + 插件文件，槽/配置正确分开）两种真实布局都验了
   - ⚠️ **仍没自动化的只有「弹目录选择框」这一步**：`dialog.showOpenDialog` 无法在无画面环境
     操作。它的两条分支（选到目录 / 取消落默认目录）靠 `outDir` / `file` 参数旁路验证，
     **真实点击**要在真机上手动点一次

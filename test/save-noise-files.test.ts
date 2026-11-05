@@ -82,10 +82,14 @@ describe('★ 存档列表不许出现幽灵存档（._* 会命中 MV 的槽判�
     expect(configs).toEqual(['config.rpgsave'])
   })
 
-  test('苍蓝星那种 save/ 布局同样跳过（4 种真机形态的第 4 种）', () => {
+  test('main 在根时（存档在根 save/）同样跳过噪音', () => {
+    // ⚠️ 之前这条写的是「苍蓝星那种 save/ 布局」—— 那个前提是错的（见 save-locate 的
+    // 回归说明：苍蓝星的根 save/ 是作者残留，真实位置是 www/save）。
+    // 但「main 在根 → 存档确实在 save/」这个形态是**合法**的，噪音过滤对它同样适用。
     const loc = detectSaveLocation({
       engine: 'nwjs',
-      gameSave: dir(['file1.rpgsave', 'config.rpgsave'])
+      gameSave: dir(['file1.rpgsave', 'config.rpgsave']),
+      packageMain: 'index.html'
     })!
     const { slots } = classifySaveEntries(
       ['file1.rpgsave', 'config.rpgsave', '._file1.rpgsave', '机场推荐.txt'],

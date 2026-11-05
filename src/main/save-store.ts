@@ -73,6 +73,28 @@ function snapshot(dirPath: string): DirSnapshot | null {
   }
 }
 
+/**
+ * 读 `<游戏>/package.json` 的 `main`（决定 MV/MZ 的存档基准目录）。
+ *
+ * 为什么必须读它、而不是「看哪个目录有存档」：
+ * MV 的存档路径是 `dirname(process.mainModule.filename) + '/save'`，
+ * 而 `process.mainModule.filename` 就是 `package.json` 的 `main`。
+ * 作者打包时**把自己的旧存档塞进包里**（真机实测：`苍蓝星` 的根 `save/` 里躺着
+ * 5 个 2022 年的 `.rpgsave`，而那个目录是解压时新建的、游戏运行时根本不写它）
+ * —— 按目录内容判会把别人的旧档当成用户的存档显示出来。
+ *
+ * 读不到 / 解析失败 → null（判据那边退回目录启发式，不会崩）。
+ */
+function readPackageMain(root: string): string | null {
+  try {
+    const raw = fs.readFileSync(path.join(root, 'package.json'), 'utf8')
+    const parsed = JSON.parse(raw) as { main?: unknown }
+    return typeof parsed.main === 'string' ? parsed.main : null
+  } catch {
+    return null
+  }
+}
+
 /** 探测一台游戏上的存档位置并且读出来。 */
 export function listSaves(gamePath: string, engine: string, gameTitle = ''): SaveListing {
   // `gamePath` 可能是目录也可能是可执行文件（games.json 里两种都见过）。
@@ -99,7 +121,8 @@ export function listSaves(gamePath: string, engine: string, gameTitle = ''): Sav
     gameSave: snapshot(path.join(root, 'save')),
     dataDir: snapshot(path.join(root, 'Data')),
     saveDir: snapshot(path.join(root, 'Save')),
-    external: renpySnap
+    external: renpySnap,
+    packageMain: readPackageMain(root)
   })
 
   if (!location) {

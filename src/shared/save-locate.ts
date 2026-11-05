@@ -145,6 +145,8 @@ function detectNwjs(snap: {
   worldWideWeb: DirSnapshot | null
   wwwSave: DirSnapshot | null
   gameSave: DirSnapshot | null
+  /** `<游戏>/package.json` 的 `main` 指向哪里（决定 MV 的存档基准目录）。 */
+  packageMain?: string | null
 }): SaveLocation | null {
   const { wwwSave, gameSave } = snap
 
@@ -158,20 +160,45 @@ function detectNwjs(snap: {
     return { layout: 'nwjs-mz', relativeDir: 'save', slotPattern: MZ_SLOT, configPattern: MZ_CONFIG }
   }
 
-  // ②' ★ 真机踩到的：**MV 游戏也可能把 save 放在 <游戏>/save/**
-  //     （Mac 实测 2026-11-05：`苍蓝星` 的 www/ 存在、但 www/save/ 不存在，
-  //     存档全在 `<游戏>/save/` 里，后缀是 .rpgsave）
+  // ③ ★ `<游戏>/save/` 里有 `.rpgsave` 时**不能直接当成 MV 的存档位置**。
   //
-  //     ⚠️ 判据必须是**后缀**，不是相对路径。原来这里漏了这个分支：
-  //     走到下面的 ③ 时「save/ 存在」被当成 MZ → 布局报 nwjs-mz、
-  //     slotPattern 用 MZ 的 `.rmmzsave` 判据 → 那堆 .rpgsave **一个都匹配不上**
-  //     → 用户看到「目录已就绪，还没有存档」，而那儿躺着 20 多个档。
-  //     这正是本模块最怕的「看起来成功了」：不报错、只安静地少列东西。
+  //   ⚠️ 这条有过一次判断错误（2026-11-05，本鱼在 Mac 真机上误判）：
+  //   看到 `苍蓝星/save/` 里有 5 个 `.rpgsave` 就断言「MV 游戏也可能把存档放在根 save/」，
+  //   还据此加了判据。用户当场指出「我没存过档」——核实后事实是：
+  //
+  //     · `save/` 目录的**出生时间** = 解压那一刻（2026-11-05 02:18）
+  //     · 里面文件的内容时间戳是 **2022 年**、`debug.log` 是 **2021 年**
+  //     · `package.json` 的 `main` = `www/index.html`
+  //     · MV 的 `StorageManager.localFileDirectoryPath()` =
+  //         `path.join(path.dirname(process.mainModule.filename), 'save/')` → **www/save/**
+  //
+  //   → 那几个文件是**作者打包时塞进去的残留存档**，游戏运行时根本不会读写它们。
+  //   若把它们当成"这个游戏的存档"，用户真正玩到存档（写到 `www/save/`）之后
+  //   详情页仍会显示这几份 2022 年的别人的档，而他自己的存档一个都看不到 —
+  //   比"列表为空"更糟：**空列表只是没有，错的列表会让人以为档丢了**。
+  //
+  //   所以判据是：MV 的存档位置由 `main` 决定，**不是"哪个目录有 .rpgsave 就用哪个"**。
+  //   - `main` 指向 `www/` 下 → 存档在 `www/save/`（无论它现在存不存在）
+  //   - `main` 就在根（`"main": "index.html"`）→ 存档在根 `save/`
+  //
+  //   只有**读不到 package.json** 时才退回"看哪个目录有 `.rpgsave`"这个启发式
+  //   （那种情况下没有更好的信息可用，且与 M4 S1 的「宁可多认，不能漏」一致）。
+  const mainUnderWww = scanMainUnderWww(snap.packageMain)
+  if (mainUnderWww === true) {
+    // main 在 www/ 下：真实位置是 www/save（哪怕现在是空的 —— 用户还没存过档）
+    return { layout: 'nwjs-mv', relativeDir: 'www/save', slotPattern: MV_SLOT, configPattern: MV_CONFIG }
+  }
+  if (mainUnderWww === false) {
+    // main 在根：MV 把存档写在根 save/
+    return { layout: 'nwjs-mv', relativeDir: 'save', slotPattern: MV_SLOT, configPattern: MV_CONFIG }
+  }
+
+  // 读不到 package.json（老包/被改过）→ 退回目录启发式
   if (gameSave?.isDir && gameSave.entries.some((n) => MV_SLOT.test(n) || MV_CONFIG.test(n))) {
     return { layout: 'nwjs-mv', relativeDir: 'save', slotPattern: MV_SLOT, configPattern: MV_CONFIG }
   }
 
-  // ③ 目录存在但**空**（还没存过档）：也报出来，好让 UI 说「目录已就绪，还没有存档」
+  // ④ 目录存在但**空**（还没存过档）：也报出来，好让 UI 说「目录已就绪，还没有存档」
   //    而不是「这个游戏没有存档功能」。靠引擎线索区分：有 www/ → 大概率 MV。
   if (wwwSave?.isDir) {
     return { layout: 'nwjs-mv', relativeDir: 'www/save', slotPattern: MV_SLOT, configPattern: MV_CONFIG }
@@ -180,6 +207,22 @@ function detectNwjs(snap: {
     return { layout: 'nwjs-mz', relativeDir: 'save', slotPattern: MZ_SLOT, configPattern: MZ_CONFIG }
   }
   return null
+}
+
+/**
+ * `package.json` 的 `main` 指向 `www/` 下吗？
+ *
+ * - `true`  → main 在 www/ 下 → MV 的存档基准是 `www/`（`www/save`）
+ * - `false` → main 就在根（没有 www/ 前缀）→ 存档基准是根（`save/`）
+ * - `null`  → 读不到 / 没有 main → 调用方退回目录启发式
+ *
+ * 为什么单独抽出来：这是「引擎**实际会写到哪**」的唯一可信来源。
+ * 「哪个目录碰巧有 .rpgsave」不是 —— 作者打包时塞进去的残留档会骗过它
+ * （见 detectNwjs ③ 的实测记录）。
+ */
+function scanMainUnderWww(main: string | null | undefined): boolean | null {
+  if (typeof main !== 'string' || !main.trim()) return null
+  return /^\.?\.?\/?(www\/|www\\)/i.test(main.trim())
 }
 
 /** 从「游戏目录 + Data/ + Save/」三处条目判断 RGSS 存档位置。 */
@@ -253,10 +296,23 @@ export function detectSaveLocation(input: {
   root?: DirSnapshot | null
   /** Ren'Py 专用的外部目录（`~/Library/RenPy/<游戏名>/`） */
   external?: DirSnapshot | null
+  /**
+   * `<游戏>/package.json` 的 `main` 字段（原样）。只有 nwjs 用得到。
+   *
+   * 为什么需要它：MV 的存档目录 = `dirname(process.mainModule.filename) + '/save'`，
+   * 而 `main` 决定后者是 `www/` 还是根目录。「哪个目录碰巧有 .rpgsave」不是可信判据
+   * —— 作者打包时塞进去的残留存档会把它骗过去（见 detectNwjs ③ 的实测记录）。
+   */
+  packageMain?: string | null
 }): SaveLocation | null {
   switch (input.engine) {
     case 'nwjs':
-      return detectNwjs({ worldWideWeb: null, wwwSave: input.wwwSave ?? null, gameSave: input.gameSave ?? null })
+      return detectNwjs({
+        worldWideWeb: null,
+        wwwSave: input.wwwSave ?? null,
+        gameSave: input.gameSave ?? null,
+        packageMain: input.packageMain ?? null
+      })
     case 'mkxpz':
       return detectRgss({ root: input.root ?? null, data: input.dataDir ?? null, saveDir: input.saveDir ?? null })
     case 'easyrpg':
