@@ -30,30 +30,79 @@ import TsumigeyaCore
 struct RootView: View {
     @EnvironmentObject private var store: AppStore
     @State private var selection: String?
+    /// 当前页面（P5：库页 / 引擎页）。
+    @State private var page: AppPage = .library
+
+    enum AppPage: String, CaseIterable, Identifiable {
+        case library, engines
+        var id: String { rawValue }
+        var title: String {
+            switch self {
+            case .library: return "游戏库"
+            case .engines: return "引擎"
+            }
+        }
+        var icon: String {
+            switch self {
+            case .library: return "gamecontroller"
+            case .engines: return "wrench.and.screwdriver"
+            }
+        }
+    }
 
     var body: some View {
         NavigationSplitView {
-            GameListView(selection: $selection)
-                // 侧边栏宽度：mac 惯例 200~260，拖动范围限制住
-                .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 320)
+            List(selection: $page) {
+                // ⚠️ 侧边栏 = **导航**（D84 的取向：分类不是导航，它在库页顶部）
+                ForEach(AppPage.allCases) { p in
+                    Label(p.title, systemImage: p.icon)
+                        .tag(p)
+                }
+            }
+            .listStyle(.sidebar)
+            .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 300)
+            .navigationTitle("Tsumigeya")
         } detail: {
-            if let id = selection, let game = store.game(id: id) {
-                GameDetailView(game: game)
-            } else {
-                WelcomeView()
+            switch page {
+            case .library:
+                LibraryDetail(selection: $selection)
+            case .engines:
+                EnginesPage()
             }
         }
         .task {
             await store.load()
             store.refreshInstalledEngines()
+            store.refreshEngineEntries()
         }
-        // 添加游戏向导（sheet）
-        //
-        // ⚠️ 用 `sheet` 而不是新窗口：向导是**模态任务**，
-        //    用户必须走完或取消，期间不该去点库里别的东西（改到一半容易乱）。
         .sheet(isPresented: $store.isAddingGame) {
             AddGameWizard()
                 .environmentObject(store)
+        }
+    }
+}
+
+// MARK: - 库页（列表 + 详情）
+
+struct LibraryDetail: View {
+    @EnvironmentObject private var store: AppStore
+    @Binding var selection: String?
+
+    var body: some View {
+        // ⚠️ 嵌套的 NavigationSplitView（库页自己再分两栏）：
+        //    外层是「页面导航」，内层是「游戏列表 + 详情」。
+        //    mac 上这是常见做法（Finder 的侧边栏 + 文件列表 + 预览 就是三层）。
+        HSplitView {
+            GameListView(selection: $selection)
+                .frame(minWidth: 200, idealWidth: 240, maxWidth: 340)
+            Group {
+                if let id = selection, let game = store.game(id: id) {
+                    GameDetailView(game: game)
+                } else {
+                    WelcomeView()
+                }
+            }
+            .frame(minWidth: 420, maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 }
@@ -91,41 +140,8 @@ struct GameListView: View {
         .listStyle(.sidebar)
         .searchable(text: $store.searchText, placement: .sidebar,
                     prompt: "搜索游戏名、路径或引擎")
-        // ⚠️ **窗口标题放这里（不是详情页）**，理由见 GameDetailView 的注释。
-        //
-        //    侧边栏的标题是「游戏库」—— 它表达的是「这个窗口在看什么分类的东西」，
-        //    而具体是哪个游戏由内容区（大图上的标题）表达。
-        //    两处都写游戏名 = 重复（用户截图反馈的第一个问题）。
         .navigationTitle("游戏库")
         .navigationSubtitle(store.games.isEmpty ? "" : "共 \(store.games.count) 个游戏")
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        store.openAddGame()
-                    } label: {
-                        Label("添加游戏", systemImage: "plus")
-                    }
-                    .help("添加游戏")
-                }
-                ToolbarItem(placement: .primaryAction) {
-                    // 引擎页入口（P5）
-                    Menu {
-                        ForEach(EngineRegistry.launchable, id: \.folder) { e in
-                            Button {
-                                // TODO(P5)：跳转引擎页
-                            } label: {
-                                Label(
-                                    e.name + (store.isEngineInstalled(e.folder) ? "（已装）" : ""),
-                                    systemImage: store.isEngineInstalled(e.folder)
-                                        ? "checkmark.circle" : "arrow.down.circle")
-                            }
-                        }
-                    } label: {
-                        Label("引擎", systemImage: "wrench.and.screwdriver")
-                    }
-                    .help("引擎运行时管理")
-                }
-            }
     }
 }
 

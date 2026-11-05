@@ -347,6 +347,167 @@ final class AppStore: ObservableObject {
         lastLaunchFailure.removeValue(forKey: id)
     }
 
+    // MARK: - 引擎管理（P5 引擎页）
+
+    /// 引擎状态表（引擎页读它）。
+    @Published private(set) var engineEntries: [EngineStatus.Entry] = []
+
+    /// 安装进度（folder → 进度）。没有键 = 没在装。
+    @Published private(set) var engineProgress: [String: EngineProgress] = [:]
+
+    /// 一次安装的进度状态。
+    ///
+    /// ⚠️ 与 core 的 `InstallProgress` 不是同一个类型：
+    ///    core 的是「事件流」（step / download 两种 case），
+    ///    这里的是「UI 要显示的当前状态」（已经归约成一句话 + 一个数值）。
+    ///    直接绑 core 的事件会让 View 里写一堆 switch。
+    enum EngineProgress: Sendable {
+        /// 某阶段进行中（无法预知时长）→ 不确定进度条
+        case step(label: String)
+        /// 下载中（**total 可能为 nil** —— 服务器不给 content-length）
+        case downloading(name: String, received: Int64, total: Int64?)
+    }
+
+    /// 正在跑的安装任务（取消用）。
+    private var installTasks: [String: Task<Void, Never>] = [:]
+
+    /// 刷新引擎状态表。
+    func refreshEngineEntries() {
+        engineEntries = EngineStatus.scan(dataDir: dataDir)
+        installedEngines = Set(engineEntries.filter(\.installed).map(\.id))
+    }
+
+    /// 安装一个引擎。
+    ///
+    /// - Parameters:
+    ///   - folder: 引擎 folder
+    ///   - force: `true` = 已装也重装（覆盖）
+    ///
+    /// ⚠️ **拒绝覆盖已装的**（非 force），与 CLI 同一个保护：
+    ///    用户机器上已有 1.1GB 运行时，误覆盖等于删掉他装好的东西。
+    func installEngine(_ folder: String, force: Bool) {
+        guard let definition = EngineRegistry.find(folder: folder) else { return }
+
+        // 已经在装 → 忽略重复点击
+        if installTasks[folder] != nil { return }
+
+        // 已装且非 force → 拒绝
+        let root = BinaryPaths.moduleDir(dataDir, folder)
+        if !force && FileManager.default.fileExists(atPath: root) {
+            lastAddGameError = "「\(definition.name)」已经装了。要重装请点「重装」。"
+            return
+        }
+
+        let deps = EngineDependencies.dependencies(for: folder)
+        engineProgress[folder] = .step(label: "准备中")
+
+        let task = Task { [weak self] in
+            guard let self else { return }
+            await self.runInstall(folder: folder, root: root, deps: deps)
+        }
+        installTasks[folder] = task
+    }
+
+    /// 真正的安装执行。
+    ///
+    /// ⚠️ **整个流程在 `Task` 里跑**（不是阻塞主线程）：
+    ///    RTP 有 244MB，阻塞主线程会把 UI 冻住 —— 用户会以为卡死然后强杀。
+    private func runInstall(
+        folder: String, root: String, deps: [(name: String, spec: DependencySpec)]
+    ) async {
+        let downloader = Downloader()
+        let env = InstallEnvironment(
+            download: { url, destination, progress in
+                try await downloader.download(url, to: destination) { p in
+                    progress?(p.receivedBytes, p.totalBytes)
+                }
+                let attrs = try? FileManager.default.attributesOfItem(atPath: destination)
+                return (attrs?[.size] as? Int64) ?? 0
+            },
+            extract: { archive, destination in
+                try Extract.extractArchive(archive: archive, to: destination)
+            }
+        )
+
+        do {
+            // 先写 manifest（D62：全新安装时本地还没有）
+            try FileManager.default.createDirectory(
+                atPath: root, withIntermediateDirectories: true)
+            let manifestJSON = JSONValue.object(
+                EngineDependencies.buildManifest(for: EngineRegistry.find(folder: folder)!))
+            if let data = try? JSONStore.defaultEncoder.encode(manifestJSON) {
+                let path = (root as NSString).appendingPathComponent("manifest.json")
+                try? data.write(to: URL(fileURLWithPath: path), options: .atomic)
+            }
+
+            _ = try await EngineInstaller.install(
+                root: root,
+                dependencies: deps,
+                env: env,
+                arch: Arch.current().rawValue,
+                onProgress: { [weak self] event in
+                    // ⚠️ 进度回调在**后台线程** → 必须切回 MainActor 才能改 @Published
+                    Task { @MainActor in
+                        guard let self else { return }
+                        switch event {
+                        case .step(let key, let label, _):
+                            let human = Self.humanLabel(forKey: key, label: label)
+                            self.engineProgress[folder] = .step(label: human)
+                        case .download(let name, let received, let total):
+                            self.engineProgress[folder] = .downloading(
+                                name: name, received: received, total: total)
+                        }
+                    }
+                })
+
+            await MainActor.run {
+                self.engineProgress.removeValue(forKey: folder)
+                self.installTasks.removeValue(forKey: folder)
+                self.refreshEngineEntries()
+            }
+        } catch {
+            await MainActor.run {
+                self.engineProgress.removeValue(forKey: folder)
+                self.installTasks.removeValue(forKey: folder)
+                let message = (error as? InstallError)?.message ?? error.localizedDescription
+                self.lastAddGameError = "安装「\(folder)」失败：\(message)"
+            }
+        }
+    }
+
+    /// 把进度事件的 i18n key 翻成人话。
+    ///
+    /// ⚠️ core 里给的是 key（`progress.download`），因为 core 不该管文案
+    ///    （规矩：文案一律进 locales）。这里做最后一步翻译。
+    private static func humanLabel(forKey key: String, label: String) -> String {
+        switch key {
+        case "progress.prepare": return "准备 \(label)"
+        case "progress.download": return "正在下载 \(label)"
+        case "progress.extracting": return "正在解压 \(label)"
+        case "progress.done": return "\(label) 完成"
+        default: return label
+        }
+    }
+
+    /// 取消安装。
+    ///
+    /// ⚠️ 语义是「丢弃这次任务」而不是「优雅回滚」——
+    ///    已下载的部分会成为**半截目录**。好在 `EngineStatus.scan` 的判据是
+    ///    「二进制能不能找到」而不是「目录存不存在」，所以半截目录会显示成「未装」，
+    ///    用户可以重装覆盖。**不做自动清理**（删了可能删到用户别的文件）。
+    func cancelEngineInstall(_ folder: String) {
+        installTasks[folder]?.cancel()
+        installTasks.removeValue(forKey: folder)
+        engineProgress.removeValue(forKey: folder)
+    }
+
+    /// 卸载引擎（删掉整个模块目录）。
+    func uninstallEngine(_ folder: String) {
+        let root = BinaryPaths.moduleDir(dataDir, folder)
+        EngineInstaller.uninstall(root: root)
+        refreshEngineEntries()
+    }
+
     // MARK: - 分类操作
 
     /// 保存分类（**保留其他所有顶层键**，见 LibraryMetaStore 的注释）。
