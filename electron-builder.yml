@@ -32,8 +32,16 @@ extraResources:
 
 asar: true
 
+# ===== 应用图标 =====
+# 资源在 build/（buildResources 已指向那里），由 scripts/make-icon.py 从
+# build/icon_1024.png 母版生成：icns（11 档，含 icp4/icp5 两个小档）/ ico（7 档）/ png。
+#
+# 为什么三处都显式写出而不是靠 electron-builder 自动探测（它确实会去 build/ 找）：
+#   自动探测找不到时是**静默回落到 Electron 默认图标**（那个紫色原子球），
+#   不报错、不警告，Dock 里看到不对才知道。显式写 + test/icon-assets.test.ts 双重守着。
 win:
   target: nsis
+  icon: build/icon.ico
   # 不签名（仅供调试 UI），避免 CI 要求证书
   signAndEditExecutable: false
 
@@ -44,6 +52,7 @@ nsis:
 
 mac:
   category: public.app-category.games
+  icon: build/icon.icns
   # 架构由命令行指定（CI 里 --arm64 / --x64 分开打），这里写目标类型即可，
   # 否则会和 CLI 的 arch 参数叠加导致重复构建。
   target:

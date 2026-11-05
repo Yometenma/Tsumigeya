@@ -23,7 +23,8 @@
   **M6.5（引擎范围扩展：4 → 9 个）**
 - **已发布**：**v1.1.0** —— 引擎 4 → 9 个（见 `docs/release-v1.1.0.md`）；
   上一版 v1.0.0 是第一个正式版。GitHub `Yometenma/Tsumigeya`
-- **测试**：**1587 个 / 78 文件**全绿；`typecheck` / `test` / `build` 三绿
+- **测试**：**1592 个 / 79 文件**全绿；`typecheck` / `test` / `build` 三绿
+  - 新增 `test/icon-assets.test.ts`（6 条）：应用图标资产守卫
   - ⚠️ **已在 mac 真机验证**（`YomedeMacBook-Neo` / macOS 26.6.2 / arm64）：
     故意 `env -u LANG` 复现故障条件后 1587 条全绿；GUI 探针（`scripts/probe-engine-page.cjs`）
     9 张卡片 / 两种警告标签 / 零 console 错误全部通过
@@ -92,6 +93,7 @@
 | **存档展示**（M4 S2） | `src/shared/save-view.ts` + `SaveSection.vue` | `saveSectionView()` → `unknown` / `empty` / `list` 三态（前两者**必须分开**）；`formatByteSize` 是 1024 进制确定性输出；槽与配置分开列 |
 | **存档导出/导入**（M4 S3/S4） | `src/shared/save-archive.ts` + `src/main/save-archive-io.ts` | 打**整个目录**（含 `lastsave.autobak` 这类插件文件）；导入顺序**先校验 sha256 → 再备份 → 才写**；`exportBlocked()` 运行中禁止导出。zip 用 `fflate`（纯 JS，零原生依赖） |
 | **同步占位**（M4 S5） | `src/shared/save-sync.ts` | **只留接口不实现**（`SaveSyncProvider` 无实现类）；源码里**禁止出现任何网络能力**（有源码级测试守着）；模式只有 `none` / `manual` |
+| **应用图标**（App 图标，非 UI 图标） | `build/` + `scripts/make-icon.py` | 从 `build/icon-source.jpg` **像素复刻**（不是缩放）→ `icon_1024.png` 母版 → 生成 icns(11档)/ico(7档)/png。**换图标 = 换源图重跑脚本**，别手改生成物。`test/icon-assets.test.ts` 守资产存在与 icns 档位 |
 
 ## 开发命令
 
@@ -334,7 +336,7 @@ Vue → Pinia → api/client → preload(window.tsumi.invoke)
 | D90 | 吉里吉里**标「实验性」**（`EngineDefinition.experimental`），但它**照常可用**；不因上游声明做任何检测或拒绝 | 运行时 krkrsdl2（MIT，有 macOS 预编译包）官方页**明写**：「Running **unmodified commercial games** using this project is **not supported**. Please use Wine or GameNative instead.」（krkrsdl2.github.io/krkrsdl2/en/）。用户 2026-11-05 接受这条限制，所以我们做它。但那是**上游的立场声明，不是技术闸门**（它并不会真的拦住）——所以我们**如实转达**（引擎页标「实验性」+ 卡片写明是上游限制），**不替用户挡**，也不让用户以为这是本项目官方承诺的能力 |
 | D91 | **引擎扩到 9 个**：新增 `nscripter`（ONScripter）/ `siglus`（siglus_rs）/ `godot`。判据仍是 D87 的「资源跨平台 + 有 macOS 运行时」 | **NScripter**：`nscript.dat`/`arc.nsa` 是数据；ONScripter 是本体的开源兼容实现。⚠️ **许可证已核到源头**：Debian 官方版权文件写的是 **`GPL-2+`**（「or (at your option) any later version」），**不是 `GPL-2.0-only`** → 允许按 GPL-3.0 使用，**与本项目兼容**。（研究员按普通法理判「GPLv2-only 与 GPLv3 不兼容」是对的，但这个包带 `+`，结论反过来；本鱼起初也按 2.0-only 判，同样错。）**Siglus**：siglus_rs（MPL-2.0）**一个引擎覆盖 UK2/AVG32/RealLive/SiglusEngine 四种格式**，macOS 有官方预编译 → 性价比最高。**Godot**：pck 跨平台**只对 GDScript 项目成立**（C# 与 GDExtension 不行，见 D92） |
 | D92 | **Godot 用「编辑器二进制」当运行时，不用 export template**；且**存档位置不实现**（返回 null） | ① **4.6 起 `--main-pack` 在 export template 里被默认禁用**（PR #111909，实测 issue #119376 报 `compiled without support for path overrides. Aborting.`；4.5.2 正常）。而**编辑器二进制仍支持** → 用它可以**避免要求每个用户自己编译 Godot**，代价是 154 MiB 运行时。② **pck 跨平台有三个前提**：GDScript 项目（C# 在 mac 上加载不了，issue #72159 实测 `class could not be found`）+ 不用 GDExtension（含平台专用 dylib）+ **引擎版本匹配**。③ **存档改不了**：官方明确「导出的工程不支持 self-contained mode」，而默认路径依赖要从 pck 里读的 `project_name` → **不自己解析 pck**（格式有 v0–v4 五个版本、Godot 又每年升级，自己解析等于赌它不变），直接返回 null（与 tyrano/kirikiri 同一取向，**宁可显示「不知道」也不猜**） |
-| D93 | **不做 rlvm**（RealLive 的 GPL-3.0 重实现），因为 **siglus_rs 已覆盖 RealLive**；**不做 GameMaker**（押后），因为 Butterscotch 是 **AGPL-3.0** 且 DLsite 量级未确认 | rlvm 的**许可证全文、macOS 存档路径、arm64 支持全都未核实**，风险高于「已有官方 mac 预编译」的 siglus_rs → RealLive 游戏优先走 siglus。**GameMaker**：Butterscotch 的 AGPL 对 GPL-3.0 项目有传导义务；若将来要做，**必须把「判定」与「运行」拆成两套依赖**（判定用 **LibGM**（GPL-3.0-only，可直接进仓库），运行只调**外部** Butterscotch 可执行文件，独立进程非链接）。判 VM/YYC 的本地判据已有：读 `data.win` 的 **`CODE` chunk**（有且非空 = VM 可跑；为空/缺失 = YYC 出局），另需排除 GMRT、WAD v8 之前、非 FMOD 扩展 |
+| D94 | **应用图标走「像素复刻」而不是缩放**：从源图反推原始像素画分辨率（**30×32**），每格取中位色 → 调色板聚类 → **最近邻整数倍放大**（k=25）。**图标里不写应用名** | ⚠️ **这张图标换了三版才定**（用户三次改主意：先是带剑穿像素鱼+文字的浅色瓦片版、再是白底像素画版、最终是灰底剑穿心版）。真正的技术难点是**源图已被放大过且被 JPEG 压过**（每格 ~8.5px 非整数、边缘有振铃伪影），直接 LANCZOS 放大 3 倍会得到"糊掉的像素画"。四版试错的**具体错在哪**（这四条别再重走）：① `dist>TOL` 直接判透明 → 反锯齿边留成不透明浅色，放大后一圈**白毛**；② 除以 alpha 反解前景色 → 低 alpha 分母趋零**数值爆炸，边缘提亮成白圈**（比①更糟）；③ 形态学腐蚀 2px → 白圈没了但**心形被挖洞**（尖角只有 1~2px 宽，直接磨断）；④ 按面积过滤连通块 → **心形内部的高光被当噪点删掉**（那些高光是小连通块）。像素复刻一次解决全部：**颜色是纯的、边是硬的、洞不存在**。⚠️ **不写应用名的理由**：mac 图标下方系统会自动显示应用名，图标内再写一遍是重复；且 16px 下文字必糊成灰块（实测截图过）。**判据**：`test/icon-assets.test.ts` 6 条守资产存在 + icns 11 档（含 Pillow 不写的 icp4/icp5 两个小档——缺了 Finder 列表和菜单栏会糊或回落通用文档图标） |
 
 ## 里程碑路线图
 
