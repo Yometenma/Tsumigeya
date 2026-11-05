@@ -104,10 +104,26 @@ const canExport = computed(() => {
  * 「按钮为什么是灰的」的说明。
  *
  * 一个禁用按钮没有任何说明，用户只会觉得坏了 —— 所以必须能解释。
+ *
+ * ⚠️ **只在「正文没说」「有列表」时才显示**（2026-11-05 真机评估抓到）：
+ *   原来这里把 `empty` / `unknown` 也各返回一句，而那两句**正文已经画过了**
+ *   （①②③ 三个分支各自有一行 `.detail-missing`）。于是详情页上同一句话出现**两遍**：
+ *
+ *       存档
+ *       没找到这个游戏的存档位置（这个引擎的存档目录不在游戏目录里，或者引擎还没识别出来）
+ *       [刷新] [导出存档] [导入存档]
+ *       没找到这个游戏的存档位置（这个引擎的存档目录不在游戏目录里，或者引擎还没识别出来）   ← 重复
+ *
+ *   真机上就是「嗯？为什么要说两遍」。用户不会报 bug，只会觉得这页做得很糙。
+ *
+ * 现在的职责收窄成**只解释"为什么按钮灰"**，且只覆盖正文没讲过的两种原因：
+ *   · 游戏正在跑 → `error.saveExportRunning`（正文没提这件事）
+ *   · 其它（未知）→ 空（不硬凑一句话）
  */
 const exportBlockedHint = computed(() => {
-  if (view.value.kind === 'empty') return t('detail.savesEmpty')
-  if (view.value.kind === 'unknown') return t('detail.savesUnknown')
+  // 三种"没有列表"的形态，正文已经各自说过，这里不再重复
+  if (view.value.kind !== 'list') return ''
+  // 有列表还被禁用 → 只可能是游戏在跑（导出/导入都禁止）
   if (props.running) return t('error.saveExportRunning')
   return ''
 })
