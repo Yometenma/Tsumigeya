@@ -259,16 +259,28 @@ export interface SaveManifestInfo {
   files: Array<{ name: string; sha256: string }>
 }
 
-/** M4 S3：导出成功的结果。 */
-export interface ExportSaveResult {
-  /** 写出的 zip 绝对路径（UI 可以「在访达中显示」）。 */
-  file: string
-  /** 打包进去的文件数（含配置与插件文件）。 */
-  fileCount: number
-  /** zip 的字节数。 */
-  size: number
-  manifest: SaveManifestInfo
-}
+/**
+ * M4 S3：导出的结果。
+ *
+ * ⚠️ `cancelled` 分支是**必需**的（真机实测抓到的 bug）：
+ * 用户在系统目录框里点「取消」时，主进程**一个字节都不写**，返回这个分支。
+ * 原来没有这个分支 —— 取消也会落到默认目录导出，用户点"取消"却得到"已导出"。
+ *
+ * 所以调用方**必须先判 `cancelled`**，再读 `file`：
+ *   取消时 `file` / `manifest` 是 null（不是空串，也不该拿它去拼文案）。
+ */
+export type ExportSaveResult =
+  | { cancelled: true; file: null; fileCount: 0; size: 0; manifest: null }
+  | {
+      cancelled?: false
+      /** 写出的 zip 绝对路径（UI 可以「在访达中显示」）。 */
+      file: string
+      /** 打包进去的文件数（含配置与插件文件）。 */
+      fileCount: number
+      /** zip 的字节数。 */
+      size: number
+      manifest: SaveManifestInfo
+    }
 
 /** M4 S4：导入成功的结果。 */
 export interface ImportSaveResult {

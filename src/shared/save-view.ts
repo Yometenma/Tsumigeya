@@ -32,6 +32,15 @@ export interface SaveListingLike {
   slots: readonly SaveItemLike[]
   configs: readonly SaveItemLike[]
   empty: boolean
+  /**
+   * 位置找到了，但目录读不进来（权限 / 被删 / 磁盘错误）。
+   *
+   * ⚠️ **第四种态**，2026-11-05 真机审查时补上的。
+   * 原来主进程把这种情况直接返回 `location: null` —— 那是把
+   * 「不知道在哪」（故障：去查引擎识别）和「知道在哪但读不了」
+   * （故障：去查文件权限）糊成了一句，正是本文件开篇反对的那件事。
+   */
+  dirReadable?: boolean
 }
 
 /** 列表里的一项（已把字节数换成给人看的大小）。 */
@@ -53,6 +62,8 @@ export interface SaveItemView {
 export type SaveSectionView =
   /** 不知道存档在哪（故障态：不是"没存档"）。 */
   | { kind: 'unknown' }
+  /** **位置找到了，但目录读不进来**（故障态：去查权限，不是去查引擎识别）。 */
+  | { kind: 'unreadable'; dir: string }
   /** 位置找到了，但还没存过档（正常态：玩到存档点就会出现）。 */
   | { kind: 'empty'; dir: string }
   /** 有内容：槽与配置分开列（配置不是第 0 号存档）。 */
@@ -69,9 +80,14 @@ export type SaveSectionView =
  * 一个「列存档」的结果 → 区块形态。
  *
  * 判定顺序（每一步都有单测）：
- *   ① `location === null` **或**拿不到 `dir`  → unknown（先判这个：没有位置就谈不上空/有）
- *   ② `empty === true`                        → empty
- *   ③ 其余                                     → list
+ *   ① `location === null` **或**拿不到 `dir`  → unknown（先判这个：没有位置就谈不上别的）
+ *   ② `dirReadable === false`                 → unreadable（**知道在哪但读不了**）
+ *   ③ `empty === true`                        → empty
+ *   ④ 其余                                     → list
+ *
+ * ⚠️ ② 必须在 ③ 之前：目录读不到时机器上 `empty` 也是 false、`slots` 也是空 ——
+ * 不先判 `dirReadable` 就会掉到 ④ 画出一个"空列表"，而用户以为"我没存档"，
+ * 实际是"程序读不到那个目录"。这正是 `location:null` vs `empty:true` 同一类问题。
  *
  * ⚠️ ① 里为什么 `dir` 也要判：S1 的契约是"两者同时为 null"，但渲染层不该依赖
  * 主进程"永不给出半个结果"的默契 —— 只拿到 location 而没有 dir 的话，
@@ -79,6 +95,8 @@ export type SaveSectionView =
  */
 export function saveSectionView(listing: SaveListingLike | null | undefined): SaveSectionView {
   if (!listing || listing.location === null || !listing.dir) return { kind: 'unknown' }
+  // ⚠️ 这个分支要在 empty 之前 —— 见上方 ② 的说明
+  if (listing.dirReadable === false) return { kind: 'unreadable', dir: listing.dir }
   if (listing.empty) return { kind: 'empty', dir: listing.dir }
   const slots = listing.slots.map(toItemView)
   const configs = listing.configs.map(toItemView)

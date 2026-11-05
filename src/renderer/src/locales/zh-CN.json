@@ -550,6 +550,7 @@
     "refreshFailed": "重新获取失败",
     "saves": "存档",
     "savesUnknown": "没找到这个游戏的存档位置（这个引擎的存档目录不在游戏目录里，或者引擎还没识别出来）",
+    "savesUnreadable": "存档位置找到了，但目录读不进来。检查一下这个目录是否存在、以及它有没有读取权限：",
     "savesEmpty": "存档会出现在这里：玩到能存档的地方就有了",
     "savesConfigsTitle": "配置文件（不是存档，删掉会丢设置）",
     "revealInFinder": "在访达中显示",

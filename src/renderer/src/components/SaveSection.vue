@@ -57,8 +57,9 @@ const importing = ref(false)
 /** 三种形态（unknown / empty / list）的唯一判据。 */
 const view = computed(() => saveSectionView(listing.value))
 
-/** 「还没有存档」和「不知道在哪」的文案必须分开 —— 见文件头。 */
+/** 「不知道在哪」/「知道在哪但读不了」/「还没存档」三种文案必须分开 —— 见文件头。 */
 const unknownText = computed(() => t('detail.savesUnknown'))
+const unreadableText = computed(() => t('detail.savesUnreadable'))
 const emptyText = computed(() => t('detail.savesEmpty'))
 
 /** 有位置时才有「在访达中显示」可点（没位置就无从打开）。 */
@@ -170,6 +171,10 @@ async function exportSaves(): Promise<void> {
   exporting.value = true
   try {
     const result = await api.exportSaves(props.gameId)
+    // ⚠️ **取消要单独判**（真机实测的 bug）：用户在系统目录框点「取消」时
+    //    主进程一个字节都不写，返回 cancelled。此时**不能**弹「已导出」。
+    //    原来没有这条：取消 → 落到 ~/Downloads 照样导了，还弹成功。
+    if (result.cancelled) return
     // 用「已导出：<文件名>」而不是「导出成功」：用户要知道包在哪、叫什么
     ElMessage.success(t('detail.exportDone', { name: filenameOf(result.file) }))
     await load()
@@ -222,17 +227,24 @@ watch(() => props.gameId, () => void load(), { immediate: true })
   <section class="detail-section save-section">
     <h2 class="detail-section-title">{{ t('detail.saves') }}</h2>
 
-    <!-- ① 不知道存档在哪（故障态：不是"没存档"） -->
+    <!-- ① 不知道存档在哪（故障态：不是"没存档"，该去查引擎识别） -->
     <template v-if="view.kind === 'unknown'">
       <div class="detail-missing">{{ unknownText }}</div>
     </template>
 
-    <!-- ② 位置找到了，但还没存过档（正常态：给下一步动作） -->
+    <!-- ② **位置找到了，但目录读不进来**（故障态：该去查文件权限，不是查引擎识别）。
+         必须排在 empty 之前 —— 读不到时机器上 slots 也是空，不先判就会画成"没有存档"。 -->
+    <template v-else-if="view.kind === 'unreadable'">
+      <div class="detail-missing">{{ unreadableText }}</div>
+      <div class="hint" style="word-break: break-all">{{ view.dir }}</div>
+    </template>
+
+    <!-- ③ 位置找到了，但还没存过档（正常态：给下一步动作） -->
     <template v-else-if="view.kind === 'empty'">
       <div class="detail-missing">{{ emptyText }}</div>
     </template>
 
-    <!-- ③ 有内容：槽与配置**分开列**（config 不是第 0 号存档） -->
+    <!-- ④ 有内容：槽与配置**分开列**（config 不是第 0 号存档） -->
     <template v-else>
       <div class="save-table">
         <div v-for="item in view.slots" :key="item.name" class="save-row">

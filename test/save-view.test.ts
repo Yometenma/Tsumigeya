@@ -155,3 +155,46 @@ describe('槽的顺序不在这一层重排（判据只有一份，在 shared/sa
     if (view.kind === 'list') expect(view.slots.map((s) => s.name)).toEqual(given)
   })
 })
+
+// ===== ★ 第四种态：位置找到了，但目录读不进来（2026-11-05 ssh 真机审查发现的 bug）=====
+//
+// 原来主进程把这种情况直接返回 `location: null`，于是 UI 说的是
+// 「没找到存档位置（引擎还没识别出来）」—— 把用户引去查引擎识别，
+// 而真正的问题是文件权限 / 目录被删。
+//
+// 这与本文件开篇反对的「三种没有存档被糊成一句」是同一类错误，只是漏了第四种。
+describe('★ unreadable：知道在哪但读不了，不能糊成 unknown', () => {
+  test('dirReadable=false → unreadable（不是 unknown，也不是 empty）', () => {
+    const view = saveSectionView(
+      listing({ dirReadable: false, empty: false, slots: [], configs: [] })
+    )
+    expect(view.kind).toBe('unreadable')
+    // 必须带上目录：用户要能照着它去查权限
+    if (view.kind === 'unreadable') expect(view.dir).toBeTruthy()
+  })
+
+  test('★ 顺序：dirReadable=false 必须在 empty 之前判（读不到时 slots 也是空）', () => {
+    // 真实世界里读不到目录时 `empty` 也是 false（主进程那边 slots 空、empty 为 false），
+    // 但如果哪天真主进程给了 empty:true，也不能让它盖住 unreadable ——
+    // 否则用户看到「玩到存档点就有了」，而其实他是没权限。
+    const view = saveSectionView(
+      listing({ dirReadable: false, empty: true, slots: [], configs: [] })
+    )
+    expect(view.kind, 'dirReadable=false 被 empty 盖住了').toBe('unreadable')
+  })
+
+  test('dirReadable 缺省（undefined）= 正常，不影响其它三种', () => {
+    expect(saveSectionView(listing({ empty: true, slots: [], configs: [] })).kind).toBe('empty')
+    expect(saveSectionView(listing({ empty: false, slots: [item('f', 1)], configs: [] })).kind).toBe(
+      'list'
+    )
+    expect(saveSectionView(null).kind).toBe('unknown')
+  })
+
+  test('location=null 且 dirReadable=false → 仍是 unknown（没位置就谈不上读不读）', () => {
+    const view = saveSectionView(
+      listing({ location: null, dir: null, dirReadable: false, empty: false, slots: [], configs: [] })
+    )
+    expect(view.kind).toBe('unknown')
+  })
+})

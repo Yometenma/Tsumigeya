@@ -56,6 +56,25 @@ import {
   type ExportSaveResult,
   type ImportSaveResult
 } from './save-archive-io'
+
+/**
+ * 用户在系统目录框点「取消」时的导出结果。
+ *
+ * 为什么要单独一个类型：`ExportSaveResult`（save-archive-io 那边）描述的是
+ * **"打包成功"**这件事 —— file 是 string，manifest 一定有。而取消时这两样都没有。
+ * 硬塞进同一个 interface 会让消费方到处判 `file` 是不是 null，
+ * 用联合类型（`ExportSaveResult | CancelledExport`）才能让 TS 在类型层把两条路分开。
+ *
+ * `cancelled: true` 是那条**唯一**的判别字段（别用 `!file` 判 —— 成功时 file 也可能假值？不会，
+ * 但要一个显式标记，语义才读得懂）。
+ */
+export interface CancelledExport {
+  cancelled: true
+  file: null
+  fileCount: 0
+  size: 0
+  manifest: null
+}
 import { DATA_DIR_NOTICE_KEY, DATA_DIR_NOTICE_TEXT, shouldShowDataDirNotice } from './data-dir-notice'
 import { createPlayStatsStore, sessionSeconds, type PlayStatsStore } from './play-stats'
 import { engineDefinitionsFromRegistry } from './core-host'
@@ -1665,11 +1684,35 @@ export function createDispatcher(deps: IpcDeps): Dispatcher {
         }
 
         // ② 让用户选输出目录（导出就该带走 → 默认落到下载目录）
-        const chosen =
-          typeof params.outDir === 'string' && params.outDir
-            ? params.outDir
-            : await (deps.pickPath ?? (async () => null))('folder')
-        const outDir = chosen ?? defaultExportDir()
+        //
+        // ⚠️ **用户取消 ≠ 用默认目录**（这是个真 bug，2026-11-05 真机实测抓到）：
+        //    原来写 `chosen ?? defaultExportDir()`，于是 pickPath 返回 null（用户点了取消）
+        //    也照样把包装进 ~/Downloads。真机上点「取消」→ 下载目录里凭空多一个包，
+        //    而**用户的意图是"我不想导出"**。
+        //
+        //    为什么之前没发现：本机探针总是显式传 `outDir` 旁路对话框，
+        //    永远走不到「取消」那条分支。Mac 真机上点两次按钮 → Downloads 多出两个包才暴露。
+        //
+        //    现在的语义：
+        //      · 显式给了 outDir（探针/API 调用）→ 用它
+        //      · 弹框且用户**选了目录**          → 用它
+        //      · 弹框且用户**取消**              → 什么都不做，返回 cancelled
+        //
+        //    `defaultExportDir()` 仍然保留 —— 但它只用于**没有交互对话框**的场景
+        //    （比如将来做"一键导出到下载目录"）。不给用户"我取消了却还是导了"的体验。
+        const explicitOutDir = typeof params.outDir === 'string' && params.outDir ? params.outDir : null
+        const chosen = explicitOutDir ?? (await (deps.pickPath ?? (async () => defaultExportDir()))('folder'))
+        if (!chosen) {
+          // 用户取消：一个字节都不写，如实回报（UI 那边安静地结束，不弹"已导出"）
+          return {
+            cancelled: true,
+            file: null,
+            fileCount: 0,
+            size: 0,
+            manifest: null
+          } satisfies CancelledExport
+        }
+        const outDir = chosen
 
         // ③ 打包**整个存档目录**（不是只打槽）
         const result: ExportSaveResult = exportSaveArchive({

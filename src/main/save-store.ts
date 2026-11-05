@@ -58,6 +58,19 @@ export interface SaveListing {
    * 后者只能说「不知道这个游戏的存档在哪」。
    */
   empty: boolean
+  /**
+   * 位置**找到了**，但那个目录读不进来（权限不足 / 被删 / 磁盘错误）。
+   *
+   * ⚠️ 这是第四种态，不能和 `location: null` 糊在一起（2026-11-05 真机审查发现）：
+   *   · `location: null` → **不知道在哪**（引擎没识别 / Ren'Py 在游戏目录外）
+   *     → UI 说「没找到存档位置（引擎还没识别）」
+   *   · `dirReadable: false` → **知道在哪，但读不了**
+   *     → UI 该说「位置找到了，但读不进来（检查权限）」
+   * 糊了会把用户引向完全错误的方向（去查引擎识别，而问题在文件权限）。
+   *
+   * 省略（undefined）= 正常可读。只有读不到时是 `false`。
+   */
+  dirReadable?: boolean
 }
 
 // ===== 目录快照 =====
@@ -137,8 +150,27 @@ export function listSaves(gamePath: string, engine: string, gameTitle = ''): Sav
 
   const snap = snapshot(dir)
   if (!snap?.isDir) {
-    // 位置「理论上」在这，但目录读不到（权限/被删）→ 当作没找到，而不是报空
-    return { location: null, dir: null, slots: [], configs: [], empty: false }
+    // ===== ⚠️ 「位置知道，但目录读不到」必须与「不知道在哪」分开 =====
+    //
+    // 这里能走到，说明 detectSaveLocation **已经成功**判出了位置（location 非 null、
+    // dir 也拼出来了），只是那个目录现在读不到 —— 权限不足 / 被删 / 磁盘错误。
+    //
+    // 原来的写法返回 `location: null`，注释还写着「当作没找到」。那就是把两件事糊了：
+    //   · `location: null` 的 UI 文案是「没找到这个游戏的存档位置（引擎还没识别出来）」
+    //     → 把用户引向**完全错误的方向**：引擎识别得好好的，目录就是访问不了。
+    //   · 而这正是 `shared/save-view.ts` 开篇明确反对的：「三种没有存档被糊成一句，
+    //     用户就永远查不出问题」。
+    //
+    // 现在返回 `location` **照实给出**（位置是知道的），slots/configs 空，
+    // 并带上 `dirReadable: false` 让 UI 说第四种话：「位置找到了（就在这），但读不进」。
+    return {
+      location: { layout: location.layout, relativeDir: location.relativeDir },
+      dir,
+      slots: [],
+      configs: [],
+      empty: false,
+      dirReadable: false
+    }
   }
 
   const { slots, configs } = classifySaveEntries(snap.entries, location)

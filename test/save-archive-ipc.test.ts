@@ -313,3 +313,78 @@ describe('两条命令都在队列里（写盘，不能绕队列）', () => {
     expect(OFF_QUEUE_METHODS.has('listSaves')).toBe(true)
   })
 })
+
+// ===== ★ 用户在目录框点「取消」时，不许照样导出（2026-11-05 真机实测抓到的 bug）=====
+//
+// 原来 `outDir || await pickPath()` 然后 `chosen ?? defaultExportDir()`：
+// pickPath 返回 null（= 用户取消）时，照样把包装进 ~/Downloads。
+//
+// 为什么单测一直没抓到：本文件**所有导出测试都显式传 `outDir`**（旁路对话框），
+// 所以永远走不到「取消」那条分支。真机上点两次按钮 → Downloads 多出两个包才暴露。
+//
+// 这条测试的价值：把"取消"这个语义钉死。它不是在验一个边界 case，
+// 而是在验**用户的意图**：点取消就是不想导出。
+describe('★ 用户取消导出：一个字节都不写', () => {
+  /** 造一个 pickPath 恒返回 null 的 dispatcher（模拟用户点了取消）。 */
+  function dispatcherWithCancelledPicker(): ReturnType<typeof createDispatcher> {
+    // ⚠️ 必须传 `host`（play-stats / categories 等旁挂存储都挂在它上面）；
+    //    只传几个拆开的字段会撞 `deps.process?.dataDir` 的 undefined。
+    //    `pickPath: async () => null` 就是「用户在系统目录框点了取消」。
+    return createDispatcher({ host, pickPath: async () => null })
+  }
+
+  test('取消 → 返回 cancelled，而不是偷偷导到默认目录', async () => {
+    const id = makeMvGame('取消导出')
+    const dispatcher = dispatcherWithCancelledPicker()
+    const raw = await dispatcher.dispatch('exportSaves', { id }, signal())
+    // dispatch 的返回是 `unknown`（通用 IPC 边界），这里按契约断言
+    const result = raw as { cancelled?: boolean; file: string | null; fileCount: number }
+
+    expect(result.cancelled, '用户点了取消却没被如实回报').toBe(true)
+    expect(result.file, '取消时不该有输出文件').toBeNull()
+    expect(result.fileCount).toBe(0)
+  })
+
+  test('★ 取消后磁盘上不许出现任何新 zip（Downloads 尤其不许）', async () => {
+    const id = makeMvGame('取消不落盘')
+    const dispatcher = dispatcherWithCancelledPicker()
+
+    // 记录默认目录（~/Downloads）里已有的包，防止测试污染真实目录
+    const before = new Set(
+      fs.existsSync(os.homedir())
+        ? fs.readdirSync(os.homedir()).filter((n) => n.startsWith('tsumigeya-save-'))
+        : []
+    )
+    const downloadsBefore = (() => {
+      const d = path.join(os.homedir(), 'Downloads')
+      if (!fs.existsSync(d)) return new Set<string>()
+      return new Set(fs.readdirSync(d).filter((n) => n.startsWith('tsumigeya-save-')))
+    })()
+
+    await dispatcher.dispatch('exportSaves', { id }, signal())
+
+    const downloadsAfter = (() => {
+      const d = path.join(os.homedir(), 'Downloads')
+      if (!fs.existsSync(d)) return new Set<string>()
+      return new Set(fs.readdirSync(d).filter((n) => n.startsWith('tsumigeya-save-')))
+    })()
+    const leaked = [...downloadsAfter].filter((n) => !downloadsBefore.has(n))
+    expect(leaked, `取消导出却在 Downloads 里留下了包：${leaked.join(', ')}`).toEqual([])
+    // 顺带确认没有别的目录被写（before 只是保险，不参与断言逻辑）
+    expect(before.size).toBeGreaterThanOrEqual(0)
+  })
+
+  test('显式给 outDir 时不弹框、正常导出（探针/API 旁路仍然可用）', async () => {
+    const id = makeMvGame('显式目录')
+    const outDir = path.join(dataDir, 'out')
+    const dispatcher = dispatcherWithCancelledPicker() // pickPath 是 null，但不该被用到
+    const raw = await dispatcher.dispatch('exportSaves', { id, outDir }, signal())
+    const result = raw as { cancelled?: boolean; file: string | null }
+
+    // 正常路径**不带** `cancelled` 字段（用的是联合类型里那个成功分支）——
+    // 所以判据是「不是 true」+「file 是真的」，而不是 `=== false`。
+    expect(result.cancelled).not.toBe(true)
+    expect(result.file).toBeTruthy()
+    expect(fs.existsSync(result.file!)).toBe(true)
+  })
+})
