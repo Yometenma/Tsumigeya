@@ -113,6 +113,37 @@ enum UISnapshot {
             name: "05-settings",
             dir: directory, appearance: appearance)
 
+        // ⚠️ 编辑页 —— 参数表单最容易「某项静默消失」
+        //
+        // ⚠️ **必须挑一个有最多参数的游戏来渲染**（nwjs 只有 1 项，看不出表单效果）。
+        //    挑 `gameArgs` 项最多的那个（通常是 mkxpz 或 easyrpg）。
+        let richestGame = store.games.max { a, b in
+            (store.manifest(for: a.gameEngine)?.gameArgs.count ?? 0)
+                < (store.manifest(for: b.gameEngine)?.gameArgs.count ?? 0)
+        }
+        if let first = richestGame {
+            let m = store.manifest(for: first.gameEngine)
+            print("编辑页引擎参数: \(m?.orderedGameArgs.count ?? 0) 项"
+                  + "（游戏 \(first.gameTitle)，引擎 \(first.gameEngine)）")
+            if let m {
+                for (name, def) in m.orderedGameArgs {
+                    let versions = store.availableVersions(for: def, engine: first.gameEngine)
+                    let ctrl = EngineArgs.control(for: def, availableVersions: versions)
+                    print("  \(name.padding(toLength: 16, withPad: " ", startingAt: 0))"
+                          + "type=\(def.type ?? "-")  ctrl=\(ctrl)")
+                }
+            }
+            // ⚠️ 同时检查 nwjs 的版本列表（那是编辑页最容易空白的地方）
+            let nwjsVersions = NwjsVersion.availableVersions(dataDir: store.dataDir)
+            print("nwjs 可选版本: \(nwjsVersions)")
+
+            failures += captureWindow(
+                GameEditRepresentable(game: first, store: store),
+                size: CGSize(width: 1000, height: 900),
+                name: "06-edit",
+                dir: directory, appearance: appearance)
+        }
+
         // 引擎页还写着 P5，但先渲染一个「未实现」占位以证明多页渲染通路通了
         print("")
         if failures == 0 {
@@ -323,6 +354,18 @@ struct SettingsPageRepresentable: View {
         SettingsPage()
             .environmentObject(store)
             .frame(width: 900, height: 900)
+    }
+}
+
+/// 编辑页的渲染包装。
+struct GameEditRepresentable: View {
+    let game: GameRecord
+    let store: AppStore
+
+    var body: some View {
+        GameEditView(game: game)
+            .environmentObject(store)
+            .frame(width: 1000, height: 900)
     }
 }
 

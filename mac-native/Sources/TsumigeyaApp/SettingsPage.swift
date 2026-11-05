@@ -98,6 +98,28 @@ struct SettingRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
+            // ⚠️ **还没接上的设置要标出来**。
+            //
+            //    这是本鱼自己查出来的问题：设置页 12 项里**只有 1 项真的生效**。
+            //    「能改、能存、但不生效」比「改不了」更糟 ——
+            //    用户改了主题看不出变化，会怀疑软件坏了，而不会想到「这功能还没做完」。
+            //
+            //    所以：**没实现的前面挂一个「未启用」标记**，说清它现在没作用。
+            //    这不是甩锅，是让用户能区分「坏了」和「还没做」。
+            if let pending = pendingNote {
+                HStack(spacing: 6) {
+                    Text("未启用")
+                        .font(.system(size: 9, weight: .medium))
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1)
+                        .background(Color.secondary.opacity(0.15), in: Capsule())
+                        .foregroundStyle(.secondary)
+                    Text(pending)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+
             switch key {
             case .appearance:
                 Picker("外观", selection: Binding(
@@ -212,10 +234,37 @@ struct SettingRow: View {
                 ))
             }
         }
+        }
+
+    /// 这个设置项现在**是否真的生效**。返回 nil = 已生效。
+    ///
+    /// ⚠️ 判据是「有没有代码消费它」（本鱼用 grep 逐项查过）：
+    ///    · `appearance` → 已接（改窗口外观）
+    ///    · `listView`   → 已接（库页两种视图）
+    ///    · 其余         → **还没接**（它们依赖 P6 存档 / P7 元数据 / 诊断等功能）
+    private var pendingNote: String? {
+        switch key {
+        case .appearance, .listView:
+            return nil
+        case .deletionConfirmation:
+            return "还没有删除游戏的界面"
+        case .showAdultCovers:
+            return "还没有封面（等 DLsite 集成）"
+        case .saveSyncMode:
+            return "存档功能还没做"
+        case .language:
+            return "目前只有简体中文界面"
+        case .preferredLanguage, .fallbackLanguage, .languageSwitchPrompt:
+            return "多语言版本检测还没做"
+        case .nonInstalledAutodetect:
+            return "自动识别走的是引擎页，还没接这个开关"
+        case .diagnoseBeforeLaunch:
+            return "启动诊断还没做"
+        case .checkModuleUpdatesOnStartup:
+            return "启动更新检查还没做"
+        }
     }
 }
-
-// MARK: - 只读信息
 
 struct InfoRows: View {
     @EnvironmentObject private var store: AppStore

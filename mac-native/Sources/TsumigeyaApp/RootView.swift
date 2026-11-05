@@ -115,7 +115,10 @@ struct RootView: View {
 
                 Group {
                     if let id = selection, let game = store.game(id: id) {
-                        GameDetailView(game: game)
+                        // ⚠️ **详情页与编辑页用同一个容器切换**（不是两个独立窗口）：
+                        //    编辑是「对这个游戏的临时操作」，不该占一个窗口位。
+                        //    用 `@State` 记忆「当前是详情还是编辑」。
+                        GamePane(game: game)
                     } else {
                         WelcomeView()
                     }
@@ -172,6 +175,19 @@ struct GameListView: View {
     @Binding var selection: String?
 
     var body: some View {
+        // ⚠️ **列表视图 / 卡片视图**由设置控制（P5 接上这个消费点）。
+        //
+        //    之前这里固定用 `List` —— 设置项「游戏库用列表视图」改了也没反应。
+        //    现在两个分支都实现：设置开着用列表，关着用卡片（等 P7 有封面后更好看）。
+        if store.settingBool(.listView) {
+            listBody
+        } else {
+            cardBody
+        }
+    }
+
+    /// 列表视图（mac 侧边栏样式）。
+    private var listBody: some View {
         List(selection: $selection) {
             ForEach(store.groups, id: \.id) { group in
                 Section {
@@ -183,16 +199,118 @@ struct GameListView: View {
                         .tag(game.id)
                     }
                 } header: {
-                    HStack(spacing: 6) {
-                        Text(group.title)
-                        Text("\(group.games.count)")
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                    }
+                    groupHeader(group)
                 }
             }
         }
         .listStyle(.sidebar)
+    }
+
+    /// 卡片视图（网格）。
+    ///
+    /// ⚠️ P5 还没有 DLsite 封面（P7）。所以卡片是「引擎色 + 标题」的占位形态。
+    ///    **不伪造封面**（不从游戏目录随便挖图 —— 会挖到素材）。
+    private var cardBody: some View {
+        ScrollView {
+            LazyVGrid(
+                columns: [GridItem(.adaptive(minimum: 170, maximum: 260), spacing: 12)],
+                alignment: .leading, spacing: 12
+            ) {
+                ForEach(store.filteredGames, id: \.id) { game in
+                    GameCardTile(
+                        game: game,
+                        isRunning: store.runningGames[game.id] != nil,
+                        isSelected: selection == game.id,
+                        onSelect: { selection = game.id }
+                    )
+                }
+            }
+            .padding(14)
+        }
+    }
+
+    private func groupHeader(_ group: AppStore.Group) -> some View {
+        HStack(spacing: 6) {
+            Text(group.title)
+            Text("\(group.games.count)")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+        }
+    }
+}
+
+// MARK: - 卡片
+
+struct GameCardTile: View {
+    let game: GameRecord
+    let isRunning: Bool
+    let isSelected: Bool
+    let onSelect: () -> Void
+
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: onSelect) {
+            VStack(alignment: .leading, spacing: 0) {
+                // 封面位（占位：引擎色）
+                ZStack {
+                    Rectangle().fill(engineTint.opacity(0.22))
+                    Image(systemName: "gamecontroller.fill")
+                        .font(.system(size: 22))
+                        .foregroundStyle(engineTint.opacity(0.55))
+                    if isRunning {
+                        VStack {
+                            HStack {
+                                Spacer()
+                                Circle().fill(.green).frame(width: 7, height: 7).padding(7)
+                            }
+                            Spacer()
+                        }
+                    }
+                }
+                .aspectRatio(4.0 / 3.0, contentMode: .fit)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(game.gameTitle)
+                        .font(.system(size: 12, weight: .medium))
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                    Text(EngineRegistry.find(folder: game.gameEngine)?.name ?? game.gameEngine)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 7)
+            }
+        }
+        .buttonStyle(.plain)
+        .background(RoundedRectangle(cornerRadius: 8)
+            .fill(Color(nsColor: .controlBackgroundColor)))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .strokeBorder(
+                    isSelected ? Color.accentColor : (isHovering ? Color.accentColor.opacity(0.4) : .clear),
+                    lineWidth: isSelected ? 2 : 1)
+        )
+        .onHover { isHovering = $0 }
+        .animation(.easeOut(duration: 0.12), value: isHovering)
+        .help(game.gamePath)
+    }
+
+    private var engineTint: Color {
+        switch game.gameEngine {
+        case "nwjs": return .blue
+        case "mkxpz": return .orange
+        case "easyrpg": return .green
+        case "renpy": return .pink
+        case "tyrano": return .purple
+        case "kirikiri": return .teal
+        case "nscripter": return .indigo
+        case "siglus": return .brown
+        case "godot": return .cyan
+        default: return .gray
+        }
     }
 }
 
@@ -241,6 +359,33 @@ struct GameListRow: View {
         case "godot": return .cyan
         default: return .gray
         }
+    }
+}
+
+// MARK: - 详情 / 编辑（同一个容器的两种模式）
+
+/// 详情页与编辑页的容器。
+///
+/// ⚠️ **为什么合成一个 View 而不是两个**：
+///    编辑是「对这个游戏的临时操作」，不该占一个窗口位或一个导航层级。
+///    但**换游戏时必须重置为详情**（否则用户点下一个游戏会直接进编辑页 ——
+///    那是个让人意外的行为）。
+///
+///    判据：用 `id(game.id)` 在游戏切换时重建，`@State isEditing` 自然归 false。
+struct GamePane: View {
+    let game: GameRecord
+    @State private var isEditing = false
+
+    var body: some View {
+        Group {
+            if isEditing {
+                GameEditView(game: game)
+            } else {
+                GameDetailView(game: game, onEdit: { isEditing = true })
+            }
+        }
+        // ⚠️ 关键：游戏变了就重建（把 isEditing 重置）
+        .id(game.id)
     }
 }
 

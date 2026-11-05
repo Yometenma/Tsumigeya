@@ -54,16 +54,26 @@ import Foundation
 
 /// manifest 里的一个参数定义。
 public struct GameArgDef: Sendable, Equatable {
-    /// `multi-version` / `bool` / `string` / `number` / `array` 等（上游的类型名）。
+    /// `boolean` / `text` / `int` / `float` / `dropdown` / `select` / `multi-version` / `array`
     public var type: String?
     public var label: String?
     /// 默认值。`nil` = schema 没写默认值 → **不猜**。
     public var defaultValue: JSONValue?
+    /// `dropdown` 类型的固定选项。
+    ///
+    /// ⚠️ 只在 `type == "dropdown"` 时有意义。**空选项要回落成 text**
+    /// （否则会画一个「有下拉但是空的」控件 —— 点了没东西可选，
+    /// 比不能改更糟，见 `EngineArgs.control`）。
+    public var options: [String]?
 
-    public init(type: String? = nil, label: String? = nil, defaultValue: JSONValue? = nil) {
+    public init(
+        type: String? = nil, label: String? = nil,
+        defaultValue: JSONValue? = nil, options: [String]? = nil
+    ) {
         self.type = type
         self.label = label
         self.defaultValue = defaultValue
+        self.options = options
     }
 }
 
@@ -74,6 +84,12 @@ public struct Manifest: Sendable {
     public var autodetect: DetectRule?
     /// 参数 schema（**含默认值**，这是补缺省值的来源）。
     public var gameArgs: [String: GameArgDef]
+    /// 参数名的**声明顺序**（= manifest 里写的顺序）。
+    ///
+    /// ⚠️ 为什么要单独存：Swift 字典不保序，
+    ///    而参数表单的显示顺序应按作者写的顺序（不是字母序）。
+    ///    用字母序会把 `rgssVersion` 排在 `fullscreen` 前面 → 用户看到的顺序与设计不符。
+    public var gameArgOrder: [String]
     /// 依赖表（**顺序有意义**：安装时用户看到进度条先动主二进制）。
     ///
     /// ⚠️ `[String: ...]` 的遍历顺序**不稳定**，所以这里额外保留一个有序的名字列表。
@@ -85,6 +101,7 @@ public struct Manifest: Sendable {
     public init(
         name: String, version: String, autodetect: DetectRule?,
         gameArgs: [String: GameArgDef] = [:],
+        gameArgOrder: [String] = [],
         dependencyOrder: [String] = [],
         dependencies: [String: DependencySpec] = [:]
     ) {
@@ -92,6 +109,7 @@ public struct Manifest: Sendable {
         self.version = version
         self.autodetect = autodetect
         self.gameArgs = gameArgs
+        self.gameArgOrder = gameArgOrder.isEmpty ? gameArgs.keys.sorted() : gameArgOrder
         self.dependencyOrder = dependencyOrder
         self.dependencies = dependencies
     }
@@ -102,6 +120,28 @@ public struct Manifest: Sendable {
             guard let spec = dependencies[name] else { return nil }
             return (name, spec)
         }
+    }
+
+    /// 按声明顺序排好的参数列表（编辑页参数表单用）。
+    ///
+    /// ⚠️ **用 `gameArgOrder` 而不是字典 keys**：Swift 字典不保序，
+    ///    按字母序会把 `rgssVersion` 排在 `fullscreen` 前面，
+    ///    用户看到的顺序与设计不符。
+    ///
+    /// ⚠️ 但要**兜住 schema 里有、order 里没有的**（手改过 manifest 的情况）：
+    ///    追加到末尾，不能静默丢掉（丢掉 = 参数在界面上消失）。
+    public var orderedGameArgs: [(name: String, def: GameArgDef)] {
+        var result = gameArgOrder.compactMap { name -> (String, GameArgDef)? in
+            guard let def = gameArgs[name] else { return nil }
+            return (name, def)
+        }
+        // 兜住漏在 order 里的
+        let covered = Set(result.map(\.0))
+        for (name, def) in gameArgs.sorted(by: { $0.key < $1.key })
+        where !covered.contains(name) {
+            result.append((name, def))
+        }
+        return result
     }
 }
 
@@ -127,19 +167,30 @@ extension Manifest: Codable {
         }
         self.autodetect = rule
 
-        // gameArgs：形状是 { name: { type, label, default } }
+        // gameArgs：形状是 { name: { type, label, default, options } }
+        //
+        // ⚠️ **顺序**：`[String: JSONValue].self` 解码不保序，
+        //    所以 order 用 `keyedContainer.allKeys`（那是**文件里的原始顺序**）。
+        //    两次解码同一个文件，allKeys 的顺序是稳定的。
         var args: [String: GameArgDef] = [:]
-        if let raw = try? c.decode([String: JSONValue].self, forKey: AnyCodingKey("gameArgs")) {
-            for (key, value) in raw {
-                guard let obj = value.objectValue else { continue }
-                args[key] = GameArgDef(
+        var argOrder: [String] = []
+        if let keyed = try? c.nestedContainer(
+            keyedBy: AnyCodingKey.self, forKey: AnyCodingKey("gameArgs")) {
+            for key in keyed.allKeys {
+                guard let obj = try? keyed.decode([String: JSONValue].self, forKey: key) else {
+                    continue
+                }
+                args[key.stringValue] = GameArgDef(
                     type: obj["type"]?.stringValue,
                     label: obj["label"]?.stringValue,
-                    defaultValue: obj["default"]
+                    defaultValue: obj["default"],
+                    options: obj["options"]?.arrayValue?.compactMap { $0.stringValue }
                 )
+                argOrder.append(key.stringValue)
             }
         }
         self.gameArgs = args
+        self.gameArgOrder = argOrder
 
         // dependencies：形状是 { name: { arch: {link, unzip}, optional, keepSingleDir } }
         //

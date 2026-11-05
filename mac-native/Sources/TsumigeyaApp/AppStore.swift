@@ -550,6 +550,50 @@ final class AppStore: ObservableObject {
     func setSetting(_ key: SettingsGroups.Key, _ value: JSONValue) {
         settings[key.rawValue] = value
         persistSettings()
+        // ⚠️ **改完立刻应用副作用**（这是 P5 补的）。
+        //
+        //    在此之前，设置只是被存下来但**没人消费** ——
+        //    用户改了主题却看不出变化，会以为「这个应用坏了」。
+        //    表现比「没有这个开关」更糟：没有开关他不会期待，有开关没反应会让他怀疑软件。
+        applySettingSideEffect(key, value)
+    }
+
+    /// 应用一个设置的**即时副作用**。
+    ///
+    /// ⚠️ 每个设置项的生效位置不同：
+    ///    · `appearance` → 立刻改窗口外观（本函数负责）
+    ///    · `listView` → 库页下次渲染时读（`filteredGames` 那边用）
+    ///    · 其余 → 由各自的消费方在用到时读（启动、诊断、存档…）
+    private func applySettingSideEffect(_ key: SettingsGroups.Key, _ value: JSONValue) {
+        switch key {
+        case .appearance:
+            let mode = value.stringValue ?? "system"
+            switch mode {
+            case "light":
+                NSApp.appearance = NSAppearance(named: .aqua)
+            case "dark":
+                NSApp.appearance = NSAppearance(named: .darkAqua)
+            default:
+                // 跟随系统：置 nil（系统会自己决定）
+                NSApp.appearance = nil
+            }
+        default:
+            // 其余项由各自的消费方读（见上面的注释）
+            break
+        }
+    }
+
+    /// 把外观设置应用到 app（启动时调一次）。
+    ///
+    /// ⚠️ 启动时也要应用：用户上次选了「深色」，这次打开就该是深色 ——
+    ///    不能等他进设置页才生效。
+    func applyAppearance() {
+        let mode = settingString(.appearance)
+        switch mode {
+        case "light": NSApp.appearance = NSAppearance(named: .aqua)
+        case "dark": NSApp.appearance = NSAppearance(named: .darkAqua)
+        default: NSApp.appearance = nil
+        }
     }
 
     /// 落盘。
@@ -558,6 +602,94 @@ final class AppStore: ObservableObject {
     ///    包括我们不认识的（可能是旧版本写的、或未来版本写的）。
     private func persistSettings() {
         _ = JSONStore.save(JSONValue.object(settings), to: settingsURL)
+    }
+
+    // MARK: - 编辑游戏（P5 编辑页）
+
+    /// manifest 缓存（引擎 folder → manifest）。
+    @Published private var manifestCache: [String: Manifest] = [:]
+
+    /// 读某个引擎的 manifest（带缓存）。
+    ///
+    /// ⚠️ 缓存的意义：编辑页的参数表单**每次重绘都要 schema**，
+    ///    每次都读盘会让打字输入变卡（用户每按一个键都触发一次文件读取）。
+    func manifest(for engine: String) -> Manifest? {
+        if let cached = manifestCache[engine] { return cached }
+        guard let loaded = ManifestStore.load(dataDir: dataDir, engine: engine) else {
+            return nil
+        }
+        manifestCache[engine] = loaded
+        return loaded
+    }
+
+    /// `multi-version` 参数的可选值（从磁盘上真实存在的版本目录扫）。
+    ///
+    /// ⚠️ **只有 nwjs 的 `version` 是这种类型**（当前 9 个引擎里）。
+    ///    其它引擎没有多版本运行时，传空数组即可
+    ///    （`EngineArgs.control` 会回落成「不可选」并提示）。
+    func availableVersions(for def: GameArgDef, engine: String) -> [String] {
+        guard def.type == "multi-version", engine == "nwjs" else { return [] }
+        return NwjsVersion.availableVersions(dataDir: dataDir)
+    }
+
+    /// 更新一个游戏（**全页一个保存**，U8 的核心）。
+    ///
+    /// - Returns: 是否成功。失败原因写在 `lastAddGameError`。
+    ///
+    /// ⚠️ **只改传进来的三个字段**：标题 / 引擎 / 参数。
+    ///    路径不在其中 —— 改路径等于「这游戏搬走了」，该重新添加（见 GameEditView 的注释）。
+    ///
+    /// ⚠️ **未知字段必须原样保留**（D10）：`GameLibrary.save` 里有继承逻辑，
+    ///    但这里要保证传进去的 draft 不把 `unknownFields` 清空
+    ///    （否则用户从旧版带来的字段会消失）。
+    func updateGame(
+        id: String, title: String, engine: String, gameArgs: [String: JSONValue]
+    ) -> Bool {
+        lastAddGameError = nil
+
+        let url = URL(fileURLWithPath: dataDir).appendingPathComponent("games.json")
+        guard case .loaded(var map) = JSONStore.load(GameMap.self, from: url) else {
+            lastAddGameError = "读不到 games.json"
+            return false
+        }
+        guard let existing = map.games[id] else {
+            lastAddGameError = "游戏 id \(id) 不存在"
+            return false
+        }
+
+        // 组装新记录（保留不在表单里的字段）
+        var draft = existing
+        draft.gameTitle = title
+        draft.gameEngine = engine
+        draft.gameArgs = gameArgs
+        // unknownFields 原样保留（不显式设，draft 是从 existing 拷的，已经带着）
+
+        let result = GameLibrary.save(into: map, draft: draft, id: id)
+        switch result {
+        case .failure(let err):
+            lastAddGameError = err.message
+            return false
+        case .success(let saved):
+            if let writeError = JSONStore.save(saved.map, to: url) {
+                lastAddGameError = "写 games.json 失败：\(writeError)"
+                return false
+            }
+            map = saved.map
+            games = map.ordered
+            // ⚠️ manifest 缓存要清（引擎可能改了）
+            manifestCache.removeAll()
+            return true
+        }
+    }
+
+    /// 设置分类归属（**立刻落盘**）。
+    ///
+    /// ⚠️ 不属于「这个游戏的记录」，它在 library-meta.json 的 assignments 里。
+    ///    攒着等保存会让「取消编辑」时它已经被改了（见 GameEditView 的文件头）。
+    func setCategoryMembership(gameId: String, categoryId: String, member: Bool) {
+        assignments = Categories.setMembership(
+            assignments, gameId: gameId, categoryId: categoryId, member: member)
+        persistCategories()
     }
 
     // MARK: - 分类操作

@@ -18,6 +18,8 @@ import TsumigeyaCore
 
 struct GameDetailView: View {
     let game: GameRecord
+    /// 点「编辑」时调（由 `GamePane` 提供）。
+    var onEdit: (() -> Void)? = nil
     @EnvironmentObject private var store: AppStore
 
     /// 顶图高度。
@@ -206,6 +208,16 @@ struct GameDetailView: View {
             }
 
             Spacer()
+
+            // 编辑入口（P5）
+            if let onEdit {
+                Button {
+                    onEdit()
+                } label: {
+                    Label("编辑", systemImage: "pencil")
+                }
+                .controlSize(.large)
+            }
         }
     }
 
