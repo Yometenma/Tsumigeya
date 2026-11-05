@@ -273,7 +273,9 @@ Vue → Pinia → api/client → preload(window.tsumi.invoke)
 | D75 | **morph 的宿主必须是一个实例**：不用 `v-if`/`v-else` 两个容器各放一个图标 | 两个容器 = 状态一变就销毁旧组件重建新的，MorphIcon 实例没了 → 只看到硬切，而且**不报错、不警告**。M5.5 踩了两次（侧边栏折叠、详情页启动/停止） |
 | D76 | **侧边栏折叠态只在内存**，不落盘 | 它是"我现在想多看点内容区"的临时视图选择，不是用户配置。落盘会让"打开就是收着的"变成需要解释的谜（用户忘了自己折过）。与 D50 同一取向 |
 | D77 | morph 弹簧用**显式 `{stiffness:400, damping:40}`**，不用官方 `smooth` 预设 | 用户要"无回弹"，但官方 `smooth`(k=170,c=26) 实测 **0.72s** 太慢 —— 面板宽度过渡都收完了，图标还在飞。保持 ζ=1（`c=2√k`，零回弹）只提刚度 → **0.48s**。实测表在 `AppIcon.vue` 注释里 |
-| D78 | **手柄不做**：四个引擎（MV/MZ/RPG Maker 系列/Ren'Py）**各自原生支持**手柄，插上即用。启动器不接管手柄输入 | 实测用户 Mac 上的**引擎核心文件**：`rpg_core.js` 的 `Input._pollGamepads()` 每帧读手柄、`gamepadMapper` 是标准 Xbox 布局；`rmmz_core.js` 同样；MKXP-Z 二进制里 290 处 gamepad 字符串。**这是引擎能力，不是游戏作者加的**（所以任何该引擎的游戏默认都支持）。Tsumigeya 是独立 Electron 窗口，Gamepad API 读到的输入送不进游戏进程 —— 「接管手柄」技术不成立，且无收益 || D79 | **无边框窗口不做**，只用引擎原生全屏 | mac 的真全屏本来就没有窗口装饰（边框是 Windows 全屏才有的问题）。要在 mac 上控制**别人的窗口**需辅助功能权限（实测用户机上 0 个应用有） || D80 | **全屏/缩放只接引擎已有的能力，不改用户游戏文件** | NW.js 用命令行 `--start-fullscreen`（**不是** `package.json` 的 `chromium-args`——那是 D53 拒绝的改文件）；EasyRPG 用官方 man page 的 `--fullscreen` / `--scaling`；MKXP-Z 用 mkxp.json 的 `integerScalingActive` |
+| D78 | **手柄不做**：四个引擎（MV/MZ/RPG Maker 系列/Ren'Py）**各自原生支持**手柄，插上即用。启动器不接管手柄输入 | 实测用户 Mac 上的**引擎核心文件**：`rpg_core.js` 的 `Input._pollGamepads()` 每帧读手柄、`gamepadMapper` 是标准 Xbox 布局；`rmmz_core.js` 同样；MKXP-Z 二进制里 290 处 gamepad 字符串。**这是引擎能力，不是游戏作者加的**（所以任何该引擎的游戏默认都支持）。Tsumigeya 是独立 Electron 窗口，Gamepad API 读到的输入送不进游戏进程 —— 「接管手柄」技术不成立，且无收益 |
+| D79 | **无边框窗口不做**，只用引擎原生全屏 | mac 的真全屏本来就没有窗口装饰（边框是 Windows 全屏才有的问题）。要在 mac 上控制**别人的窗口**需辅助功能权限（实测用户机上 0 个应用有） |
+| D80 | **全屏/缩放只接引擎已有的能力，不改用户游戏文件** | NW.js 用命令行 `--start-fullscreen`（**不是** `package.json` 的 `chromium-args`——那是 D53 拒绝的改文件）；EasyRPG 用官方 man page 的 `--fullscreen` / `--scaling`；MKXP-Z 用 mkxp.json 的 `integerScalingActive` |
 
 ## 里程碑路线图
 
