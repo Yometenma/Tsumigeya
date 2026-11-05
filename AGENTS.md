@@ -21,7 +21,7 @@
   M3（故障自愈）、M2.6（海报墙与详情页）、M2.7（编辑页重构）、M3.5（进程管理）、M4.0（自实现启动）、
   M4.1（引擎清单自己维护）、**M4.2（彻底零上游）**、**M5.5（动态图标 / Lucide 图标体系）**
 - **已发布**：**v0.5.3**（含 M4.2 + 两个启动修复；GitHub `Yometenma/Tsumigeya`）
-- **测试**：**1221 个 / 54 文件**全绿；`typecheck` / `test` / `build` 三绿
+- **测试**：**1359 个 / 60 文件**全绿；`typecheck` / `test` / `build` 三绿
 - **M5.0 进行中**（`docs/M5.0-实施方案.md`）：12 项体验优化，**逐条提交**（用户拍板）
   - 顺序见方案 §12：B1 版本号 → U3+U4 筛选 → U5 选文件 → U6 去跳过 → N1 游玩时间
     → U1 批量 → U2 分类 → U10 全部安装 → U9 设置页 → U7 抽组件 → U8 编辑页重构
@@ -77,6 +77,9 @@
 | **图标渲染**（M5.5） | `src/renderer/src/components/AppIcon.vue` | 收口所有图标渲染。`<AppIcon name="Ellipsis" />` = 静态；`<AppIcon :icon="数据" />` = 走 morph。**弹簧与 stroke 默认值在这里**（`SPRING` / `strokeWidth`） |
 | **侧边栏折叠**（M5.5） | `src/shared/sidebar-collapse.ts` + `SidebarToggle.vue` | 折叠态**只在内存**（不落盘）；判据是「折叠时哪些块收起」（漏一个会溢出且不报错）；宽度 208↔56 |
 | **存档探测**（M4 S1） | `src/shared/save-locate.ts` + `src/main/save-store.ts` | 判据是纯函数（**按后缀判，不按目录名猜**：MV 在 `www/save`、MZ 在 `save`）；`listSaves` 绕队列。`location:null`（不知道在哪）与 `empty:true`（还没存档）是两件事 |
+| **存档展示**（M4 S2） | `src/shared/save-view.ts` + `SaveSection.vue` | `saveSectionView()` → `unknown` / `empty` / `list` 三态（前两者**必须分开**）；`formatByteSize` 是 1024 进制确定性输出；槽与配置分开列 |
+| **存档导出/导入**（M4 S3/S4） | `src/shared/save-archive.ts` + `src/main/save-archive-io.ts` | 打**整个目录**（含 `lastsave.autobak` 这类插件文件）；导入顺序**先校验 sha256 → 再备份 → 才写**；`exportBlocked()` 运行中禁止导出。zip 用 `fflate`（纯 JS，零原生依赖） |
+| **同步占位**（M4 S5） | `src/shared/save-sync.ts` | **只留接口不实现**（`SaveSyncProvider` 无实现类）；源码里**禁止出现任何网络能力**（有源码级测试守着）；模式只有 `none` / `manual` |
 
 ## 开发命令
 
@@ -176,6 +179,16 @@ Vue → Pinia → api/client → preload(window.tsumi.invoke)
 | **`DEFAULT_SETTINGS` 不是全部默认值的来源** | `languageSwitchPrompt` / `diagnoseBeforeLaunch` 用的是 `saved.x === false ? false : true`（不在那个常量里）。渲染层的 `BOOL_DEFAULTS` 是镜像，有测试逐项对齐 |
 | **`library-meta.json` 现在有非游戏顶层键**（`categories` / `assignments`） | ① `load()` 必须按「键是纯数字」过滤，否则 `categories` 会被当成一个游戏；② `save()`/`remove()` 是**整体覆写**，写回前必须把非数字键带回去，否则一次改 DLsite 信息就把分类全抹了 |
 | **删游戏要清四处旁挂数据**：`games.json` / `library-meta` / `play-stats` / **`assignments`（分类归属）** | 漏掉后两项会在 id 复用时**把上一个游戏的游玩历史/分类安到新游戏头上**（saveGame 的 `Math.max(...)+1` 容易落回刚删的号）。回归：`test/delete-cleanup.test.ts` / `test/category-ipc.test.ts` |
+
+### 存档（M4，四条全是"看起来成功了"）
+
+| 坑 | 对策 |
+|---|---|
+| **`location:null` 与 `empty:true` 被糊成一句** | 前者是**故障**（不知道在哪，用户该去排障），后者是**正常**（还没存过档，该去玩到存档点）。糊了不会崩溃，只会让用户**永远查不出问题**。判据 `shared/save-view.ts` 的 `saveSectionView()`（18 条单测），别在模板里判 |
+| **导出只打槽 → 用户换机后少东西** | 真机实测存档目录里有 `lastsave.autobak` / `sync_data.rpgsave`（**插件写的**）。必须打**整个目录**（D81）。判断"够了没"的标准不是"槽都在"，而是"目录里每一个文件都在" |
+| **导入先写后备份**（或忘了备份） | 顺序**必须**是「校验 sha256 → 备份 `<原名>.tsumigeya-bak` → 才写」。写与备份的交界处出事（磁盘满/断电），先备份的最坏结果只是"没导进来"；先写的最坏结果是**半新半旧，既不能玩也不能回退**。**备份幂等**：已有备份不覆盖（否则第二次导入会把真存档盖成"导入后的版本"） |
+| **"判据写了、测了、但没人调用"** | S5 实测踩到：`showsManualButtons` 写完 + 3 条单测全绿，`SaveSection.vue` 里根本没接 —— **测试全绿，功能等于没写**。判据的价值只在被调用时存在。补源码级测试：组件必须引用它、两个按钮都要带 `v-if="showManualButtons"` |
+| **i18n 键既是标题又是命名空间** | 第一版写 `settings.saveSync.<mode>`，而 `saveSync` 本身是那一行的**标题**（字符串）→ JSON 重复键 → 渲染出 `[object Object]`。改成 `saveSyncModes.<mode>` + 一条**逐个核对键真的存在于 locales** 的测试（vue-i18n 查不到时会**原样画出 key 原文**，不报错） |
 
 ### 验收探针（本机无画面时）
 
@@ -277,6 +290,9 @@ Vue → Pinia → api/client → preload(window.tsumi.invoke)
 | D78 | **手柄不做**：四个引擎（MV/MZ/RPG Maker 系列/Ren'Py）**各自原生支持**手柄，插上即用。启动器不接管手柄输入 | 实测用户 Mac 上的**引擎核心文件**：`rpg_core.js` 的 `Input._pollGamepads()` 每帧读手柄、`gamepadMapper` 是标准 Xbox 布局；`rmmz_core.js` 同样；MKXP-Z 二进制里 290 处 gamepad 字符串。**这是引擎能力，不是游戏作者加的**（所以任何该引擎的游戏默认都支持）。Tsumigeya 是独立 Electron 窗口，Gamepad API 读到的输入送不进游戏进程 —— 「接管手柄」技术不成立，且无收益 |
 | D79 | **无边框窗口不做**，只用引擎原生全屏 | mac 的真全屏本来就没有窗口装饰（边框是 Windows 全屏才有的问题）。要在 mac 上控制**别人的窗口**需辅助功能权限（实测用户机上 0 个应用有） |
 | D80 | **全屏/缩放只接引擎已有的能力，不改用户游戏文件** | NW.js 用命令行 `--start-fullscreen`（**不是** `package.json` 的 `chromium-args`——那是 D53 拒绝的改文件）；EasyRPG 用官方 man page 的 `--fullscreen` / `--scaling`；MKXP-Z 用 mkxp.json 的 `integerScalingActive` |
+| D81 | **存档导出打「整个存档目录」，不是只打槽** | 用户真机 `Karryn's Prison/www/save/` 里有 `lastsave.autobak` / `sync_data.rpgsave` —— 那是**游戏插件写的文件**，也是存档数据。只打 `file*.rpgsave` 会让用户换机后少东西（插件数据丢了，游戏行为就不一样），而他不会怀疑"包少了东西"。与 S1 判据「宁可多认，不能漏」同一取向 |
+| D82 | **游戏运行中禁止导出/导入**，判据在主进程（`exportBlocked` + `registry.has`），UI 只是提前禁用 | 运行中的存档可能正在写：导出的包会是**半截文件**（头对、尾缺）。用户带着它换机，导入后游戏报存档损坏 —— 而他完全想不到问题出在"当初导出时游戏没关"。这类故障**没有自愈余地**（我们不解析也不修存档，方案 §6），所以必须在源头拦住。UI 拦不住所有路径，主进程那一层不能省 |
+| D83 | **存档同步只留接口，不接任何云**；设置里只有 `none` / `manual` | 方案 §3.5 + D31 的精神（绝不动用户的东西）。云要账号、要冲突处理、要把存档传上去（里面可能有用户不想上传的东西）；而手动导入导出已能解决"换机防丢档"。一个半成品云比没有更糟 —— 用户会以为存档在云上，从而**不再手动备份**。判据是**结构性**的：`save-sync.ts` 里不许出现任何网络能力（源码级测试守），不许有实现类 |
 
 ## 里程碑路线图
 
@@ -310,7 +326,18 @@ Vue → Pinia → api/client → preload(window.tsumi.invoke)
     - **MV/MZ 两种布局**：MV 在 `<游戏>/www/save/`、MZ 在 `<游戏>/save/`（实测，不能硬编码）
     - MKXP-Z 靠约定枚举（`Data/Save*` → 根目录 `Save*` → `Save/`），**不等真实样本**
     - ⚠️ `location:null`（不知道在哪）与 `empty:true`（还没存档）**必须区分**
-  - 待做：S2 详情页存档区块 / S3 导出 zip（含「运行中禁止导出」保护）/ S4 导入 / S5 同步占位
+  - ✅ **S2 已提交**（`81184ec`）：详情页存档区块（列表 + 三态分开 + 在访达中显示）
+    - 判据 `shared/save-view.ts`（18 条单测）；组件 `SaveSection.vue`
+  - ✅ **S3+S4 已提交**（`73bcd06`）：导出 zip + 导入
+    - 判据 `shared/save-archive.ts`（39 条）；IO `main/save-archive-io.ts`（26 条读写真盘）
+    - **打整个目录**（含 `lastsave.autobak` / `sync_data.rpgsave` 这类插件文件）
+    - **运行中禁止导出**（`exportBlocked`）：半截文件带着换机会丢档
+    - 导入顺序 **先校验 sha256 → 再备份 `.tsumigeya-bak` → 才写**；备份**幂等**
+    - 两条命令都**进队列**（写盘）；`OFF_QUEUE_METHODS` 仍是 11
+  - ✅ **S5 已提交**（`28369b0` + `154c835`）：同步占位（接口 + 设置页下拉，**不接任何云**）
+    - 判据 `shared/save-sync.ts`（27 条，含「源码里禁止任何网络能力」的源码级判据）
+    - ⚠️ 踩到一次「判据写了、测了、但没人调用」→ 补了源码级测试守住它必须被用
+  - **M4 全部 5 步已完成**（S1–S5）。⚠️ **UI 未人眼验收**（列表样式/空态文案位置/设置页下拉）
   - **不做**：解析存档内容（改钱改道具）、云同步、自动备份、改游戏文件结构
   - ⚠️ 实施前必读：`docs/M4-实施方案.md` §2 的四条实测结论
 - **M4 增强**：Cheat 注入 / 变速（未调研）
@@ -352,6 +379,13 @@ Vue → Pinia → api/client → preload(window.tsumi.invoke)
   ① 弹簧 0.48s 的快慢与阻尼是否舒服（`AppIcon.vue` 的 `SPRING = {stiffness:400, damping:40}`）
   ② 暗色 UI 上 `stroke 1.5` 是否偏细（`AppIcon.vue` 的 `strokeWidth` 默认值）
   ③ 折叠面板宽度过渡 0.42s 与图标变形 0.48s 是否协调
+- **M4 存档 UI**（本机只验了逻辑与错误路径，**观感只能真机看**）：
+  ① 详情页「存档」区块的三列布局（文件名长短差很多，grid 是否对齐）
+  ② 两种空态文案的位置与措辞（`unknown` 那句明显更长，会不会挤）
+  ③ 配置项压暗的程度（是否真的与存档槽拉开了距离）
+  ④ 运行中时导出按钮变灰 + 下方那行说明（是否读得懂"请先关闭游戏"）
+  ⑤ 设置页「游戏库」组里新增的存档同步下拉
+  ⚠️ 真实导出/导入的**端到端流程**（弹目录选择框 → 落盘 → 再导入）本机没跑过
 
 ## 上游参考（仅历史）
 
