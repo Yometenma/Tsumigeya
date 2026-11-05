@@ -128,7 +128,9 @@ enum UISnapshot {
             if let m {
                 for (name, def) in m.orderedGameArgs {
                     let versions = store.availableVersions(for: def, engine: first.gameEngine)
-                    let ctrl = EngineArgs.control(for: def, availableVersions: versions)
+                    let ctrl = EngineArgs.control(
+                        for: def, engine: first.gameEngine, key: name,
+                        availableVersions: versions)
                     print("  \(name.padding(toLength: 16, withPad: " ", startingAt: 0))"
                           + "type=\(def.type ?? "-")  ctrl=\(ctrl)")
                 }

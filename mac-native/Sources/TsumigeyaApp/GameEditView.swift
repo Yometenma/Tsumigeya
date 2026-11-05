@@ -316,13 +316,28 @@ struct EngineArgRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            switch EngineArgs.control(for: def, availableVersions: availableVersions) {
+            // ⚠️ **必须传 engine 与 key** —— 否则内置选项表（rgssVersion 的下拉）
+            //    完全不生效（`EngineArgs.control` 里查不到就回落成文本框）。
+            switch EngineArgs.control(
+                for: def, engine: engine, key: name,
+                availableVersions: availableVersions) {
             case .boolean:
+                // ⚠️⚠️ **`get` 必须读 `value`，不能传空字典**
+                //    （用户 2026-11-06 报：开关点了生效、但显示还是关的、而且关不掉）。
+                //
+                //    本鱼原来写的是 `booleanValue(for: name, in: [:], schema: def)`
+                //    —— 传了个**空字典**，于是 `get` 永远读不到用户改的值，
+                //    只会返回 manifest 的 default（false）。
+                //
+                //    表现：点了之后 `set` 写进去了（真的生效），
+                //    但界面重绘时 `get` 又读出 false → **显示还是关的**；
+                //    而用户再点一下是想关掉，`set(false)` 与当前显示相同 → **关不掉**。
+                //
+                //    正确做法：直接读 `value`（父层传进来的那个 binding）。
                 Toggle(label, isOn: Binding(
-                    get: { EngineArgs.booleanValue(for: name, in: [:], schema: def) },
+                    get: { booleanCurrentValue },
                     set: { value = .bool($0) }
                 ))
-                .onAppear { /* 值由父 binding 提供 */ }
 
             case .text:
                 HStack(spacing: 10) {
@@ -359,13 +374,46 @@ struct EngineArgRow: View {
             case .dropdown(let options):
                 HStack(spacing: 10) {
                     labelText
-                    Picker("", selection: Binding(
-                        get: { value?.stringValue ?? options.first ?? "" },
-                        set: { value = .string($0) }
-                    )) {
-                        ForEach(options, id: \.self) { Text($0).tag($0) }
+                    // ⚠️ **有内置选项表时显示中文标签，不是裸数字**。
+                    //
+                    //    本鱼原来直接把 `options`（["0","1","2","3"]）画进 Picker，
+                    //    用户看到的是数字 —— 与文本框没区别，白做了下拉。
+                    if let rich = EngineArgsOptions.options(engine: engine, key: name) {
+                        Picker("", selection: Binding(
+                            // ⚠️ **必须用 normalizedValue 同时认 string 与 int**。
+                            //    真机数据里 `rgssVersion` 存的是**数字 0**（不是 "0"），
+                            //    而 JSONValue.int(0).stringValue 是 nil
+                            //    → Picker 匹配不上任何 tag → 显示裸数字（用户截了图报过来）。
+                            get: { EngineArgsOptions.normalizedValue(value)
+                                    ?? rich.first?.value ?? "" },
+                            // ⚠️ **写回时必须写 int**：mkxp-row 的
+                            //    `MkxpzConfig.build` 用 `.int(rgssVersion)`，
+                            //    而 `resolveRtp` 同时认 int 与 string。
+                            //    但保持与 manifest 一致的 int 更安全（少一次转换）。
+                            set: { value = Int($0).map { JSONValue.int($0) } ?? .string($0) }
+                        )) {
+                            ForEach(rich, id: \.value) { opt in
+                                Text(opt.label).tag(opt.value)
+                            }
+                            // ⚠️ 存了个不认识的值（用户手改过 gameArgs）→
+                            //    单独列一项，让用户看到它是什么。
+                            //    不加这一项的话 Picker 会显示空白，
+                            //    而用户一改就**丢掉**他原来的值。
+                            if let v = EngineArgsOptions.normalizedValue(value),
+                               !EngineArgsOptions.isKnown(v, options: rich) {
+                                Text("未知值（\(v)）").tag(v)
+                            }
+                        }
+                        .labelsHidden()
+                    } else {
+                        Picker("", selection: Binding(
+                            get: { value?.stringValue ?? options.first ?? "" },
+                            set: { value = .string($0) }
+                        )) {
+                            ForEach(options, id: \.self) { Text($0).tag($0) }
+                        }
+                        .labelsHidden()
                     }
-                    .labelsHidden()
                 }
 
             case .multiVersion(let versions):
@@ -410,6 +458,16 @@ struct EngineArgRow: View {
                 }
             }
         }
+    }
+
+    /// 布尔参数的**当前值**。
+    ///
+    /// ⚠️ 直接读 `value`（binding），**不查 schema**（见上面那个 bug 的注释）。
+    /// 只有 `value` 为 nil（用户从没设过）时才用 schema 的 default。
+    private var booleanCurrentValue: Bool {
+        if let v = value?.boolValue { return v }
+        if let d = def.defaultValue?.boolValue { return d }
+        return false
     }
 
     private var label: String {

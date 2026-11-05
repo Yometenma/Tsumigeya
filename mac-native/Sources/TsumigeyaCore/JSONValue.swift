@@ -87,6 +87,17 @@ extension JSONValue {
         switch self {
         case .int(let i): return i
         case .double(let d): return d == d.rounded() ? Int(d) : nil
+        // ⚠️ **也认字符串形态**（P5 补上）。
+        //
+        //    为什么：用户可能手改过 games.json，把 `defScreenW` 写成 `"1280"`；
+        //    而 manifest 里 `int` 参数的 `default` 有时也是字符串形态。
+        //    严格只认 `.int` 会让「值明明在、界面显示 0」——
+        //    那正是 `rgssVersion` 那个 bug 的同类问题（值在但读不出来）。
+        //
+        //    ⚠️ 但**只认能完整解析成整数的**（`"12abc"` → nil），
+        //       免得把脏数据当成数字。
+        case .string(let s):
+            return Int(s.trimmingCharacters(in: .whitespacesAndNewlines))
         default: return nil
         }
     }
@@ -95,6 +106,9 @@ extension JSONValue {
         switch self {
         case .double(let d): return d
         case .int(let i): return Double(i)
+        // ⚠️ 同上：认字符串形态
+        case .string(let s):
+            return Double(s.trimmingCharacters(in: .whitespacesAndNewlines))
         default: return nil
         }
     }
