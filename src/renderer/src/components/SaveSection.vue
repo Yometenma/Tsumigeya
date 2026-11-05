@@ -29,6 +29,8 @@ import { ElMessage } from 'element-plus'
 import AppIcon from '@/components/AppIcon.vue'
 import { api, translateError, type SaveListing } from '@/api/client'
 import { saveSectionView } from '../../../shared/save-view'
+import { showsManualButtons, validSaveSyncMode } from '../../../shared/save-sync'
+import { useSettingsStore } from '@/stores/settings'
 
 const props = defineProps<{
   /** 游戏 id（换游戏要重拉列表）。 */
@@ -38,6 +40,7 @@ const props = defineProps<{
 }>()
 
 const { t } = useI18n()
+const settings = useSettingsStore()
 
 // ===== 状态（全部在 watch 之前声明，避免 TDZ）=====
 
@@ -60,6 +63,21 @@ const emptyText = computed(() => t('detail.savesEmpty'))
 
 /** 有位置时才有「在访达中显示」可点（没位置就无从打开）。 */
 const canReveal = computed(() => view.value.kind !== 'unknown')
+
+/**
+ * 导出/导入这两个按钮要不要画（M4 S5 的同步模式判据）。
+ *
+ * ===== 为什么走 shared 而不是直接 `v-if="true"` =====
+ *
+ * 「`none` 模式也照样显示按钮」是一个**刻意的决定**（判据在
+ * `shared/save-sync.ts` 的 `showsManualButtons`）：`none` 的语义是
+ * "我不需要同步方案"，**不是**"我不想备份"。把按钮藏起来等于让用户
+ * 以为没有这个功能，而手动导入导出本来就是唯一真能防丢档的手段。
+ *
+ * 写成判据（而不是模板里恒真的 `v-if`）的好处：将来真加了云模式时，
+ * 这里就是该分叉的地方，而现有那条「每个合法模式都是 true」的测试会当场变红。
+ */
+const showManualButtons = computed(() => showsManualButtons(validSaveSyncMode(settings.settings.saveSyncMode)))
 
 /** 当前目录（unknown 时是空串，不给按钮传 undefined）。 */
 const dirPath = computed(() => {
@@ -243,10 +261,17 @@ watch(() => props.gameId, () => void load(), { immediate: true })
         <template #icon><AppIcon name="RefreshCw" :size="16" :stroke-width="1.75" /></template>
         {{ t('common.refresh') }}
       </el-button>
-      <el-button text size="small" :loading="exporting" :disabled="!canExport" @click="exportSaves">
+      <el-button
+        v-if="showManualButtons"
+        text
+        size="small"
+        :loading="exporting"
+        :disabled="!canExport"
+        @click="exportSaves"
+      >
         {{ t('detail.exportSaves') }}
       </el-button>
-      <el-button text size="small" :loading="importing" :disabled="running" @click="importSaves">
+      <el-button v-if="showManualButtons" text size="small" :loading="importing" :disabled="running" @click="importSaves">
         {{ t('detail.importSaves') }}
       </el-button>
     </div>

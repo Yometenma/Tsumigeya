@@ -118,6 +118,20 @@ describe('★ 模板里的 @click 方法必须在 script 里声明过', () => {
       expect(missing, `${file} 模板引用了不存在的处理函数：${missing.join(', ')}`).toEqual([])
     }
   })
+
+  test('SaveSection：导出/导入/在访达中显示/刷新都必须存在（M4 S3/S4 的按钮）', () => {
+    // ⚠️ 这四个按钮是**用户真实数据操作**的入口（导出存档、覆盖现存档）。
+    // 一个死键的表现是"点了没反应"，而 tsc / build / 其它测试全都放过 ——
+    // 正是这个文件存在的理由（S10 曾把 save/goBack 删掉，保存按钮变死键）。
+    const missing = undeclaredHandlers('components/SaveSection.vue')
+    expect(missing, `存档区块模板引用了不存在的处理函数：${missing.join(', ')}`).toEqual([])
+    const { script } = splitSfc('components/SaveSection.vue')
+    for (const name of ['exportSaves', 'importSaves', 'revealInFinder', 'load']) {
+      expect(script, `SaveSection 里缺少 ${name} 的声明`).toMatch(
+        new RegExp(`(?:async\\s+)?function\\s+${name}\\s*\\(`)
+      )
+    }
+  })
 })
 
 describe('判据本身要能抓到问题（反向验证）', () => {

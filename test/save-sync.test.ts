@@ -145,6 +145,34 @@ describe('needsManualDisclaimer：只在 manual 时说明"不会上传任何东�
   })
 })
 
+describe('★ showsManualButtons 必须真的被用到（否则它就是死代码）', () => {
+  /**
+   * 这条防的是"判据写了但没人用"。
+   *
+   * 本鱼写这一轮时确实踩到了：`showsManualButtons` 先写进 shared、加了 3 条测试，
+   * 但 `SaveSection.vue` 里当时根本没接 —— 测试全绿，功能上却等于没写。
+   * 判据的价值只在**被调用**时才存在。
+   */
+  const sectionSource = (): string =>
+    fs.readFileSync(path.join(process.cwd(), 'src', 'renderer', 'src', 'components', 'SaveSection.vue'), 'utf8')
+
+  test('SaveSection.vue 引用了 showsManualButtons（不是写死 v-if="true"）', () => {
+    expect(sectionSource()).toContain('showsManualButtons')
+  })
+
+  test('两个按钮的可见性走同一个判据（不是只有导出接了）', () => {
+    const source = sectionSource()
+    const guarded = source.match(/v-if="showManualButtons"/g) ?? []
+    expect(guarded.length, '导出与导入两个按钮都要走 showManualButtons').toBe(2)
+  })
+
+  test('⚠️ 设置值经 validSaveSyncMode 归一（磁盘上的脏值不该把按钮弄没）', () => {
+    // 好处是结构性的：就算 settings.json 被人改成 `dropbox`，
+    // showsManualButtons 拿到的也永远是合法值 —— 按钮不会因为脏值消失。
+    expect(sectionSource()).toContain('validSaveSyncMode')
+  })
+})
+
 describe('类型的可用性（这些常量真的能被渲染层用起来）', () => {
   test('SaveSyncMode 可以从常量推导，不需要手写第三份', () => {
     const modes: SaveSyncMode[] = [...SAVE_SYNC_MODES]
