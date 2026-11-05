@@ -311,22 +311,12 @@ func runningProcesses(forGame game: GameRecord, engine: String, dataDir: String)
 
 /// 当前架构字符串（`arm64` / `x64`）—— 与 Electron 版 `os.arch()` 的取值对齐。
 ///
-/// ⚠️ Node 的 `os.arch()` 在 mac arm64 上返回 `arm64`，x64 上返回 `x64`。
-/// 而 Swift 的 `#if arch(...)` 只有编译期常量。这里用运行时判断，
-/// 因为**同一个二进制可能在 Rosetta 下跑**（那时应为 x64）。
+/// ⚠️ 判据**已经不在这里**：Rosetta 的运行时判断实现在 `Download.swift` 的
+/// `Arch.current()`（那边还要做 `x64` → `x86_64` 的清单键映射，两处各写一份必然分叉）。
+/// 这里只保留返回字符串的便捷入口，给 `LaunchContext.arch` 与
+/// `BinaryPaths.nwjsBinary(arch:)` 用 —— 它们要的就是 `x64` / `arm64` 字面量。
 func currentArch() -> String {
-    // 运行时判断：读 sysctl 的 proc_translated（Rosetta 标记）
-    var translated: Int32 = 0
-    var size = MemoryLayout<Int32>.size
-    let ok = sysctlbyname("sysctl.proc_translated", &translated, &size, nil, 0)
-    if ok == 0 && translated == 1 {
-        return "x64"   // 跑在 Rosetta 下 → 用 x64 的依赖
-    }
-    #if arch(arm64)
-    return "arm64"
-    #else
-    return "x64"
-    #endif
+    Arch.current().rawValue
 }
 
 /// 解析 nwjs 的版本目录名。

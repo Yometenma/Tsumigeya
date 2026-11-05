@@ -121,8 +121,33 @@ export function tarEnv(): NodeJS.ProcessEnv {
     // 用 C.UTF-8 而不是 en_US.UTF-8：前者在 mac 上**不保证存在**，
     // 而 macOS 自带 `en_US.UTF-8`（实测可用）。其它 UTF-8 locale 也可以，
     // 关键只是「让 bsdtar 知道该按 UTF-8 输出」。
-    LANG: process.env.LANG || 'en_US.UTF-8',
-    LC_ALL: process.env.LC_ALL || 'en_US.UTF-8'
+    //
+    // ⚠️ **三个变量一律无条件覆盖，绝不沿用外部值**（2026-11-06 实测更正）。
+    //
+    // 原来的写法是 `process.env.LC_ALL || 'en_US.UTF-8'` —— 尊重用户/系统设的
+    // locale。那看起来更礼貌，但它有个真实的漏：
+    //
+    //   POSIX 的 locale 优先级是 **LC_ALL > LC_* > LANG**。
+    //   所以「外部 LC_ALL=C」会**压过**我们设的 LANG，bsdtar 仍按 C locale 输出：
+    //
+    //     LANG=en_US.UTF-8（无 LC_ALL）      → `中文.txt`               ✅
+    //     LANG=en_US.UTF-8 + LC_ALL=C        → `\344\270\255\346\226\207.txt` ❌
+    //     LANG=en_US.UTF-8 + LC_CTYPE=C      → `\344\270\255\346\226\207.txt` ❌
+    //
+    // 后两种正是**最要命的场景**：八进制转义产物带反斜杠 → 被 `assertSafeEntry`
+    // 的「拒绝反斜杠」判成路径穿越 → **含中文名的包整包被拒**。
+    // 而 `LC_ALL=C` / `LC_CTYPE=C` 在 SSH、launchctl、Finder 启动的 .app 里都可能出现。
+    //
+    // 为什么「无条件覆盖」是对的：我们不关心用户的 locale 偏好，
+    // 只关心「bsdtar 用 UTF-8 输出文件名」这一件事。这是**给我们自己看的中间结果**
+    // （列目录后立刻被我们解析并丢弃），不是给用户读的文本。
+    //
+    // ⚠️ 别去放行反斜杠规则（那是安全判据）。要修就修输入侧。
+    LANG: 'en_US.UTF-8',
+    LC_ALL: 'en_US.UTF-8',
+    // LC_CTYPE 单独设也必要：它在 LC_ALL 未设时会**独立生效**，
+    // 而实测 `LC_CTYPE=C` 单独就能让 bsdtar 转义。
+    LC_CTYPE: 'en_US.UTF-8'
   }
 }
 
