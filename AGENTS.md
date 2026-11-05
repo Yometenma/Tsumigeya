@@ -21,7 +21,7 @@
   M3（故障自愈）、M2.6（海报墙与详情页）、M2.7（编辑页重构）、M3.5（进程管理）、M4.0（自实现启动）、
   M4.1（引擎清单自己维护）、**M4.2（彻底零上游）**、**M5.5（动态图标 / Lucide 图标体系）**
 - **已发布**：**v0.5.3**（含 M4.2 + 两个启动修复；GitHub `Yometenma/Tsumigeya`）
-- **测试**：**1198 个 / 53 文件**全绿；`typecheck` / `test` / `build` 三绿
+- **测试**：**1221 个 / 54 文件**全绿；`typecheck` / `test` / `build` 三绿
 - **M5.0 进行中**（`docs/M5.0-实施方案.md`）：12 项体验优化，**逐条提交**（用户拍板）
   - 顺序见方案 §12：B1 版本号 → U3+U4 筛选 → U5 选文件 → U6 去跳过 → N1 游玩时间
     → U1 批量 → U2 分类 → U10 全部安装 → U9 设置页 → U7 抽组件 → U8 编辑页重构
@@ -76,6 +76,7 @@
 | **图标数据**（M5.5） | `src/shared/icon-nodes.ts` | **图标几何的唯一来源**（12 个图标）。`ICON_NODES` + `MORPH_PAIRS` + `morphIcon()`。手抄 Lucide 常量，有测试与包内真实数据**逐字节**比对（包一升级就红） |
 | **图标渲染**（M5.5） | `src/renderer/src/components/AppIcon.vue` | 收口所有图标渲染。`<AppIcon name="Ellipsis" />` = 静态；`<AppIcon :icon="数据" />` = 走 morph。**弹簧与 stroke 默认值在这里**（`SPRING` / `strokeWidth`） |
 | **侧边栏折叠**（M5.5） | `src/shared/sidebar-collapse.ts` + `SidebarToggle.vue` | 折叠态**只在内存**（不落盘）；判据是「折叠时哪些块收起」（漏一个会溢出且不报错）；宽度 208↔56 |
+| **存档探测**（M4 S1） | `src/shared/save-locate.ts` + `src/main/save-store.ts` | 判据是纯函数（**按后缀判，不按目录名猜**：MV 在 `www/save`、MZ 在 `save`）；`listSaves` 绕队列。`location:null`（不知道在哪）与 `empty:true`（还没存档）是两件事 |
 
 ## 开发命令
 
@@ -303,7 +304,16 @@ Vue → Pinia → api/client → preload(window.tsumi.invoke)
   - ✅ +33 条测试（`icon-nodes` 21 / `sidebar-collapse` 12）
   - ⚠️ **动效手感与暗色粗细待用户真机确认**（`AppIcon.vue` 的 `SPRING` / `strokeWidth` 可直接调）
   - **仍只在「同一按钮有两种状态」处用 morph**（D74）；一次性动作不变形 —— 硬塞是滥用
-- **M4**：存档管理（查看/备份/导出）+ 增强（Cheat 注入/变速）
+- **M4 存档管理（进行中）** —— 方案 `docs/M4-实施方案.md`
+  - ✅ **S1 已提交**（`848af84`）：存档位置探测 + `listSaves` 只读命令
+    - 判据 `shared/save-locate.ts`（纯函数，19 条单测）；IO `main/save-store.ts`
+    - **MV/MZ 两种布局**：MV 在 `<游戏>/www/save/`、MZ 在 `<游戏>/save/`（实测，不能硬编码）
+    - MKXP-Z 靠约定枚举（`Data/Save*` → 根目录 `Save*` → `Save/`），**不等真实样本**
+    - ⚠️ `location:null`（不知道在哪）与 `empty:true`（还没存档）**必须区分**
+  - 待做：S2 详情页存档区块 / S3 导出 zip（含「运行中禁止导出」保护）/ S4 导入 / S5 同步占位
+  - **不做**：解析存档内容（改钱改道具）、云同步、自动备份、改游戏文件结构
+  - ⚠️ 实施前必读：`docs/M4-实施方案.md` §2 的四条实测结论
+- **M4 增强**：Cheat 注入 / 变速（未调研）
 - **M5**：手柄、无边框全屏、像素缩放、dmg 公证分发
 
 ### M4.2 做了什么（归档，2026-11-04）
