@@ -214,7 +214,7 @@ Vue → Pinia → api/client → preload(window.tsumi.invoke)
 3. **改 IPC 三处同步**：`ipc.ts`（实现）/ `preload/index.ts`（桥）/ `api/client.ts`（类型）
 4. **新决策写进下节表**，并在 `docs/` 落记录
 5. **收尾三件事**：typecheck + test + build 全绿 → 更新本文档 → 中文 commit
-6. **不提交** `node_modules/ out/ dist/ *.tsbuildinfo`；不动 `_xeno_probe/`
+6. **不提交** `node_modules/ out/ dist/ *.tsbuildinfo`
 7. **不要提前写「已完成」**：只记录实际提交过的东西
 
 ## 已定决策（只列仍有效的）
@@ -474,6 +474,8 @@ xattr -dr com.apple.quarantine /Applications/Tsumigeya.app
 ## 上游参考（仅历史）
 
 - https://github.com/m5kro/Xenolauncher ；模块仓库 `m5kro/Xenolauncher-Modules`
-- 本地 clone `_xeno_probe/`（只读参考，gitignore）
-- M4.2 已完成，只剩考古价值（`_xeno_probe/` 里那份 `module.js` 仍是理解
-  `deps/RTP/RTP/` 双层目录、`version/v0.106.1` 命名等历史形态的最快入口）
+- **本地 clone `_xeno_probe/` 已删**（2026-11-05 清理时按用户指示移除，2.0M 未追踪）。
+  M4.2 完成后它只剩考古价值，而 D68 的守卫测试保证了「上游代码不会偷偷回来」。
+  需要回溯时从上面两个 URL 重新 clone（在 `.gitignore` 里，不会进仓库）。
+- 历史里程碑文档（`docs/M*.md`）里仍引用 `_xeno_probe/...` 的路径 —— 那是**当时的记录**，
+  不需要跟着改；真要按它去查，先重新 clone。
