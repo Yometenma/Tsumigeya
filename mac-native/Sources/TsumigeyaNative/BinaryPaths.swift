@@ -186,20 +186,152 @@ public enum BinaryPaths {
         nwjsBinary(dataDir, version: version, arch: arch)
     }
 
-    // MARK: - 其余引擎（P3 再补具体布局）
+    // MARK: - 其余四个引擎（P3 实测补齐）
 
-    /// Krkrz / ONScripter / Siglus / Godot 的具体路径。
+    /// KiriKiri 的可执行文件（`deps/krkrsdl2`）。
     ///
-    /// ⚠️ P2 阶段这四项目前**没有已装样本可验**（用户机器上只装了 4 个引擎，
-    /// 这 4 个都不在里面）。**不凭猜写路径** —— 猜出来的路径「看起来对」，
-    /// 但启动时才失败，而且失败原因会指向"引擎装坏了"。
+    /// ===== 实测（2026-11-06，真下载包）=====
+    /// 包 `krkrsdl2-macos.zip` 解开后是**单个裸二进制**，没有 .app 包：
+    ///     krkrsdl2        （16.5MB，可执行）
     ///
-    /// 所以这里返回 nil，由调用方报「这个引擎的运行时路径还没实现」。
-    /// P3 装上真实引擎后，按 `deps/` 下**实际看到的**目录布局补上。
-    public static func unverifiedBinary(_ engine: String) -> String? {
+    /// ⚠️ 这与其他引擎（都是 `.app` 包）**布局完全不同** —— 别套用 `.app` 的拼法。
+    public static func kirikiriBinary(_ dataDir: String) -> String {
+        (depsDir(dataDir, "kirikiri") as NSString).appendingPathComponent("krkrsdl2")
+    }
+
+    /// NScripter 的可执行文件（`deps/onscripter`）。
+    ///
+    /// ===== 实测（2026-11-06，真下载包）=====
+    /// 包 `onscripter-20230825bin.tar.bz2` 解开是**两个裸二进制**：
+    ///     onscripter         （3.9MB，SDK 1.2 版）
+    ///     onscripter-sdl2    （5.1MB，SDL2 版）
+    ///
+    /// ⚠️ 用 `onscripter` 而不是 `onscripter-sdl2`：
+    /// Electron 版的 registry 里这个依赖就叫 `onscripter`，
+    /// 而且 SDL2 版在无窗口/远程会话下更容易出问题。
+    /// 两个都在 `deps/` 根下，不需要子目录。
+    public static func nscripterBinary(_ dataDir: String) -> String {
+        (depsDir(dataDir, "nscripter") as NSString).appendingPathComponent("onscripter")
+    }
+
+    /// Siglus 的可执行文件。
+    ///
+    /// ===== 实测（2026-11-06，真下载包）=====
+    /// 包 `siglus-macos-arm64.app.tar.gz` 解开：
+    ///     Siglus-arm64.app/Contents/MacOS/Siglus
+    ///
+    /// ⚠️ **app 名里带架构后缀**（`-arm64` / `-x86_64`），所以**不能写死名字**。
+    /// 判据：扫 `deps/` 下第一个 `Siglus*.app`，取它里面的 `Contents/MacOS/Siglus`。
+    ///
+    /// - Returns: 二进制路径；找不到 .app 时返回 nil（由调用方报「引擎没装好」）
+    public static func siglusBinary(
+        _ dataDir: String,
+        fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) },
+        listDir: (String) -> [String] = { dir in
+            (try? FileManager.default.contentsOfDirectory(atPath: dir)) ?? []
+        }
+    ) -> String? {
+        let deps = depsDir(dataDir, "siglus")
+
+        // 扫 deps 下的 Siglus*.app
+        let apps = listDir(deps)
+            .filter { $0.hasPrefix("Siglus") && $0.hasSuffix(".app") }
+            .sorted()
+        guard let app = apps.first else { return nil }
+
+        let binary = ((((deps as NSString).appendingPathComponent(app) as NSString)
+            .appendingPathComponent("Contents") as NSString)
+            .appendingPathComponent("MacOS") as NSString)
+            .appendingPathComponent("Siglus")
+        return fileExists(binary) ? binary : nil
+    }
+
+    /// Godot 的可执行文件。
+    ///
+    /// ⚠️ **未实测**（2026-11-06）：
+    /// 包是 `Godot_v4.6.1-stable_macos.universal.zip`（**161MB**），
+    /// 本鱼只验了 HTTP 200 与 content-length，**没有真下载解压看结构**。
+    ///
+    /// 已知信息（来自 D92 的调研）：官方 mac 包解开是
+    /// `Godot.app/Contents/MacOS/Godot`。
+    ///
+    /// ⚠️ 但**版本号在包名里**（`Godot_v4.6.1-stable_macos.universal.zip`），
+    /// 解开后目录名可能是 `Godot.app`（不带版本）也可能带。**所以这里扫目录**，
+    /// 与 siglus 同一策略（不写死名字）。
+    ///
+    /// 如果实际布局与假设不符，`siglusBinary` 式的扫描会返回 nil，
+    /// 调用方会报「引擎没装好」而不是崩 —— 这是「不猜」的最低保证。
+    public static func godotBinary(
+        _ dataDir: String,
+        fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) },
+        listDir: (String) -> [String] = { dir in
+            (try? FileManager.default.contentsOfDirectory(atPath: dir)) ?? []
+        }
+    ) -> String? {
+        let deps = depsDir(dataDir, "godot")
+
+        // 扫 deps 下的 Godot*.app
+        let apps = listDir(deps)
+            .filter { $0.hasPrefix("Godot") && $0.hasSuffix(".app") }
+            .sorted()
+        guard let app = apps.first else { return nil }
+
+        // 可执行名可能是 `Godot` 或 `Godot_v4.6.1-stable`（不确定，两个都试）
+        let macosDir = (((deps as NSString).appendingPathComponent(app) as NSString)
+            .appendingPathComponent("Contents") as NSString)
+            .appendingPathComponent("MacOS")
+        for name in ["Godot", "godot"] {
+            let candidate = (macosDir as NSString).appendingPathComponent(name)
+            if fileExists(candidate) { return candidate }
+        }
+        // 兜底：扫 MacOS 目录下第一个可执行（文件名完全不定时）
+        let entries = listDir(macosDir)
+            .filter { !$0.hasPrefix(".") }
+            .sorted()
+        for name in entries {
+            let candidate = (macosDir as NSString).appendingPathComponent(name)
+            if fileExists(candidate) { return candidate }
+        }
+        return nil
+    }
+
+    // MARK: - 统一的引擎二进制入口
+
+    /// 按引擎名给出可执行文件路径。**这是唯一入口**。
+    ///
+    /// - Returns: 路径；`nil` 表示「这个引擎的运行时还没装好/找不到」
+    public static func binary(
+        for engine: String,
+        dataDir: String,
+        version: String = "",
+        arch: String = "arm64",
+        fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) },
+        listDir: (String) -> [String] = { dir in
+            (try? FileManager.default.contentsOfDirectory(atPath: dir)) ?? []
+        }
+    ) -> String? {
         switch engine {
-        case "kirikiri", "nscripter", "siglus", "godot":
-            return nil
+        case "nwjs", "tyrano":
+            let p = nwjsBinary(dataDir, version: version, arch: arch)
+            return fileExists(p) ? p : nil
+        case "mkxpz":
+            let p = mkxpzBinary(dataDir)
+            return fileExists(p) ? p : nil
+        case "easyrpg":
+            let p = easyrpgBinary(dataDir)
+            return fileExists(p) ? p : nil
+        case "renpy":
+            return renpySh(dataDir, fileExists: fileExists, listDir: listDir)
+        case "kirikiri":
+            let p = kirikiriBinary(dataDir)
+            return fileExists(p) ? p : nil
+        case "nscripter":
+            let p = nscripterBinary(dataDir)
+            return fileExists(p) ? p : nil
+        case "siglus":
+            return siglusBinary(dataDir, fileExists: fileExists, listDir: listDir)
+        case "godot":
+            return godotBinary(dataDir, fileExists: fileExists, listDir: listDir)
         default:
             return nil
         }

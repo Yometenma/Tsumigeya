@@ -99,3 +99,54 @@ func runInstalledCheck() -> Int {
     print("\n✅ 全部对得上注册表")
     return 0
 }
+
+// MARK: - 依赖解析检查（P3）
+
+/// 检查每个已装引擎的 manifest 依赖表能不能正确解析。
+///
+/// 这是 P3 的静态验收：**不下载、不安装**，只验「读出来的依赖名/架构/可选标记对不对」。
+/// 为什么不直接跑安装：那要下 1GB+，而且会动用户的 modules 目录。
+func runDependencyCheck() -> Int {
+    let dir = DataDir.resolve()
+    print("")
+    print("=== manifest 依赖解析 ===")
+
+    let engines = ManifestStore.installedEngines(dataDir: dir.path)
+    guard !engines.isEmpty else {
+        print("（没有已装引擎）")
+        return 0
+    }
+
+    var failures = 0
+    for engine in engines {
+        guard let m = ManifestStore.load(dataDir: dir.path, engine: engine) else {
+            print("❌ \(engine): manifest 读不出来")
+            failures += 1
+            continue
+        }
+        print("\n\(engine)  (\(m.name) v\(m.version))  依赖 \(m.dependencyOrder.count) 个")
+        if m.dependencyOrder.isEmpty {
+            print("  ⚠️ 没有依赖（如果这个引擎该有运行时，说明解析漏了）")
+        }
+        for (name, spec) in m.orderedDependencies {
+            let archs = spec.builds.keys.sorted().joined(separator: ",")
+            let opt = spec.optional ? " [可选]" : ""
+            let keep = spec.keepSingleDir ? "" : " [拍平]"
+            print("  ✓ \(name)")
+            print("      archs=\(archs)\(opt)\(keep)")
+            // 预检：能不能为当前架构选出下载地址
+            if EngineInstaller.pickBuild(spec: spec, arch: currentArch()) == nil {
+                print("      ⚠️ 当前架构（\(currentArch())）选不出下载地址")
+                failures += 1
+            }
+        }
+    }
+
+    print("")
+    if failures == 0 {
+        print("✅ 依赖解析全部正常")
+    } else {
+        print("❌ \(failures) 项有问题")
+    }
+    return failures == 0 ? 0 : 1
+}

@@ -27,6 +27,8 @@ func main() {
         f += runDetectCheck()
         f += runInstalledCheck()
         exit(f == 0 ? 0 : 1)
+    case "deps":
+        exit(runDependencyCheck() == 0 ? 0 : 1)
     case "plan":
         exit(runLaunchPlanPreview() == 0 ? 0 : 1)
     case "launch":
@@ -49,7 +51,7 @@ func main() {
         }
     default:
         print("未知命令：\(cmd)")
-        print("可用：data-dir / list-games / roundtrip-games / detect / plan / launch / selftest")
+        print("可用：data-dir / list-games / roundtrip-games / detect / deps / plan / launch / selftest")
         exit(2)
     }
 }

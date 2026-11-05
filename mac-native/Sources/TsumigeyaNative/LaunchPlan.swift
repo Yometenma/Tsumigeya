@@ -114,10 +114,14 @@ public enum LaunchPlanner {
     ///
     /// - Parameters:
     ///   - fileExists: 注入用（单测传假实现）
+    ///   - listDir: 注入用（siglus / godot 要扫目录找 .app）
     public static func plan(
         engine: String,
         context ctx: LaunchContext,
-        fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
+        fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) },
+        listDir: (String) -> [String] = { dir in
+            (try? FileManager.default.contentsOfDirectory(atPath: dir)) ?? []
+        }
     ) -> Result<LaunchPlan, LaunchFailure> {
 
         switch engine {
@@ -129,11 +133,41 @@ public enum LaunchPlanner {
             return easyrpgPlan(ctx, fileExists: fileExists)
         case "renpy":
             return renpyPlan(ctx, fileExists: fileExists)
+        case "kirikiri", "nscripter", "siglus", "godot":
+            return genericPlan(
+                ctx, engine: engine, fileExists: fileExists, listDir: listDir)
         default:
-            // 其余 4 个（kirikiri / nscripter / siglus / godot）：
-            // P2 阶段没有已装样本可验，**不凭猜写路径**。
             return .failure(.unsupportedEngine(engine: engine))
         }
+    }
+
+    // MARK: - 其余四个引擎（P3）
+
+    /// KiriKiri / NScripter / Siglus / Godot 的通用启动方案。
+    ///
+    /// 这四个的共同点：**参数都是「游戏目录」**，二进制位置各自不同。
+    ///
+    /// ⚠️ 它们**没有已装样本可验**（用户机器上只装了 4 个引擎，这 4 个都不在）。
+    /// 路径来自**真下载包解压后的实测结构**（见 `BinaryPaths` 各函数的注释），
+    /// 但**启动参数**沿用各自 CLI 的通用约定 —— 这一点必须诚实：
+    /// 参数可能不对，但那会在**真机上启动时才暴露**，而现在没有样本可验。
+    static func genericPlan(
+        _ ctx: LaunchContext, engine: String,
+        fileExists: (String) -> Bool, listDir: (String) -> [String]
+    ) -> Result<LaunchPlan, LaunchFailure> {
+        let version = ctx.gameArgs["version"]?.stringValue ?? ""
+        guard let binary = BinaryPaths.binary(
+            for: engine, dataDir: ctx.dataDir, version: version, arch: ctx.arch,
+            fileExists: fileExists, listDir: listDir) else {
+            // 找不到二进制 → 明确报「运行时不存在」，而不是猜一个路径
+            return .failure(.engineBinaryMissing(
+                binary: "\(BinaryPaths.moduleDir(ctx.dataDir, engine))/deps/<未找到>"))
+        }
+
+        // 参数：游戏目录（这四个引擎都是 `播放器 <游戏目录>` 的形式）
+        let args = [ctx.folder]
+        return .success(LaunchPlan(
+            binary: binary, args: args, cwd: ctx.folder, engine: engine))
     }
 
     // MARK: - NW.js

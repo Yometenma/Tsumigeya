@@ -513,8 +513,11 @@ struct LaunchPlanTests {
         #expect(failure.message.contains("引擎"))
     }
 
-    /// 未实现路径的引擎 → 明确说「还没实现」，而不是猜一个路径。
-    @Test("未实现的引擎明确报错")
+    /// 完全不认识的引擎 → 明确报「未实现」，而不是猜一个路径。
+    ///
+    /// ⚠️ 这条测试在 P3 之后换了对象：9 个引擎现在**全部有路径实现**
+    /// （godot 也在 P3 补上了），所以要用一个**真的不存在**的引擎名来验。
+    @Test("未知引擎明确报错")
     func unsupportedEngine() throws {
         let data = try makeTempDataDir()
         defer { try? FileManager.default.removeItem(at: data) }
@@ -522,10 +525,10 @@ struct LaunchPlanTests {
             folder: "/games/x", gamePath: "/games/x/Game.exe",
             gameArgs: [:], gameTitle: "x", dataDir: data.path, arch: "arm64")
         guard case .failure(let failure) = LaunchPlanner.plan(
-            engine: "godot", context: ctx, fileExists: { _ in true }) else {
+            engine: "no-such-engine", context: ctx, fileExists: { _ in true }) else {
             Issue.record("应该失败"); return
         }
-        #expect(failure == .unsupportedEngine(engine: "godot"))
+        #expect(failure == .unsupportedEngine(engine: "no-such-engine"))
     }
 
     /// Tyrano 复用 NW.js 二进制（零新运行时，D87）。

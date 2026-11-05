@@ -362,25 +362,6 @@ func resolveNwjsVersion(_ dataDir: String, current: String?) -> String? {
     return dirs.max { compareVersions($0, $1) < 0 }
 }
 
-/// 版本比较（对应 Electron 版 `engines/semver.ts`）。
-///
-/// 支持 `v` 前缀与 `1.2.3` 形式。不可解析的段按 0 处理。
-func compareVersions(_ a: String, _ b: String) -> Int {
-    func parts(_ s: String) -> [Int] {
-        var t = s
-        if t.hasPrefix("v") || t.hasPrefix("V") { t.removeFirst() }
-        return t.split(separator: ".").map { Int($0) ?? 0 }
-    }
-    let pa = parts(a), pb = parts(b)
-    let n = max(pa.count, pb.count)
-    for i in 0..<n {
-        let x = i < pa.count ? pa[i] : 0
-        let y = i < pb.count ? pb[i] : 0
-        if x != y { return x < y ? -1 : 1 }
-    }
-    return 0
-}
-
 /// 进程是否还活着。
 func processAlive(_ pid: Int32) -> Bool {
     // kill(pid, 0) 不发送信号，只做存在性检查（这是 POSIX 的标准做法）

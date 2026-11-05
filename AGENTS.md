@@ -25,6 +25,9 @@
   上一版 v1.0.0 是第一个正式版。GitHub `Yometenma/Tsumigeya`
 - **测试**：**1592 个 / 79 文件**全绿；`typecheck` / `test` / `build` 三绿
   - 新增 `test/icon-assets.test.ts`（6 条）：应用图标资产守卫
+- **Swift 原生版（P0–P2 已完成，见 `docs/M7-P0P2-实施记录.md`）**：`mac-native/` SwiftPM 包，**84→112 条 Swift 测试**全绿
+  - 在 Mac 上 `open ~/Tsumigeya-Native/Package.swift` 就能用 Xcode 打开看
+  - ⚠️ **Windows 上编译不了**，只能 ssh 到 Mac 跑
   - ⚠️ **已在 mac 真机验证**（`YomedeMacBook-Neo` / macOS 26.6.2 / arm64）：
     故意 `env -u LANG` 复现故障条件后 1587 条全绿；GUI 探针（`scripts/probe-engine-page.cjs`）
     9 张卡片 / 两种警告标签 / 零 console 错误全部通过

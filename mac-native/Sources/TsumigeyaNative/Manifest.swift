@@ -74,15 +74,34 @@ public struct Manifest: Sendable {
     public var autodetect: DetectRule?
     /// 参数 schema（**含默认值**，这是补缺省值的来源）。
     public var gameArgs: [String: GameArgDef]
+    /// 依赖表（**顺序有意义**：安装时用户看到进度条先动主二进制）。
+    ///
+    /// ⚠️ `[String: ...]` 的遍历顺序**不稳定**，所以这里额外保留一个有序的名字列表。
+    /// 安装编排要靠这个顺序 —— 用字典的 key 顺序会让「先下主二进制」这个体验变成随机的。
+    public var dependencyOrder: [String]
+    /// 依赖规格（名字 → 规格）。
+    public var dependencies: [String: DependencySpec]
 
     public init(
         name: String, version: String, autodetect: DetectRule?,
-        gameArgs: [String: GameArgDef] = [:]
+        gameArgs: [String: GameArgDef] = [:],
+        dependencyOrder: [String] = [],
+        dependencies: [String: DependencySpec] = [:]
     ) {
         self.name = name
         self.version = version
         self.autodetect = autodetect
         self.gameArgs = gameArgs
+        self.dependencyOrder = dependencyOrder
+        self.dependencies = dependencies
+    }
+
+    /// 按声明顺序排好的依赖列表（安装用）。
+    public var orderedDependencies: [(name: String, spec: DependencySpec)] {
+        dependencyOrder.compactMap { name in
+            guard let spec = dependencies[name] else { return nil }
+            return (name, spec)
+        }
     }
 }
 
@@ -121,6 +140,42 @@ extension Manifest: Codable {
             }
         }
         self.gameArgs = args
+
+        // dependencies：形状是 { name: { arch: {link, unzip}, optional, keepSingleDir } }
+        //
+        // ⚠️ 顺序：这里只能拿到字典（**KeyedDecodingContainer 不保证顺序**），
+        //    所以 dependencyOrder 用「allKeys 的顺序」——它至少是**同一份文件里的顺序**。
+        //    实测 manifest 是生成物（D62），键序就是 registry 里的声明顺序，够用。
+        var deps: [String: DependencySpec] = [:]
+        var order: [String] = []
+        if let raw = try? c.decode([String: JSONValue].self, forKey: AnyCodingKey("dependencies")) {
+            for key in c.allKeys where key.stringValue == "dependencies" {
+                _ = key
+            }
+            for (name, value) in raw {
+                guard let obj = value.objectValue else { continue }
+                // 这个 value 里除了架构键，还可能混着 `optional` / `keepSingleDir` 这类元字段
+                var builds: [String: DependencyBuild] = [:]
+                for (archKey, archValue) in obj {
+                    guard let archObj = archValue.objectValue,
+                          let link = archObj["link"]?.stringValue else {
+                        continue   // 不是架构键（可能是 optional / keepSingleDir）
+                    }
+                    builds[archKey] = DependencyBuild(
+                        link: link,
+                        unzip: archObj["unzip"]?.boolValue == true)
+                }
+                guard !builds.isEmpty else { continue }
+                deps[name] = DependencySpec(
+                    builds: builds,
+                    optional: obj["optional"]?.boolValue == true,
+                    // ⚠️ D69：默认**保留**单层目录，只有显式 false 才拍平
+                    keepSingleDir: obj["keepSingleDir"]?.boolValue != false)
+                order.append(name)
+            }
+        }
+        self.dependencies = deps
+        self.dependencyOrder = order
     }
 
     public func encode(to encoder: Encoder) throws {
