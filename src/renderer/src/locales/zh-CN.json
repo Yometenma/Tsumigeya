@@ -200,7 +200,8 @@
     "removeItem": "移除",
     "noInstalledVersion": "尚未安装任何版本",
     "nwjs": {
-      "version": "NW.js 版本"
+      "version": "NW.js 版本",
+      "fullscreen": "全屏启动"
     },
     "mkxpz": {
       "rgssVersion": "RGSS 版本",
@@ -211,6 +212,8 @@
       "fontSub": "字体替换（原名>新名）",
       "defScreenW": "窗口宽度（0 = 自动）",
       "defScreenH": "窗口高度（0 = 自动）",
+      "integerScalingActive": "整数缩放（像素完美）",
+      "fixedAspectRatio": "锁定宽高比",
       "preloadScript": "预载 Ruby 脚本",
       "midiSoundFont": "MIDI 音源（SF2）"
     },
@@ -220,7 +223,9 @@
       "rtpPath": "RTP 目录",
       "soundfontPath": "音源路径",
       "vsync": "垂直同步",
-      "showFps": "显示帧率"
+      "showFps": "显示帧率",
+      "fullscreen": "全屏启动",
+      "scaling": "缩放方式"
     },
     "renpy": {
       "savedir": "存档目录",

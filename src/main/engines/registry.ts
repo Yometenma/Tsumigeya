@@ -80,6 +80,17 @@ const nwjs: EngineDefinition = {
       labelKey: 'args.nwjsVersion',
       default: '',
       'version-script': 'nwjs.js'
+    },
+    // ===== 全屏（M5 S2）=====
+    //
+    // 走 Chromium 的 `--start-fullscreen`（命令行开关），**不碰 package.json**
+    // 的 `chromium-args` —— 后者是改写用户游戏文件，D53 已拒。
+    // 参数位置由 `nwjs.ts` 的 nwjsPlan 保证（放在游戏目录之后）。
+    fullscreen: {
+      type: 'boolean',
+      label: 'Start in Fullscreen',
+      labelKey: 'args.fullscreen',
+      default: false
     }
   },
   dependencies: {
@@ -170,6 +181,28 @@ const mkxpz: EngineDefinition = {
       label: 'Window Height (0=auto)',
       labelKey: 'args.defScreenH',
       default: 0
+    },
+    // ===== 缩放（M5 S1）=====
+    //
+    // 键名是从 **用户 mac 上那份 Z-Universal 二进制的 strings** 里核对的
+    // （2026-11-05）：`integerScalingActive` / `integerScalingLastMile` / `fixedAspectRatio`
+    // 与 `gameFolder` 出现在**同一串配置键**里，说明它们都是 mkxp.json 认的键。
+    //
+    // ⚠️ 别把 `smoothScaling` 当成窗口缩放 —— 它是**位图**平滑
+    // （bitmapSmoothScaling / textureScalingFactor 才是它的同类），
+    // 管的是贴图采样，不是窗口大小。我们之前只在注释里提过它，容易误接。
+    integerScalingActive: {
+      type: 'boolean',
+      label: 'Integer Scaling (pixel-perfect)',
+      labelKey: 'args.integerScalingActive',
+      // 默认关：mkxp-z 自己的默认是关，随意打开会改变所有游戏的观感
+      default: false
+    },
+    fixedAspectRatio: {
+      type: 'boolean',
+      label: 'Fixed Aspect Ratio',
+      labelKey: 'args.fixedAspectRatio',
+      default: false
     },
     // ⚠️ 上游默认值是 `~/Library/Application Support/xenolauncher/modules/mkxpz/deps/
     //    kawariki/kawariki/preload.rb`。D58 后那个目录不存在 → MKXP-Z 读不到预载脚本
@@ -276,6 +309,38 @@ const easyrpg: EngineDefinition = {
       label: 'Show Fps',
       labelKey: 'args.showFps',
       default: false
+    },
+    // ===== 全屏与缩放（M5 S1）=====
+    //
+    // 参数名来自 **EasyRPG Player 官方 man page**
+    // （`resources/unix/easyrpg-player.6.adoc`，2026-11-05 拉取核对）：
+    //   `--fullscreen`  Start in fullscreen mode.
+    //   `--window`      Start in windowed mode.
+    //   `--scaling MODE`  nearest / integer / bilinear
+    //      integer = 按游戏分辨率的整数倍缩放（**像素风游戏最该用这个**，不出插值糊字）
+    //
+    // ⚠️ 与 `--window` 的关系：两者互斥，但 launcher 的 `argsToFlags` 是按 gameArgs 的键
+    // 逐个输出，**不会**自动互斥。所以这里**只用 `fullscreen` 布尔**：
+    //   true  → 输出 `--fullscreen`；false → 什么都不输出（EasyRPG 默认就是窗口）
+    //   这样永远不会出现「同时给了 --fullscreen 和 --window」。
+    fullscreen: {
+      type: 'boolean',
+      label: 'Start in Fullscreen',
+      labelKey: 'args.fullscreen',
+      default: false
+    },
+    scaling: {
+      type: 'dropdown',
+      label: 'Scaling',
+      labelKey: 'args.easyrpgScaling',
+      // 空 = 不传 `--scaling`，用 EasyRPG 自己的默认（等于 nearest）
+      default: '',
+      options: [
+        { label: 'Engine default', value: '' },
+        { label: 'Nearest (fast)', value: 'nearest' },
+        { label: 'Integer (pixel-perfect)', value: 'integer' },
+        { label: 'Bilinear (smooth)', value: 'bilinear' }
+      ]
     }
   },
   dependencies: {

@@ -65,6 +65,22 @@ describe('S2：nwjs 启动方案', () => {
     expect(nwjsPlan(ctx).binary).toContain('osx-x64')
   })
 
+  // ===== 全屏（M5 S2）=====
+  test('fullscreen=true → 追加 --start-fullscreen，且**在游戏目录之后**', () => {
+    // ⚠️ 顺序是判据的一部分：`nw <path> [args]` —— Chromium 开关放到 path 之前
+    // 会被 NW.js 当成自己的参数。这条测试钉住顺序。
+    const ctx = makeCtx({ gameArgs: { version: 'v0.106.1', fullscreen: true } })
+    expect(nwjsPlan(ctx).args).toEqual([ctx.folder, '--start-fullscreen'])
+  })
+
+  test('fullscreen=false / 未设 → 不多给任何参数（不产生空开关）', () => {
+    const off = makeCtx({ gameArgs: { version: 'v0.106.1', fullscreen: false } })
+    expect(nwjsPlan(off).args).toEqual([off.folder])
+
+    const absent = makeCtx({ gameArgs: { version: 'v0.106.1' } })
+    expect(nwjsPlan(absent).args).toEqual([absent.folder])
+  })
+
   test('没设 version 时拼出的路径不含版本（由调用方的存在性检查报可读错误）', () => {
     const ctx = makeCtx({ gameArgs: {} })
     const plan = nwjsPlan(ctx)
@@ -115,6 +131,20 @@ describe('S2：easyrpg 参数转换（kebab-case）', () => {
 
   test('boolean：true 只带 flag，false 完全不带', () => {
     expect(argsToFlags({ vsync: true, showFps: false })).toEqual(['--vsync'])
+  })
+
+  // ===== 全屏与缩放（M5 S1）=====
+  test('fullscreen=true → --fullscreen；false → 不带（EasyRPG 默认就是窗口）', () => {
+    expect(argsToFlags({ fullscreen: true })).toEqual(['--fullscreen'])
+    expect(argsToFlags({ fullscreen: false })).toEqual([])
+  })
+
+  test('scaling 传值；空串不产生 `--scaling`（不会给个空模式）', () => {
+    // 参数名与取值来自 EasyRPG 官方 man page（resources/unix/easyrpg-player.6.adoc）：
+    //   --scaling MODE: nearest / integer / bilinear
+    expect(argsToFlags({ scaling: 'integer' })).toEqual(['--scaling', 'integer'])
+    expect(argsToFlags({ scaling: '' })).toEqual([])
+    expect(argsToFlags({ scaling: '   ' })).toEqual([])
   })
 
   test('数字：非 0 带 flag+值，0 不带', () => {

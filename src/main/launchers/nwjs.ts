@@ -22,18 +22,37 @@ import type { LaunchContext, LaunchPlan } from './types'
 /**
  * NW.js 的启动方案。
  *
- * 参数只有一个：游戏目录。NW.js 自己会读 `<游戏目录>/package.json` 决定主进程脚本。
+ * 参数：游戏目录 + 可选的 Chromium 开关。
+ * NW.js 自己会读 `<游戏目录>/package.json` 决定主进程脚本。
  *
  * `version` 必须已经是 deps 下的**真实目录名**（`v0.106.1`）——由
  * `core-host.reconcileVersionArgs` 在启动前修正（见 M4.0 §4「必须保留」清单）。
+ *
+ * ===== 全屏（M5 S2）=====
+ *
+ * 用 Chromium 的 `--start-fullscreen` 开关（**命令行**，不碰游戏文件）。
+ *
+ * ⚠️ 为什么不用 `package.json` 的 `chromium-args`：那要**改写用户的游戏文件**，
+ * 是 D53 明确拒绝的事（上游 launcher 就干这个，所以我们才自己实现启动）。
+ * 命令行开关是 NW.js/Chromium 官方支持的入口，零副作用。
+ *
+ * ⚠️ 顺序：Chromium 开关要在**游戏目录之前**吗？
+ *   NW.js 的用法是 `nw <path> [args]`，而 Chromium 开关放在 `<path>` 之前
+ *   会被当成 NW.js 自己的参数。实测安全位置是**游戏目录之后**
+ *   （NW.js 会把无法识别的项透传给 Chromium）。单测钉住这个顺序。
  */
 export function nwjsPlan(ctx: LaunchContext): LaunchPlan {
   const version = String(ctx.gameArgs.version ?? '')
   const binary = nwjsBinaryPath(ctx.dataDir, version, ctx.arch)
+  // 不拼命令行字符串（D54）：args 数组天然处理空格/中文/引号
+  const args: string[] = [ctx.folder]
+  if (ctx.gameArgs.fullscreen === true) {
+    // 游戏目录**之后**（见上面注释：放前面会被 NW.js 当成自己的参数）
+    args.push('--start-fullscreen')
+  }
   return {
     binary,
-    // 不拼命令行字符串（D54）：args 数组天然处理空格/中文/引号
-    args: [ctx.folder],
+    args,
     cwd: ctx.folder,
     engine: 'nwjs'
   }
