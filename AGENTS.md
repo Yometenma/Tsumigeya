@@ -427,12 +427,13 @@ cp -R "/Volumes/Tsumigeya 0.6.2-arm64/Tsumigeya.app" /Applications/
 xattr -dr com.apple.quarantine /Applications/Tsumigeya.app
 ```
 
-### 启动（两个真机坑）
+### 启动（三个真机坑）
 
 | 坑 | 现象 | 正解 |
 |---|---|---|
 | **`nohup ... &` 撑不住** | SSH 一断进程就被 SIGHUP 杀掉，日志只剩 `GPU process exited unexpectedly` / `Network service crashed` —— 看起来像应用崩了，其实是 shell 把子进程带走了 | 用 `launchctl submit -l tsmg-verify -- /bin/sh -c "..."`。**macOS 没有 `setsid`**（那是 util-linux） |
 | **调试端口不认外部指定** | 传 `--remote-debugging-port=92299` 后实际端口是随机的 | 传 `0`，然后从日志读 `DevTools listening on ws://127.0.0.1:<port>/...` |
+| **⚠️ 打包的 `.app` 会忽略脚本参数** | `Tsumigeya.app/Contents/MacOS/Tsumigeya <path/out/main/index.js>` —— 传了另一个入口也没用，它**照样跑 app.asar 里的旧代码**。本鱼因此把「v0.6.2 没有 D85 判据」误判成「新 bug」，白查两小时 | 验**本地构建**必须用**未打包**的 Electron 二进制（`node_modules/electron/dist/Electron.app`）当壳；验**发布包**就直接跑 `.app`。**先确认 app.asar 里有没有你刚加的代码**：`grep -c "<特征串>" Contents/Resources/app.asar` —— 是 0 就说明你在测旧代码 |
 
 ### 连 UI
 
