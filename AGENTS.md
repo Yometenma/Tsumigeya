@@ -21,7 +21,7 @@
   M3（故障自愈）、M2.6（海报墙与详情页）、M2.7（编辑页重构）、M3.5（进程管理）、M4.0（自实现启动）、
   M4.1（引擎清单自己维护）、**M4.2（彻底零上游）**、**M5.5（动态图标 / Lucide 图标体系）**
 - **已发布**：**v0.6.2**（含本轮 6 个 bug 修复 + 分类搬到库页顶部；GitHub `Yometenma/Tsumigeya`）
-- **测试**：**1387 个 / 65 文件**全绿；`typecheck` / `test` / `build` 三绿
+- **测试**：**1413 个 / 68 文件**全绿；`typecheck` / `test` / `build` 三绿
 - **M5.0 已完成**（`docs/M5.0-实施方案.md`）：12 项体验优化 + **S12 分类迁移**，逐条提交（用户拍板）
   - 顺序见方案 §12：B1 版本号 → U3+U4 筛选 → U5 选文件 → U6 去跳过 → N1 游玩时间
     → U1 批量 → U2 分类 → U10 全部安装 → U9 设置页 → U7 抽组件 → U8 编辑页重构
@@ -98,11 +98,19 @@ npm run build:mac  # 出 mac 包（Windows 上只能 zip/dir；正式包走 CI�
 
 数据目录隔离：`TSUMIGEYA_DATA_DIR=D:\YomeXProjects\Tsumigeya\.dev-data npm run dev`
 
-**目录卫生**（2026-11-04 清过一轮）：
+**目录卫生**（2026-11-05 清过第二轮，本轮清理记在下面）：
 - `scripts/` 只剩 `dev.cjs`（`npm run dev` 用）与 `after-pack.cjs`（electron-builder 用）。
   **历史里程碑的 `probe-*.cjs` 已全删** —— 验收都做过，留着是纯历史包袱。
 - `docs/archive/` 放已失效的历史材料。**别删**：完成里程碑的文档还在引用它们。
 - `.gitignore` 用通配 `.dev-data-*/` 与 `.dev-*probe.json`，不再一个里程碑加一条。
+- **删过 `backend/`（61 文件）**：整份 `src/` 的旧副本，在 `8fcf00f` 被误提交，零引用。
+  教训：**提交前看 `git status` 里有没有不该在的大块新增**；一次"只改 AGENTS.md"的提交
+  带进了 61 个文件，两个月没人发现。
+- **删过 `_xeno_probe/`（2.0M）**：上游考古 clone，未追踪。需要时从两个 GitHub URL 重新 clone。
+- **删过 15 个零引用 i18n key** + 立了守卫 `test/i18n-keys.test.ts`（双向：
+  死 key 不许堆积 / 动态拼接的 key 不许被当垃圾删 —— 后者本鱼差点误删）。
+- 本机目录（`.dev-data*` / `.dev-scratch` / `.verify-dist` / `dist` / `*.tsbuildinfo`）
+  都在 `.gitignore` 里，不入库；`dist/` 是打包产物，`*.tsbuildinfo` 是构建缓存，删了会重生成。
 
 ## 架构（30 秒）
 
