@@ -157,6 +157,30 @@ export function isSha256Hex(value: unknown): value is string {
 }
 
 /**
+ * 这个文件名是不是**系统噪音**（不该打进导出包）。
+ *
+ * ===== 为什么需要这条 =====
+ *
+ * D81 要求「整个目录都打」，但那只针对**用户看得见的存档数据**。下面这些不是：
+ *
+ * · `._file1.rpgsave` —— macOS 的 AppleDouble（资源分叉镜像，固定 163 字节）。
+ *   它是文件系统元数据，**不是存档内容**；跨到 Windows/Linux 后就是垃圾。
+ *   ⚠️ 真机实测（2026-11-05）：Mac 的 `fs.readdirSync` 不会列出它
+ *   （那些是 tar 在传输途中生成的），所以这条是**防御性**的 ——
+ *   用户用 U 盘 / Finder / rsync 动过目录后可能出现，进了包就会一直躺着。
+ * · `.DS_Store` —— Finder 的目录视图缓存（永远不是存档）。
+ * · `._` 前缀同样会盖住 `.DS_Store` 的兄弟文件，一条前缀判据全覆盖。
+ *
+ * ⚠️ 判据**只排除"点开头"**，绝不按扩展名白名单收窄 ——
+ * 那是 D81 明确拒绝的做法（插件写的 `lastsave.autobak` / `sync_data.rpgsave`
+ * 会被漏掉，用户换机后少东西而他不会怀疑"包少了"）。
+ */
+export function isNoiseFile(name: string): boolean {
+  // 只看文件名本身（调用方传 entry.name，不含目录）
+  return name.startsWith('.')
+}
+
+/**
  * 解析 manifest.json 的原文（S4 用；这里定判据，S3 只写）。
  *
  * 为什么现在就把**读**的判据写出来：导出端与导入端必须用同一份结构。

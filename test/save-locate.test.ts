@@ -4,6 +4,8 @@
 //   Karryn's Prison（MV） → www/save/  + .rpgsave
 //   艾妮希雅（MZ）        → save/      + .rmmzsave
 //   傭兵の冒険（MKXP-Z）  → Data/ 存在但还没有存档
+//   **苍蓝星（MV）**      → **save/（不是 www/save/）** + .rpgsave
+//                          ↑ 这条是本轮实测才发现的第 4 种形态，见下方回归测试
 //
 // 判据错了**不会报错**：列表空着，用户只会以为「我没存过档」。
 
@@ -50,6 +52,33 @@ describe('nwjs：同一引擎两种布局（最容易踩的一条）', () => {
       gameSave: dir(['file1.rmmzsave'])
     })
     expect(mz!.layout).toBe('nwjs-mz')
+  })
+
+  test('★ 回归（Mac 真机）：MV 游戏把存档放在 <游戏>/save/（苍蓝星）', () => {
+    // 真机实测 2026-11-05：`~/games/苍蓝星/` 有 www/，但 **www/save/ 不存在**；
+    // 存档全在 `<游戏>/save/` 里，后缀是 `.rpgsave`（MV），不是 `.rmmzsave`。
+    //
+    // 修复前的表现（本鱼实测复现过）：走到「save/ 目录存在」那条兜底分支 →
+    // 报 layout `nwjs-mz` + MZ 的判据 → 那一堆 `.rpgsave` **一个都匹配不上**
+    // → 用户看到「目录已就绪，还没有存档」，而那儿躺着 20 多个档。
+    // 不报错、只安静地少列东西 —— 本模块最怕的那一类。
+    const loc = detectSaveLocation({
+      engine: 'nwjs',
+      wwwSave: null,
+      gameSave: dir(['file1.rpgsave', 'file2.rpgsave', 'config.rpgsave', 'global.rpgsave'])
+    })
+    expect(loc, 'save/ 里有 .rpgsave 却没认出位置').not.toBeNull()
+    // 关键：布局是 MV（后缀说的），相对路径是 save（目录说的）—— 两者独立
+    expect(loc!.layout).toBe('nwjs-mv')
+    expect(loc!.relativeDir).toBe('save')
+
+    // 而且槽必须真的列出来（这才是用户能看到的那个判据）
+    const { slots, configs } = classifySaveEntries(
+      ['file1.rpgsave', 'file2.rpgsave', 'config.rpgsave', 'global.rpgsave'],
+      loc!
+    )
+    expect(slots).toEqual(['file1.rpgsave', 'file2.rpgsave'])
+    expect(configs.sort()).toEqual(['config.rpgsave', 'global.rpgsave'])
   })
 
   test('目录空着（还没存过档）也报出来，但槽是空的', () => {

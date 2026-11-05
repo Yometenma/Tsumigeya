@@ -35,6 +35,7 @@ import {
   SAVE_MANIFEST_PATH,
   SAVE_MANIFEST_VERSION,
   archiveFileName,
+  isNoiseFile,
   parseSaveManifest,
   verifyManifestFiles,
   type SaveManifest
@@ -93,9 +94,20 @@ export function exportSaveArchive(input: {
 
   // ⚠️ 只收**平铺文件**。存档目录实测是平的；遇到子目录整体跳过并计数，
   //    由调用方报给用户（而不是悄悄少带——那正是"换机少东西"的成因）。
+  //
+  // ⚠️ **排除隐藏文件与 `._*` 伴生文件**。
+  //    D81 的要求是「目录里每一个文件都在」——但只限**用户看得见的存档数据**。
+  //    macOS 的 AppleDouble（`._file1.rpgsave`，163 字节的 xattr 镜像）不是存档内容：
+  //    它走到别的机器上只是垃圾，而且会让包体积翻倍（备份 114KB → 229KB）。
+  //
+  //    ⚠️ 实测记录（Mac 真机 2026-11-05）：`fs.readdirSync` **不会**列出 `._*`
+  //    （它们由 tar 在传输时生成，不是目录里真有的文件）。所以这条过滤是**防御性**的：
+  //    用户用别的工具（U 盘/Finder 拷贝、7-Zip、rsync）动过目录后可能出现，
+  //    而它们一旦进包就会一直躺着。不报错、只是包变脏。
   const entries = fs
     .readdirSync(input.sourceDir, { withFileTypes: true })
     .filter((entry) => entry.isFile())
+    .filter((entry) => !isNoiseFile(entry.name))
 
   const files: SaveManifest['files'] = []
   const zippable: Zippable = {}

@@ -158,6 +158,19 @@ function detectNwjs(snap: {
     return { layout: 'nwjs-mz', relativeDir: 'save', slotPattern: MZ_SLOT, configPattern: MZ_CONFIG }
   }
 
+  // ②' ★ 真机踩到的：**MV 游戏也可能把 save 放在 <游戏>/save/**
+  //     （Mac 实测 2026-11-05：`苍蓝星` 的 www/ 存在、但 www/save/ 不存在，
+  //     存档全在 `<游戏>/save/` 里，后缀是 .rpgsave）
+  //
+  //     ⚠️ 判据必须是**后缀**，不是相对路径。原来这里漏了这个分支：
+  //     走到下面的 ③ 时「save/ 存在」被当成 MZ → 布局报 nwjs-mz、
+  //     slotPattern 用 MZ 的 `.rmmzsave` 判据 → 那堆 .rpgsave **一个都匹配不上**
+  //     → 用户看到「目录已就绪，还没有存档」，而那儿躺着 20 多个档。
+  //     这正是本模块最怕的「看起来成功了」：不报错、只安静地少列东西。
+  if (gameSave?.isDir && gameSave.entries.some((n) => MV_SLOT.test(n) || MV_CONFIG.test(n))) {
+    return { layout: 'nwjs-mv', relativeDir: 'save', slotPattern: MV_SLOT, configPattern: MV_CONFIG }
+  }
+
   // ③ 目录存在但**空**（还没存过档）：也报出来，好让 UI 说「目录已就绪，还没有存档」
   //    而不是「这个游戏没有存档功能」。靠引擎线索区分：有 www/ → 大概率 MV。
   if (wwwSave?.isDir) {
@@ -261,6 +274,12 @@ export function detectSaveLocation(input: {
  * ⚠️ **先判 config，再判 slot**：M4 的槽判据是「任意 .rpgsave 但排除配置名」，
  * 如果先判 slot，`config.rpgsave` 会被匹配成槽（因为 slot 是黑名单式）。
  * 顺序写反不会报错，只会让 `config` 混进存档列表 —— 用户以为它是第 0 号档。
+ *
+ * ⚠️ **点开头的系统噪音一律跳过**（`._file1.rpgsave` / `.DS_Store`）。
+ * 这条不是洁癖：MV 的槽判据是「任意 .rpgsave 但排除 config/global」，
+ * 所以 `._file1.rpgsave` **会命中槽判据** —— 列表里多出一个看起来像存档、
+ * 点"在访达中显示"却指向 163 字节元数据镜像的幽灵条目。
+ * 而且导出会把它当存档打进包（`save-archive-io` 那边也有一道同样的过滤）。
  */
 export function classifySaveEntries(
   entries: readonly string[],
@@ -269,6 +288,10 @@ export function classifySaveEntries(
   const slots: string[] = []
   const configs: string[] = []
   for (const name of entries) {
+    // 与 shared/save-archive.ts 的 isNoiseFile 同一判据（点开头）。
+    // 这里不 import 它：save-locate 是「探测」层，save-archive 是「打包」层，
+    // 让探测层依赖打包层会绕成环（archive 已经 import 了 locate）。
+    if (name.startsWith('.')) continue
     if (loc.configPattern.test(name)) configs.push(name)
     else if (loc.slotPattern.test(name)) slots.push(name)
   }
