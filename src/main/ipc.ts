@@ -971,11 +971,19 @@ export function createDispatcher(deps: IpcDeps): Dispatcher {
       //    而 launchers/index.ts 的注释早就说「那句名单必须来自 LAUNCHABLE_ENGINES」——
       //    M6 加 tyrano / kirikiri 时，手写名单正是必然漏一处的地方。
       const supportedNames = ENGINES.map((engine) => engine.name).join('、')
+      // M6.5：9 个引擎里有 5 个**未在真实游戏上验证过**，措辞必须如实说明 ——
+      // 不能让用户以为「列出来的都是验证过的」。分类口径与 registry 的 experimental 一致。
+      const unverifiedNames = ENGINES.filter((engine) => engine.experimental === 'unverified')
+        .map((engine) => engine.name)
+        .join('、')
       throw failure(
         'error.engineNotLaunchable',
         `引擎 "${game.gameEngine}" 暂不支持启动。\n` +
           `本版本支持：${supportedNames}。` +
-          '\n需要 Windows 兼容层（如 CrossOver）的游戏，Tsumigeya 不代跑。',
+          '\n需要 Windows 兼容层（如 CrossOver）的游戏，Tsumigeya 不代跑。' +
+          (unverifiedNames
+            ? `\n其中 ${unverifiedNames} 尚未在真实游戏上验证。`
+            : ''),
         { engine: game.gameEngine, supported: supportedNames }
       )
     }

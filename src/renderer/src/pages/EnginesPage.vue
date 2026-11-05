@@ -14,7 +14,12 @@ import {
   runInstallAll,
   type InstallTarget
 } from '../../../shared/install-all'
-import { hasDependencies, installableTargets, isExperimental, toCardSources } from '../../../shared/engine-card'
+import {
+  engineWarning,
+  hasDependencies,
+  installableTargets,
+  toCardSources
+} from '../../../shared/engine-card'
 
 const { t, d } = useI18n()
 const engines = useEnginesStore()
@@ -193,9 +198,9 @@ function canInstall(folder: string): boolean {
   return hasDependencies(folder, cardSources.value)
 }
 
-/** 某张卡片要不要显示「实验性」标签。 */
-function showExperimental(folder: string): boolean {
-  return isExperimental(folder, cardSources.value)
+/** 某张卡片的警告类型（null = 不显示标签）。 */
+function warningOf(folder: string): 'upstream-gate' | 'unverified' | null {
+  return engineWarning(folder, cardSources.value)
 }
 
 /**
@@ -445,8 +450,16 @@ async function installAll(): Promise<void> {
           <!-- M6.5：实验性引擎（目前只有吉里吉里）。
                为什么不藏起来：它**照常可用**，藏起来等于骗人；
                但也不该让用户以为这是本项目官方承诺的能力（上游明写不支援商用游戏）。 -->
-          <el-tag v-if="showExperimental(module.folder)" size="small" type="warning">
-            {{ t('engines.experimental') }}
+          <!-- M6.5：两种警告标签**必须分开**（理由见 shared/engine-card.ts 的 engineWarning） -->
+          <el-tag
+            v-if="warningOf(module.folder) === 'upstream-gate'"
+            size="small"
+            type="warning"
+          >
+            {{ t('engines.experimentalUpstream') }}
+          </el-tag>
+          <el-tag v-if="warningOf(module.folder) === 'unverified'" size="small" type="info">
+            {{ t('engines.experimentalUnverified') }}
           </el-tag>
         </div>
         <div v-if="moduleDescription(module)" class="engine-card-desc">{{ moduleDescription(module) }}</div>

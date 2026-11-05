@@ -37,8 +37,12 @@ export interface EngineCardSource {
   folder: string
   /** 依赖表（空对象 = 无需下载）。 */
   dependencies: Record<string, unknown>
-  /** 是否实验性（缺省 = 否）。 */
-  experimental?: true
+  /**
+   * 引擎的可信度标记（与 registry 的 `EngineDefinition.experimental` 同型）。
+   *
+   * `'upstream-gate'` = 上游不承诺；`'unverified'` = 我们没在真实游戏上验证过。
+   */
+  experimental?: 'upstream-gate' | 'unverified' | true
 }
 
 /**
@@ -51,12 +55,21 @@ export interface EngineCardSource {
  */
 export interface RemoteModuleLike {
   folder: string
-  raw?: { dependencies?: Record<string, unknown>; deps?: Record<string, unknown> }
+  raw?: {
+    dependencies?: Record<string, unknown>
+    deps?: Record<string, unknown>
+    /** registry 生成的 manifest 里会带这个（见 buildManifest）。 */
+    experimental?: 'upstream-gate' | 'unverified' | true
+  }
+  /** registry 的引擎定义里直接有这个字段（列表来自 registry 时走这条）。 */
+  experimental?: 'upstream-gate' | 'unverified' | true
 }
 
 export function toCardSource(module: RemoteModuleLike): EngineCardSource {
   const deps = module.raw?.dependencies ?? module.raw?.deps ?? {}
-  return { folder: module.folder, dependencies: deps }
+  // experimental 可能在顶层（引擎定义来的）或在 raw 里（manifest 来的），两处都认
+  const flag = module.experimental ?? module.raw?.experimental
+  return { folder: module.folder, dependencies: deps, ...(flag ? { experimental: flag } : {}) }
 }
 
 /** 一批 `RemoteModule` → 判据输入。 */
@@ -84,14 +97,41 @@ export function hasDependencies(folder: string, engines: readonly EngineCardSour
 }
 
 /**
+ * 这个引擎的警告类型（`null` = 不显示任何警告）。
+ *
+ * ⚠️ **两种原因必须给出不同的标签**，因为对用户意味着完全不同的事：
+ *
+ *   · `'upstream-gate'` → 标签「上游限制」：运行时能用，但它的作者明说某些用法
+ *     不受支持。用户理解了就知道**这不是 bug**。
+ *   · `'unverified'` → 标签「未验证」：我们的命令构造与下载地址都测过了，
+ *     但**没有一款真实游戏被成功启动过**。出问题请反馈。
+ *
+ * 把后者写成「上游限制」等于把我们的责任推给上游 —— 那是骗人。
+ *
+ * 历史数据兼容：老数据里可能是布尔 `true`（早期只有 `true` 这一种写法），
+ * 按 `'upstream-gate'` 处理（因为那是它唯一出现过的含义）。
+ */
+export type EngineWarningKind = 'upstream-gate' | 'unverified'
+
+export function engineWarning(
+  folder: string,
+  engines: readonly EngineCardSource[]
+): EngineWarningKind | null {
+  const engine = engines.find((item) => item.folder === folder)
+  const flag = engine?.experimental
+  if (flag === true) return 'upstream-gate'
+  if (flag === 'upstream-gate' || flag === 'unverified') return flag
+  return null
+}
+
+/**
  * 这个引擎是不是「实验性」。
  *
- * 来源是 registry 的 `experimental: true`（目前只有吉里吉里）。
- * 找不到引擎时返回 `false`（不显示标签，不误伤）。
+ * @deprecated 用 `engineWarning` —— 它区分两种原因。这个函数只回答「有没有警告」，
+ * 保留是为了不让老调用方直接崩，但**新代码别用**。
  */
 export function isExperimental(folder: string, engines: readonly EngineCardSource[]): boolean {
-  const engine = engines.find((item) => item.folder === folder)
-  return engine?.experimental === true
+  return engineWarning(folder, engines) !== null
 }
 
 /**

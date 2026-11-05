@@ -482,7 +482,9 @@ const tyrano: EngineDefinition = {
   // ⚠️ 空 dependencies 是**有意**的：Tyrano 复用 NW.js 运行时，不需要自己的下载。
   // 空对象不是「还没写」。引擎页对空 dependencies 的引擎要显示「无需单独下载」，
   // 不能显示成「可安装 → 点了失败」（D60 的同一个教训：不起作用的开关比不显示更糟）。
-  dependencies: {}
+  dependencies: {},
+  // ⚠️ 未经真实游戏验证（M6.5 交付时手头无样本）。不是上游的问题，是我们的。
+  experimental: 'unverified'
 }
 
 // ===== 吉里吉里（KiriKiri 2 / Z）=====
@@ -547,7 +549,7 @@ const kirikiri: EngineDefinition = {
       }
     }
   },
-  experimental: true
+  experimental: 'upstream-gate'
 }
 
 // ===== NScripter（ONScripter）=====
@@ -614,7 +616,9 @@ const nscripter: EngineDefinition = {
         unzip: true
       }
     }
-  }
+  },
+  // ⚠️ 未经真实游戏验证（M6.5 交付时手头无样本）。启动参数按官方文档写，但没跑过。
+  experimental: 'unverified'
 }
 
 // ===== Siglus（siglus_rs）=====
@@ -686,7 +690,9 @@ const siglus: EngineDefinition = {
         unzip: true
       }
     }
-  }
+  },
+  // ⚠️ 未经真实游戏验证。另外 16 字节副密钥的自动爆破成功率也未实测。
+  experimental: 'unverified'
 }
 
 // ===== Godot =====
@@ -750,7 +756,9 @@ const godot: EngineDefinition = {
         unzip: true
       }
     }
-  }
+  },
+  // ⚠️ 未经真实游戏验证。且 GDScript/C#/GDExtension 的区分在实测前只能靠用户反馈。
+  experimental: 'unverified'
 }
 
 // ===== 只识别、不启动的引擎（DETECT_ONLY）=====
@@ -940,7 +948,7 @@ function upstreamGameArgs(definition: EngineDefinition): Record<string, unknown>
 }
 
 export function buildManifest(definition: EngineDefinition): Record<string, unknown> {
-  return {
+  const manifest: Record<string, unknown> = {
     name: definition.name,
     version: definition.version,
     description: definition.description,
@@ -950,4 +958,10 @@ export function buildManifest(definition: EngineDefinition): Record<string, unkn
     gameArgs: upstreamGameArgs(definition),
     dependencies: definition.dependencies
   }
+  // ⚠️ M6.5：`experimental` 必须写进 manifest —— 渲染层的 `remoteModules` 拿到的是
+  // **manifest 的 raw**，不是 registry 的定义对象。漏写的话引擎页永远显示不出警告标签，
+  // 而**不报错**（前端只看字段在不在，缺了就静默不显示）。
+  // 这是「跨边界字段漏传」那类错误，与 GameMeta 的 sanitize 白名单同一个坑。
+  if (definition.experimental) manifest.experimental = definition.experimental
+  return manifest
 }

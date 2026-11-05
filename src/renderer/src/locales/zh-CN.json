@@ -285,7 +285,8 @@
       "siglus": "运行 Siglus / UK2 / AVG32 / RealLive 游戏（经 siglus_rs）。",
       "godot": "运行 Godot 游戏（仅 GDScript 项目；C# 与 GDExtension 项目不支持）。"
     },
-    "experimental": "实验性",
+    "experimentalUpstream": "上游限制",
+    "experimentalUnverified": "未验证",
     "noDependencies": "无需单独下载"
   },
   "versions": {
