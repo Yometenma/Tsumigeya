@@ -204,6 +204,8 @@ final class AppStore: ObservableObject {
             let outcome = Launcher.launch(plan)
             if outcome.ok, let pid = outcome.pid {
                 runningGames[game.id] = pid
+                // ⚠️ **启动成功后开始轮询**（否则游戏关了界面还显示"运行中"）
+                startRunningPoll()
             } else {
                 lastLaunchFailure[game.id] = outcome.detail
             }
@@ -233,6 +235,90 @@ final class AppStore: ObservableObject {
         }
         if alive != runningGames {
             runningGames = alive
+        }
+    }
+
+    /// 运行状态轮询任务。
+    ///
+    /// ⚠️ **用户 2026-11-06 报的 bug 就出在这里**：
+    ///    「关掉游戏之后，为什么还是显示游戏运行中？」
+    ///
+    ///    根因：`refreshRunning()` **只被 `load()` 调用过一次**（启动时），
+    ///    之后**没有任何定时刷新** —— 内存表永远停在你启动游戏那一刻。
+    ///    游戏关了，表里那个 pid 还在，界面就一直显示「运行中」。
+    ///
+    ///    显式点「停止」时确实会清（`stop(game:)` 里有 `removeValue`），
+    ///    但用户是**自己去窗口关游戏**的，那条路径不会经过我们。
+    ///
+    /// 做法：2 秒一次轮询。
+    ///
+    /// ⚠️ **为什么是 2 秒**：
+    ///   · 1 秒：`kill(pid, 0)` 很便宜，但每秒重绘一次列表是浪费（尤其几十个游戏时）
+    ///   · 3 秒以上：用户关了游戏会觉得「界面反应好慢」
+    ///   · **而且只在有游戏运行时才轮询**（见下）—— 一个都没有时完全不跑
+    ///
+    /// ⚠️ **判据是 `kill(pid, 0)` 而不是「进程名匹配」**：
+    ///    pid 会被系统复用，但 2 秒内复用到同一个 pid 的概率极低，
+    ///    而且我们的 pid 是 `spawn` 直接拿到的（不是猜的）。
+    private var runningPollTask: Task<Void, Never>?
+
+    /// 开始轮询运行状态。
+    ///
+    /// ⚠️ **每次调用都先取消旧的再起新的**（而不是「已经在跑就 return」）。
+    ///
+    ///    本鱼第一版用的是 `guard runningPollTask == nil else { return }`，
+    ///    但那有个 **race**：
+    ///      ① 游戏全停 → 任务准备结束，但还没执行到 `runningPollTask = nil`
+    ///      ② 用户这时启动新游戏 → `startRunningPoll()` 看到非 nil → **直接 return**
+    ///      ③ 旧任务随后把它设为 nil 并退出
+    ///      ④ **没有任何轮询在跑** → 新游戏关了界面照样显示"运行中"
+    ///
+    ///    「先取消再起」没有这个窗口：轮询本身是无状态的（每次都重新扫一遍），
+    ///    重复启动的代价只是多一次 `kill(pid, 0)`。
+    func startRunningPoll() {
+        runningPollTask?.cancel()
+        runningPollTask = nil
+
+        runningPollTask = Task { [weak self] in
+            while !Task.isCancelled {
+                // 2 秒一次
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                if Task.isCancelled { return }
+                guard let self else { return }
+
+                let stillRunning = await MainActor.run { () -> Bool in
+                    self.refreshRunning()
+                    return !self.runningGames.isEmpty
+                }
+
+                // 全停 → 结束轮询（下次启动游戏会重新起）
+                if !stillRunning {
+                    await MainActor.run { self.runningPollTask = nil }
+                    return
+                }
+            }
+        }
+    }
+
+    /// 停止轮询。
+    func stopRunningPoll() {
+        runningPollTask?.cancel()
+        runningPollTask = nil
+    }
+
+    /// app 重新获得焦点时的刷新（切回启动器那一刻）。
+    ///
+    /// ⚠️ 为什么单独一个入口：**用户刚关掉游戏、刚切回启动器**时，
+    ///    那一刻界面必须是对的 —— 不能让他等下一轮 2 秒轮询。
+    ///
+    /// 这是「关掉游戏后还显示运行中」那个 bug 的**第二条修复**：
+    ///   ① 2 秒轮询（覆盖「游戏在后台被关」）
+    ///   ② 切回应用时立刻刷（覆盖「用户就在眼前看到它没更新」）
+    func refreshRunningFromAppActivation() {
+        refreshRunning()
+        // 还有游戏在跑 → 确保轮询在跑（可能被上一次的全停逻辑结束了）
+        if !runningGames.isEmpty {
+            startRunningPoll()
         }
     }
 

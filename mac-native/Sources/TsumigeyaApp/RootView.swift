@@ -62,6 +62,22 @@ struct RootView: View {
             await store.load()
             store.refreshInstalledEngines()
             store.refreshEngineEntries()
+            // ⚠️ 启动时若已有游戏在跑（上次没关干净），要开始轮询
+            if !store.runningGames.isEmpty {
+                store.startRunningPoll()
+            }
+        }
+        // ⚠️ **切回 app 时立刻刷新一次运行状态**（用户 2026-11-06 报：
+        //    「关掉游戏之后还是显示运行中」）。
+        //
+        //    2 秒轮询本身能修这个问题，但**从游戏切回来时等 2 秒还是慢** ——
+        //    用户刚关掉游戏、刚回到启动器，那一刻就该是对的。
+        //    `.onReceive` 订阅场景阶段变化，active 时立刻刷。
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: NSApplication.didBecomeActiveNotification)
+        ) { _ in
+            store.refreshRunningFromAppActivation()
         }
         .sheet(isPresented: $store.isAddingGame) {
             AddGameWizard()
