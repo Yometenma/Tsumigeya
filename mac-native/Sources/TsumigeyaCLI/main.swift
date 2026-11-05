@@ -10,6 +10,7 @@
 //   tsumigeya-cli roundtrip-games   读 → 写回临时文件 → 再读，验证不丢字段
 //   tsumigeya-cli selftest          跑全部 P0 自检
 import Foundation
+import TsumigeyaCore
 
 func main() {
     let args = CommandLine.arguments.dropFirst()

@@ -3,6 +3,7 @@
 // 这是 P1 的**唯一硬判据**：42 条单测证明算法语义对，但只有这台机器上的
 // 真实游戏能证明「它真的认得出来」。
 import Foundation
+import TsumigeyaCore
 
 // MARK: - 识别自检入口
 
@@ -150,7 +151,7 @@ func runDependencyCheck() -> Int {
         let arch = currentArch()
         var version = ""
         if engine == "nwjs" {
-            version = resolveNwjsVersion(dir.path, current: nil) ?? ""
+            version = NwjsVersion.resolve(dataDir: dir.path, current: nil) ?? ""
         }
         if let binary = BinaryPaths.binary(
             for: engine, dataDir: dir.path, version: version, arch: arch) {

@@ -8,6 +8,7 @@
 //   · 装之前先记下「装之前的目录内容」，装完能对比「多了什么」
 //   · 不下载用户已有的引擎（那会覆盖他装好的运行时）
 import Foundation
+import TsumigeyaCore
 
 // MARK: - 安装命令
 

@@ -12,7 +12,7 @@
 import Foundation
 import Testing
 
-@testable import TsumigeyaNative
+@testable import TsumigeyaCore
 
 // MARK: - 路径拼法（D56 唯一来源）
 

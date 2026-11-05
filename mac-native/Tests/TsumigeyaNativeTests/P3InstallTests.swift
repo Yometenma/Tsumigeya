@@ -13,7 +13,7 @@
 import Foundation
 import Testing
 
-@testable import TsumigeyaNative
+@testable import TsumigeyaCore
 
 // MARK: - 依赖名校验
 

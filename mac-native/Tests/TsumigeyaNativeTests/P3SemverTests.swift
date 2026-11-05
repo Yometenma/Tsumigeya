@@ -19,7 +19,7 @@
 import Foundation
 import Testing
 
-@testable import TsumigeyaNative
+@testable import TsumigeyaCore
 
 // MARK: - 版本号：normalize / parse
 
@@ -314,12 +314,20 @@ struct ArchTests {
     }
 
     /// 当前架构只可能是这两个之一（不会返回 nil / 空串）。
-    @Test("currentArch 只会给 x64 / arm64")
+    ///
+    /// ⚠️ 判据在 `Arch.current()`（Libraries 里），**不在 CLI 里** ——
+    ///    App 也要用它，放 CLI 里 App 就用不到。CLI 只剩一个转发入口。
+    @Test("Arch.current() 只会给 x64 / arm64")
     func currentArchShape() {
         let arch = Arch.current()
         #expect(["x64", "arm64"].contains(arch.rawValue))
-        // 与 LaunchCheck 的字符串入口同源
-        #expect(currentArch() == arch.rawValue)
+        // Rosetta 下必须是 x64（否则会去下 arm64 的包，在 x86 上跑不起来）
+        var translated: Int32 = 0
+        var size = MemoryLayout<Int32>.size
+        let ok = sysctlbyname("sysctl.proc_translated", &translated, &size, nil, 0)
+        if ok == 0 && translated == 1 {
+            #expect(arch == .x64, "跑在 Rosetta 下必须是 x64")
+        }
     }
 }
 

@@ -1,37 +1,52 @@
 // swift-tools-version: 6.2
-// Tsumigeya 原生版（P0 骨架）
+// Tsumigeya 原生版
 //
-// 为什么先做「可执行命令行」而不是 SwiftUI app：
-//   P0–P3 全是纯逻辑层（数据目录 / JSON 读写 / 引擎识别 / 启动）。
-//   做成命令行工具就能在 Mac 上无 UI 编译并验证，不浪费一帧 SwiftUI 代码。
-//   P4 才换成 .app 目标（那时逻辑层已经稳了，方案 §4）。
+// ===== 为什么有两个 executable target =====
 //
-// 为什么只有一个 target：
-//   现在还没到需要拆模块的阶段。等 P1 之后再按 Engine / Store / Launch 拆，
-//   那时才有真实边界可依据；提前拆只会拆错。
+//   · `TsumigeyaNative`（库）：所有逻辑（识别 / 启动 / 安装 / 存档…），无 UI 依赖
+//   · `tsumigeya-cli`  ：命令行验收工具。**必须保留** —— 没有它，
+//     "真启动游戏" / "真装引擎" 这些只能在点 UI 时验，出问题难定位
+//   · `Tsumigeya`      ：SwiftUI app（P4 起）
+//
+// ⚠️ **库与 CLI 必须分开**：SwiftUI 的 `@main` 与 `main.swift` 的顶层代码**互斥**
+//    （同一个 module 里不能既有 `@main` 又有 `main.swift` 的顶层语句）。
+//    所以逻辑全部下沉到库，两个 executable 各有一份入口。
 import PackageDescription
 
 let package = Package(
     name: "TsumigeyaNative",
     platforms: [
         // macOS 26 —— 与用户真机（macOS 26.6.2）和 Xcode 27.2 对齐。
-        // 不设更低目标：原生版的目标平台就是这台机器。
         //
-        // ⚠️ `.v26` 需要 `swift-tools-version: 6.2`（PackageDescription 6.2 才引入）。
+        // ⚠️ `.v26` 需要 `swift-tools-version: 6.2`（PackageDescription 6.2 才有）。
         //    写成 6.0 会报 `'v26' is unavailable` —— 实测踩到。
         .macOS(.v26)
     ],
     products: [
-        .executable(name: "tsumigeya-cli", targets: ["TsumigeyaNative"]),
+        .executable(name: "tsumigeya-cli", targets: ["TsumigeyaCLI"]),
+        .executable(name: "Tsumigeya", targets: ["TsumigeyaApp"]),
     ],
     targets: [
+        // 纯逻辑库（无 UI 依赖，可在测试里直接 import）
+        .target(
+            name: "TsumigeyaCore",
+            path: "Sources/TsumigeyaCore"
+        ),
+        // 命令行验收工具
         .executableTarget(
-            name: "TsumigeyaNative",
-            path: "Sources/TsumigeyaNative"
+            name: "TsumigeyaCLI",
+            dependencies: ["TsumigeyaCore"],
+            path: "Sources/TsumigeyaCLI"
+        ),
+        // SwiftUI app
+        .executableTarget(
+            name: "TsumigeyaApp",
+            dependencies: ["TsumigeyaCore"],
+            path: "Sources/TsumigeyaApp"
         ),
         .testTarget(
             name: "TsumigeyaNativeTests",
-            dependencies: ["TsumigeyaNative"],
+            dependencies: ["TsumigeyaCore"],
             path: "Tests/TsumigeyaNativeTests"
         ),
     ]

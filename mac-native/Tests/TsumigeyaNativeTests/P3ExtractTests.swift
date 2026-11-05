@@ -31,7 +31,7 @@
 import Foundation
 import Testing
 
-@testable import TsumigeyaNative
+@testable import TsumigeyaCore
 
 // MARK: - 测试用工具
 

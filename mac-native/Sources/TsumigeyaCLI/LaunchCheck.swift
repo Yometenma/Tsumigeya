@@ -9,6 +9,7 @@
 //   · 验证游戏进程确实在跑（不是 spawn 成功但立刻退了）
 //   · 验完**杀掉**测试进程（不能留在用户机器上）
 import Foundation
+import TsumigeyaCore
 
 // MARK: - 启动计划预览（不真的启动）
 
@@ -38,7 +39,7 @@ func runLaunchPlanPreview() -> Int {
             userArgs: game.gameArgs, dataDir: dir.path, engine: game.gameEngine)
         var gameArgs = preparedArgs
         if game.gameEngine == "nwjs" || game.gameEngine == "tyrano" {
-            if let resolved = resolveNwjsVersion(dir.path, current: gameArgs["version"]?.stringValue) {
+            if let resolved = NwjsVersion.resolve(dataDir: dir.path, current: gameArgs["version"]?.stringValue) {
                 if resolved != gameArgs["version"]?.stringValue {
                     print("   版本修正: \(gameArgs["version"]?.stringValue ?? "-") → \(resolved)")
                 }
@@ -159,7 +160,7 @@ func runLaunchVerify(gameId: String?) -> Int {
         // 版本值修正：deps 下的真实目录名（带 v）。
         var gameArgs = preparedArgs
         if game.gameEngine == "nwjs" || game.gameEngine == "tyrano" {
-            if let resolved = resolveNwjsVersion(dir.path, current: gameArgs["version"]?.stringValue) {
+            if let resolved = NwjsVersion.resolve(dataDir: dir.path, current: gameArgs["version"]?.stringValue) {
                 gameArgs["version"] = .string(resolved)
             }
         }
@@ -319,38 +320,8 @@ func currentArch() -> String {
     Arch.current().rawValue
 }
 
-/// 解析 nwjs 的版本目录名。
-///
-/// ⚠️ 这是 Electron 版 `core-host.reconcileVersionArgs` 的等价物，非常关键：
-/// 用户没选版本时 gameArgs 里可能是空，而上游兜底 `0.106.1`（**不带 v**），
-/// 但 deps 下的真实目录名是 `v0.106.1`（**带 v**）→ 路径拼错 → 点启动没反应。
-///
-/// 判据：读 `deps/version/` 的真实目录名，优先用用户选的那个（若存在于磁盘），
-/// 否则取**版本号最大**的那个。
-func resolveNwjsVersion(_ dataDir: String, current: String?) -> String? {
-    let versionsDir = BinaryPaths.nwjsVersionsDir(dataDir)
-    guard let entries = try? FileManager.default.contentsOfDirectory(atPath: versionsDir) else {
-        return nil
-    }
-    let dirs = entries.filter { name in
-        var isDir: ObjCBool = false
-        let full = (versionsDir as NSString).appendingPathComponent(name)
-        return FileManager.default.fileExists(atPath: full, isDirectory: &isDir) && isDir.boolValue
-    }
-
-    // ① 用户选的那个（若真实存在）优先
-    if let current, !current.isEmpty, dirs.contains(current) {
-        return current
-    }
-    // ② 用户选的可能是「不带 v」的形式，补个 v 再试
-    if let current, !current.isEmpty, !current.hasPrefix("v") {
-        let withV = "v" + current
-        if dirs.contains(withV) { return withV }
-    }
-    // ③ 都没命中 → 取版本号最大的
-    guard !dirs.isEmpty else { return nil }
-    return dirs.max { compareVersions($0, $1) < 0 }
-}
+/// ⚠️ `resolveNwjsVersion` 已搬到 `TsumigeyaCore.NwjsVersion.resolve`：
+///    CLI 与 App 都要用它，放在 CLI 里 App 就用不到（且两处各写必然分叉）。
 
 /// 进程是否还活着。
 func processAlive(_ pid: Int32) -> Bool {
