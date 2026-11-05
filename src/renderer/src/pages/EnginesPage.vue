@@ -14,6 +14,7 @@ import {
   runInstallAll,
   type InstallTarget
 } from '../../../shared/install-all'
+import { hasDependencies, installableTargets, isExperimental, toCardSources } from '../../../shared/engine-card'
 
 const { t, d } = useI18n()
 const engines = useEnginesStore()
@@ -178,9 +179,37 @@ function formattedCheckedAt(): string {
 // 理由见 shared/install-all.ts 顶部 —— 一句话：四个引擎相互独立，
 // 一次几百 MB 断在某一个是常态，不该把装好的那几个一起废掉。
 
-/** 还没装的引擎数（按钮上的数字与 disabled 判据）。 */
+/**
+ * 判据输入：把 store 的 `available`（含 manifest `raw`）转成判据要的形状。
+ *
+ * 为什么要这一层：`shared/engine-card.ts` 是**零依赖纯函数**，它不能 import
+ * 主进程的 registry（`tsconfig.web.json` 不含 `src/main/`，跨工程会 TS6307）。
+ * 所以由这里把数据递进去，判据保持纯净、可单测。
+ */
+const cardSources = computed(() => toCardSources(engines.available))
+
+/** 某张卡片要不要显示「安装」按钮。 */
+function canInstall(folder: string): boolean {
+  return hasDependencies(folder, cardSources.value)
+}
+
+/** 某张卡片要不要显示「实验性」标签。 */
+function showExperimental(folder: string): boolean {
+  return isExperimental(folder, cardSources.value)
+}
+
+/**
+ * 还没装的引擎数（按钮上的数字与 disabled 判据）。
+ *
+ * ⚠️ M6.5：先过 `installableTargets` 排除**空依赖**的引擎（tyrano）。
+ * 不排除的话，「全部安装」会把它算进去 → 装它的时候什么都没发生 →
+ * 用户看到「装了 3 个」，其中一个其实没装。数字撒谎比按钮坏掉更难查。
+ */
 const installAllPending = computed(() =>
-  installAllCount(engines.available, new Set(engines.modules.map((module) => module.id)))
+  installAllCount(
+    installableTargets(engines.available, cardSources.value),
+    new Set(engines.modules.map((module) => module.id))
+  )
 )
 
 /** 全部安装的进度（null = 没在跑）。 */
@@ -205,7 +234,11 @@ const installingNow = ref<string | null>(null)
  * 语义 —— 即「上一层任务被用户取消了」。见下方 install 回调里的判断。
  */
 async function installAll(): Promise<void> {
-  const targets = pendingInstalls(engines.available, new Set(engines.modules.map((module) => module.id)))
+  // M6.5：同样先排除空依赖的引擎（理由见 installAllPending 的注释）
+  const targets = pendingInstalls(
+    installableTargets(engines.available, cardSources.value),
+    new Set(engines.modules.map((module) => module.id))
+  )
   if (targets.length === 0) {
     ElMessage.info(t('engines.noneToInstall'))
     return
@@ -409,21 +442,34 @@ async function installAll(): Promise<void> {
         <div class="engine-card-head">
           <span class="engine-card-name" :title="displayName(module)">{{ displayName(module) }}</span>
           <el-tag size="small">{{ moduleVersion(module) }}</el-tag>
+          <!-- M6.5：实验性引擎（目前只有吉里吉里）。
+               为什么不藏起来：它**照常可用**，藏起来等于骗人；
+               但也不该让用户以为这是本项目官方承诺的能力（上游明写不支援商用游戏）。 -->
+          <el-tag v-if="showExperimental(module.folder)" size="small" type="warning">
+            {{ t('engines.experimental') }}
+          </el-tag>
         </div>
         <div v-if="moduleDescription(module)" class="engine-card-desc">{{ moduleDescription(module) }}</div>
         <div class="hint">{{ module.folder }}</div>
         <div class="engine-card-actions">
-          <!-- M5.0 S8：单卡的 loading 也要认「全部安装」的当前项（installingNow），
-               否则「全部安装」跑起来时单卡按钮看起来是空闲的，用户可以再点一下把同一任务起两遍。 -->
-          <el-button
-            size="small"
-            type="primary"
-            :loading="pending === module.folder || installingNow === module.folder"
-            :disabled="!!installAllProgress || task.running"
-            @click="install(module)"
-          >
-            {{ t('engines.install') }}
-          </el-button>
+          <!-- ===== M6.5：**没有依赖的引擎不显示「安装」按钮** =====
+               TyranoScript 复用 NW.js 的运行时，它自己 dependencies 是**空对象**（有意为之）。
+               原来这里无条件显示「安装」，于是用户点它 → 主进程发现没有依赖可装 →
+               要么报错、要么"装完了但什么都没发生"。
+               两者都是 D60 说的「不起作用的开关」：**比不显示更糟**。
+               改成：空依赖就显示「无需单独下载」并禁用按钮。 -->
+          <template v-if="canInstall(module.folder)">
+            <el-button
+              size="small"
+              type="primary"
+              :loading="pending === module.folder || installingNow === module.folder"
+              :disabled="!!installAllProgress || task.running"
+              @click="install(module)"
+            >
+              {{ t('engines.install') }}
+            </el-button>
+          </template>
+          <span v-else class="hint">{{ t('engines.noDependencies') }}</span>
         </div>
       </article>
     </div>
