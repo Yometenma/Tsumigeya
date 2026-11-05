@@ -492,12 +492,36 @@ describe('缓存与并发', () => {
 
   test('TTL 过期会重新发请求', async () => {
     const fetcher = makeFetcher({ maniax: { status: 200, body: fixture } })
-    let now = Date.parse('2026-11-04T00:00:00.000Z')
+    // ⚠️ 假时钟故意选一个**远离今天**的时间点。
+    //
+    // 原来用 `2026-11-04T00:00Z`，而实现里 `fetchedAt` 用的是真实 `new Date()`：
+    // 在 CI（UTC）上两者相近、符号对得上，测试偶然绿；
+    // 在 UTC+8 开发机上 `now() - fetchedAt` 变成**负数** → 永不判过期 → 红。
+    //
+    // 现在实现已改成 `fetchedAt` 也走同一个 `now()`（见 dlsite.ts 的调用点）。
+    // 选 2020 年是为了：**任何真实的「今天」都远大于它**，
+    // 万一以后又有人把 `fetchedAt` 改回 `new Date()`，这里会稳定变红（而不是挑时区）。
+    let now = Date.parse('2020-01-01T00:00:00.000Z')
     const svc = service(fetcher, { now: () => now })
     await svc.fetchWork({ rj: 'RJ294126' })
     now += 8 * 24 * 60 * 60 * 1000 // 8 天 > 7 天 TTL
     await svc.fetchWork({ rj: 'RJ294126' })
     expect(fetcher.calls.length).toBe(2)
+  })
+
+  test('★ fetchedAt 用注入的时钟，不是真实时间（回归）', async () => {
+    // 钉住「时钟必须统一」：缓存里写的 fetchedAt 必须能被同一个 now() 消费。
+    // 背景见上一条的注释（CI 绿 / 本机红的时区陷阱）。
+    const fetcher = makeFetcher({ maniax: { status: 200, body: fixture } })
+    const fixed = Date.parse('2020-06-15T12:00:00.000Z')
+    const svc = service(fetcher, { now: () => fixed })
+    const work = await svc.fetchWork({ rj: 'RJ294126' })
+    // fetchedAt 必须恰好等于注入时钟对应的时刻，而不是真实的今天
+    expect(Date.parse(work.fetchedAt)).toBe(fixed)
+    // TTL 内（此刻）必须命中缓存、不再发请求
+    const again = await svc.fetchWork({ rj: 'RJ294126' })
+    expect(again.title).toBe(work.title)
+    expect(fetcher.calls.length).toBe(1)
   })
 
   test('refresh:true 忽略缓存', async () => {

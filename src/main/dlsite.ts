@@ -893,7 +893,17 @@ export function createDlsiteService(options: DlsiteServiceOptions): DlsiteServic
       }
       sawOk = true
       try {
-        const work = parseDlsiteWork(page.html, rj)
+        // ⚠️ `fetchedAt` 必须来自**同一个时钟** `now()`，不能用 `new Date()`（M5.0 顺手修的 bug）。
+        //
+        // 原来写 `parseDlsiteWork(page.html, rj)`，第二个参数的默认值 `new Date().toISOString()`
+        // 用的是**真实时间**；而 `readCache` 的 TTL 判断用的是注入的 `now()`。
+        // 两者一旦不一致，`now() - fetchedAt` 会算出**负数** → 永远不判过期。
+        //
+        // 这个错误在 CI（Linux/UTC）上恰好被掩盖（假时间与真实时间相近），
+        // 到 UTC+8 的开发机上 `now()` 比假时间晚 28 小时 → 符号翻转 →
+        // `test/dlsite.test.ts > TTL 过期会重新发请求` 稳定变红。
+        // 它测的正是「过期要重新发请求」，所以这条测试本身是**对的**，错的是实现。
+        const work = parseDlsiteWork(page.html, rj, new Date(now()).toISOString())
         writeCache(work)
         return work
       } catch (error) {
