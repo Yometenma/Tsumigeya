@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
-import { assertSafeEntry, extractArchive, hasSystemTar, tarBinary } from '../src/main/extract'
+import { assertSafeEntry, extractArchive, hasSystemTar, tarBinary, tarEnv } from '../src/main/extract'
 
 let workDir: string
 
@@ -142,5 +142,68 @@ describe('系统 tar 往返', () => {
     return extractArchive(archive, destination).then(() => {
       expect(readdirSync(destination).length).toBeGreaterThan(0)
     })
+  })
+})
+
+// ===== M6.5：mac 上「非 ASCII 文件名」被 bsdtar 转义成八进制（真机实测抓到的真 bug）=====
+//
+// 症状：同一个 tar 包，mac 上 `tar -tf` 在**没有 LANG** 的环境下输出
+//   `./\344\270\255\346\226\207...txt`（八进制转义）
+// 而 `assertSafeEntry` 有「拒绝反斜杠」的安全规则 → **整个包被判成恶意路径**。
+//
+// 更隐蔽的是触发条件：**SSH / launchctl / Finder 启动的 .app 里 LANG 常常是空的**，
+// 所以用户在终端手动跑正常、我们的探针与打包应用却会失败。
+//
+// 处置：`tarEnv()` 在 darwin 上显式给 UTF-8 locale（见 extract.ts 的注释）。
+// 这一组测的是**那条处置**本身，不测 tar 的行为（tar 行为依赖系统版本）。
+describe('M6.5 tarEnv：darwin 上必须显式给 UTF-8 locale', () => {
+  test('非 darwin 平台原样返回 process.env（Windows 用系统代码页，塞 LANG 没意义）', () => {
+    if (process.platform === 'darwin') return
+    expect(tarEnv()).toEqual(process.env)
+  })
+
+  test('darwin 上 LANG 与 LC_ALL 都是 UTF-8 locale（否则 bsdtar 会转义非 ASCII）', () => {
+    if (process.platform !== 'darwin') return
+    const env = tarEnv()
+    expect(env.LANG).toMatch(/UTF-8|utf8/i)
+    expect(env.LC_ALL).toMatch(/UTF-8|utf8/i)
+  })
+
+  test('已有的 LANG 不被覆盖（用户环境已经设好就尊重它）', () => {
+    if (process.platform !== 'darwin') return
+    const original = process.env.LANG
+    process.env.LANG = 'ja_JP.UTF-8'
+    try {
+      expect(tarEnv().LANG).toBe('ja_JP.UTF-8')
+    } finally {
+      if (original === undefined) delete process.env.LANG
+      else process.env.LANG = original
+    }
+  })
+
+  test('⚠️ 源码级：extractArchive 必须把 env 传给两次 tar 调用（否则这条修复等于没接）', () => {
+    // 这是 AGENTS.md 记过的「判据写了、测了、但没人调用」那类错误。
+    const source = readFileSync(path.join(process.cwd(), 'src', 'main', 'extract.ts'), 'utf8')
+
+    // 更稳的判据：数 `runFile(tar,` 出现次数（应 >= 2），
+    // 再确认这两处所在的行附近都有 `env`（保证不是只传了一处）。
+    // 不用跨行大正则 —— 嵌套括号会让它难写又难读。
+    const callCount = (source.match(/runFile\(tar,/g) ?? []).length
+    expect(callCount, 'extractArchive 里应该有两处 runFile(tar, ...)').toBeGreaterThanOrEqual(2)
+
+    // 取出所有 `runFile(tar,` 之后的 400 字符窗口，逐个检查有没有 env
+    const windows: string[] = []
+    let from = 0
+    while (true) {
+      const idx = source.indexOf('runFile(tar,', from)
+      if (idx < 0) break
+      windows.push(source.slice(idx, idx + 400))
+      from = idx + 1
+    }
+    for (const [i, win] of windows.entries()) {
+      expect(win, `第 ${i + 1} 处 runFile(tar, ...) 没有传 env —— 那条 LANG 修复对它不生效`).toContain(
+        'env'
+      )
+    }
   })
 })

@@ -64,14 +64,66 @@ export async function extractArchive(
   if (!fs.existsSync(archive)) throw failure('error.download', `Archive not found: ${path.basename(archive)}`)
 
   const tar = tarBinary()
-  const listing = await runFile(tar, ['-tf', archive], { signal, maxBuffer: MAX_BUFFER })
+  // ⚠️ ENV 必须带 LANG —— 见 tarEnv() 的注释。这是 mac 真机实测抓到的真 bug。
+  const env = tarEnv()
+  const listing = await runFile(tar, ['-tf', archive], { signal, maxBuffer: MAX_BUFFER, env })
   for (const entry of listing.stdout.split(/\r?\n/).filter(Boolean)) assertSafeEntry(entry)
 
   fs.mkdirSync(destination, { recursive: true })
   const args = ['-xf', archive, '-C', destination]
   // `--no-same-owner` 只有 GNU/bsdtar 在 unix 上才安全；Windows 的 tar.exe 不加（§8 已知坑）。
   if (process.platform === 'darwin') args.splice(2, 0, '--no-same-owner')
-  await runFile(tar, args, { signal, maxBuffer: MAX_BUFFER })
+  await runFile(tar, args, { signal, maxBuffer: MAX_BUFFER, env })
+}
+
+/**
+ * 给 tar 子进程用的环境变量 —— **必须显式带上 UTF-8 的 LANG**。
+ *
+ * ===== 这条是 mac 真机实测抓到的真 bug（M6.5，2026-11-05）=====
+ *
+ * 症状：`test/extract.test.ts` 里「tar 打包 → 解包」那条在 mac 上**必失败**，
+ * 报 `Unsafe path in archive`，而 Windows 上一直绿。
+ *
+ * 根因（实测）：
+ *   bsdtar 在**没有 LANG / LC_ALL** 的环境下，会把**非 ASCII 文件名**输出成
+ *   **八进制转义**而不是原文：
+ *
+ *       $ env -u LANG /usr/bin/tar -tf x.tar
+ *       ./                      ← ASCII 正常
+ *       ./\344\270\255...txt    ← 中文变成八进制转义！
+ *
+ *   而 `assertSafeEntry` 有一条「**拒绝反斜杠**」的规则（防 Windows 路径穿越），
+ *   于是**任何含中文文件名的压缩包都会被判成恶意路径而拒绝解压**。
+ *
+ * 更隐蔽的是**触发条件**：SSH 会话 / launchctl / 图形应用里 `LANG` 常常是**空的**。
+ * 所以这个 bug 只会在「非交互式启动」时出现 —— 用户在终端里手动跑反而正常。
+ * 我们自己的验收探针、CI、以及**打包后的 .app 由 Finder 启动**，全都属于这一类。
+ *
+ * 实测对照（同一台 mac，同一个 tar 包）：
+ *   `env -u LANG  tar -tf` → `./\344\270\255...`  ❌ 转义
+ *   `LANG=en_US.UTF-8 tar -tf` → `./中文 文件名.txt` ✅ 正常
+ *   `LANG=ja_JP.UTF-8  tar -tf` → `./中文 文件名.txt` ✅ 也正常（任意 UTF-8 locale 都行）
+ *
+ * 所以**不能靠外部 LANG**（我们自己就常常在没有 LANG 的进程里跑），
+ * 必须在 spawn 时显式给一个 UTF-8 locale。
+ *
+ * ⚠️ 为什么不改 `assertSafeEntry` 放行反斜杠：那条规则是**安全判据**，
+ *    放行等于给 Windows 路径穿越开门。转义是 tar 的**输出格式问题**，
+ *    该在输入侧修（让 tar 输出原文），不是拆掉安全检查。
+ *
+ * ⚠️ Windows 上不设：`%SystemRoot%\System32\tar.exe`（bsdtar）在 Windows 上
+ *    用系统代码页，塞 `LANG` 没有意义且可能改变行为。只在 darwin 设。
+ */
+export function tarEnv(): NodeJS.ProcessEnv {
+  if (process.platform !== 'darwin') return process.env
+  return {
+    ...process.env,
+    // 用 C.UTF-8 而不是 en_US.UTF-8：前者在 mac 上**不保证存在**，
+    // 而 macOS 自带 `en_US.UTF-8`（实测可用）。其它 UTF-8 locale 也可以，
+    // 关键只是「让 bsdtar 知道该按 UTF-8 输出」。
+    LANG: process.env.LANG || 'en_US.UTF-8',
+    LC_ALL: process.env.LC_ALL || 'en_US.UTF-8'
+  }
 }
 
 /** 本机是否有可用的 tar（测试里决定 skip）。 */
