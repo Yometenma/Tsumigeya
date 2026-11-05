@@ -19,10 +19,16 @@
 
 - **已完成**：M1（游戏库/识别/装引擎/启动）、M2（DLsite 元数据）、M2.5（搜索/可编辑元数据/多语言）、
   M3（故障自愈）、M2.6（海报墙与详情页）、M2.7（编辑页重构）、M3.5（进程管理）、M4.0（自实现启动）、
-  M4.1（引擎清单自己维护）、**M4.2（彻底零上游）**、**M5.5（动态图标 / Lucide 图标体系）**
-- **已发布**：**v1.0.0（第一个正式版）** —— 含本轮 6 个 bug 修复、分类搬到库页顶部、
-  体验优化 12 项、图标体系换 Lucide；GitHub `Yometenma/Tsumigeya`
-- **测试**：**1416 个 / 69 文件**全绿；`typecheck` / `test` / `build` 三绿
+  M4.1（引擎清单自己维护）、**M4.2（彻底零上游）**、**M5.5（动态图标 / Lucide 图标体系）**、
+  **M6.5（引擎范围扩展：4 → 9 个）**
+- **已发布**：**v1.1.0** —— 引擎 4 → 9 个（见 `docs/release-v1.1.0.md`）；
+  上一版 v1.0.0 是第一个正式版。GitHub `Yometenma/Tsumigeya`
+- **测试**：**1587 个 / 78 文件**全绿；`typecheck` / `test` / `build` 三绿
+  - ⚠️ **已在 mac 真机验证**（`YomedeMacBook-Neo` / macOS 26.6.2 / arm64）：
+    故意 `env -u LANG` 复现故障条件后 1587 条全绿；GUI 探针（`scripts/probe-engine-page.cjs`）
+    9 张卡片 / 两种警告标签 / 零 console 错误全部通过
+  - ⚠️ **5 个新引擎仍未在任何真实游戏上验证启动**（tyrano/nscripter/siglus/godot
+    + 吉里吉里另有上游限制）→ 引擎页标「未验证」/「上游限制」（D91/D92）
 - **M5.0 已完成**（`docs/M5.0-实施方案.md`）：12 项体验优化 + **S12 分类迁移**，逐条提交（用户拍板）
   - 顺序见方案 §12：B1 版本号 → U3+U4 筛选 → U5 选文件 → U6 去跳过 → N1 游玩时间
     → U1 批量 → U2 分类 → U10 全部安装 → U9 设置页 → U7 抽组件 → U8 编辑页重构
@@ -192,6 +198,7 @@ Vue → Pinia → api/client → preload(window.tsumi.invoke)
 | 解压依赖时**默认保留**单层目录（别拍平） | 盲目拍平会吞掉 `nwjs-sdk-…/` 版本目录 → 二进制路径差一层 → 启动失败（D69） |
 | 路径上的 `tar` 在 Windows 是 GNU tar | 单测用 `C:\Windows\System32\tar.exe`（bsdtar） |
 | `tarBinary()` 必须有 Linux 分支 | darwin→`/usr/bin/tar`、win32→System32、其余→PATH |
+| **⚠️ mac 的 bsdtar 在 `LANG` 为空时把非 ASCII 文件名输出成八进制转义** | `./\344\270\255...txt` 而不是 `./中文.txt`，于是被 `assertSafeEntry` 的「拒绝反斜杠」判成路径穿越 → **含中文名的包整包被拒**。**触发条件极隐蔽**：SSH / launchctl / Finder 启动的 .app 里 `LANG` 常常为空（终端手跑反而正常）。处置：`extract.ts` 的 `tarEnv()` 在 darwin 上显式给 `LANG/LC_ALL=en_US.UTF-8`。**别去放行那条反斜杠规则**（那是安全判据）。mac 真机 `env -u LANG` 复现过，修复后全绿 |
 
 ### 落盘白名单（改字段必看）
 
