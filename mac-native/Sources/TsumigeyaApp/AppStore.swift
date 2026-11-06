@@ -159,6 +159,24 @@ final class AppStore: ObservableObject {
         categories = meta.meta.categories
         assignments = meta.meta.assignments
 
+        // ---- ⚠️ 设置（global-settings.json）**必须在启动时读** ----
+        //
+        // 本鱼 2026-11-06 踩到的 bug：用户设了「游戏库用列表视图」，
+        // **重开 app 又是卡片，只有进一下设置页才正常**。
+        //
+        // 根因：`loadSettings()` 只在**设置页的 `.task`** 里被调用 ——
+        //   启动时 `settings` 是空字典 → `settingBool(.listView)` 读到默认值
+        //   `false` → 卡片视图。进了设置页才顺带读一次，那时才对。
+        //
+        // ⚠️ 这与「关掉游戏还显示运行中」是**同一类错误**：
+        //   函数写对了，但**调用点漏了**。代码看起来完全正常。
+        //
+        // ⚠️ 所以这里**不能只补 loadSettings()** —— 还要 `applyAppearance()`：
+        //   外观（深色/浅色）也只在 `setSetting` 时应用过一次，
+        //   启动时从没应用过 → 用户选了深色，重开还是跟随系统。
+        loadSettings()
+        applyAppearance()
+
         isLoading = false
         refreshRunning()
     }

@@ -68,9 +68,17 @@ struct SettingsPage: View {
             .formStyle(.grouped)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .task {
-            store.loadSettings()
-        }
+        // ⚠️ **不再在这里 loadSettings()**（P6 修）。
+        //
+        //    原来是 `.task { store.loadSettings() }` —— 那是**唯一的读取点**，
+        //    于是「启动时不读设置」成了一个 bug（用户设了列表视图，
+        //    重开 app 又是卡片，只有进一次设置页才对）。
+        //
+        //    现在读取移到 `AppStore.load()`（启动时），这里**只负责渲染**。
+        //
+        //    ⚠️ 而且留着它还有个坏处：每次进设置页都重读文件，
+        //       如果那时内存里有未落盘的改动就会被覆盖
+        //       （现在所有改动都立刻落盘，所以不会丢，但重复读是浪费）。
     }
 }
 
@@ -247,11 +255,24 @@ struct SettingRow: View {
         case .appearance, .listView:
             return nil
         case .deletionConfirmation:
-            return "还没有删除游戏的界面"
+            // ⚠️ **这条已从「未启用」移除了**（P6 修的）。
+            //
+            //    本鱼原来写的是「还没有删除游戏的界面」—— 那是**过时的标注**：
+            //    同一轮里本鱼已经加上了删除（列表右键 + 详情页「更多」菜单），
+            //    而 `AppStore.confirmDelete` **真的读这个开关**。
+            //
+            //    ⚠️ 过时的「未启用」标注比不标更糟：用户明明能用，
+            //       却被告诉「未启用」，于是不会去用。
+            return nil
         case .showAdultCovers:
             return "还没有封面（等 DLsite 集成）"
         case .saveSyncMode:
-            return "存档功能还没做"
+            // ⚠️ **这条也更新了**：P6 做完了存档导出/导入，
+            //    所以 `manual`（手动导入导出）**现在真的能用**。
+            //
+            //    但它仍然标着提示，因为文案要说明「不接任何云」——
+            //    那是个**用户需要知道的事实**，不是「未启用」。
+            return "只有「手动」模式能用；不接任何云（D83）"
         case .language:
             return "目前只有简体中文界面"
         case .preferredLanguage, .fallbackLanguage, .languageSwitchPrompt:

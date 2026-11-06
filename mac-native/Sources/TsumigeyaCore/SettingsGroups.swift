@@ -180,7 +180,15 @@ public enum SettingsDefaults {
     ///    「`saved.x == false ? false : true`」—— 即「**缺省当开**」，
     ///    因为它们**不在**这个常量里。搞混会让「用户没设过」变成「用户关了」。
     public static let booleans: [SettingsGroups.Key: Bool] = [
-        .listView: false,
+        // ⚠️ **默认用列表视图**（P6 改，原为 false = 卡片）。
+        //
+        // 依据：卡片视图现在**没有封面**（P7 才接 DLsite），是半个空壳；
+        // 而列表信息密度更高、游戏名长短差很大时也更好读
+        // （用户的游戏名是日文，「～馬蹄通りの小聖女～」那种在卡片里两行截断很难看）。
+        //
+        // ⚠️ 等 P7 有封面后**重新评估**这个默认值 —— 但改要有实测依据，
+        //    不能凭感觉（否则就是又一次「把假设当事实」）。
+        .listView: true,
         .deletionConfirmation: true,
         .nonInstalledAutodetect: true,
         .checkModuleUpdatesOnStartup: true,

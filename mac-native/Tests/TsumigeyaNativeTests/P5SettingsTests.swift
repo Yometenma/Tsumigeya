@@ -141,12 +141,14 @@ struct SettingsDefaultsTests {
     func regularBooleanDefaults() {
         let empty: [String: JSONValue] = [:]
         #expect(SettingsDefaults.boolean(.deletionConfirmation, from: empty) == true)
-        #expect(SettingsDefaults.boolean(.listView, from: empty) == false)
+        // ⚠️ `listView` 的默认值在 P6 从 false 改成了 true
+        //    （理由：卡片视图现在没封面，是半个空壳 —— 见 P5SettingsAtStartupTests）
+        #expect(SettingsDefaults.boolean(.listView, from: empty) == true)
         #expect(SettingsDefaults.boolean(.nonInstalledAutodetect, from: empty) == true)
 
         // 显式设了就听用户的
-        let on: [String: JSONValue] = ["listView": .bool(true)]
-        #expect(SettingsDefaults.boolean(.listView, from: on) == true)
+        let off: [String: JSONValue] = ["listView": .bool(false)]
+        #expect(SettingsDefaults.boolean(.listView, from: off) == false)
     }
 
     /// 字符串默认值。
