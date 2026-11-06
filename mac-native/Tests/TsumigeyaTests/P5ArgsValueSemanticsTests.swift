@@ -91,7 +91,7 @@ struct EditViewBindingSourceTests {
     func editViewSource() -> String? {
         let thisFile = URL(fileURLWithPath: #filePath)
         let packageRoot = thisFile
-            .deletingLastPathComponent()   // TsumigeyaNativeTests/
+            .deletingLastPathComponent()   // TsumigeyaTests/
             .deletingLastPathComponent()   // Tests/
             .deletingLastPathComponent()   // mac-native/
         let target = packageRoot

@@ -3,7 +3,7 @@
 //
 // ===== 为什么有两个 executable target =====
 //
-//   · `TsumigeyaNative`（库）：所有逻辑（识别 / 启动 / 安装 / 存档…），无 UI 依赖
+//   · `TsumigeyaCore`（库）：所有逻辑（识别 / 启动 / 安装 / 存档…），无 UI 依赖
 //   · `tsumigeya-cli`  ：命令行验收工具。**必须保留** —— 没有它，
 //     "真启动游戏" / "真装引擎" 这些只能在点 UI 时验，出问题难定位
 //   · `Tsumigeya`      ：SwiftUI app（P4 起）
@@ -14,7 +14,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "TsumigeyaNative",
+    name: "Tsumigeya",
     platforms: [
         // macOS 26 —— 与用户真机（macOS 26.6.2）和 Xcode 27.2 对齐。
         //
@@ -45,9 +45,9 @@ let package = Package(
             path: "Sources/TsumigeyaApp"
         ),
         .testTarget(
-            name: "TsumigeyaNativeTests",
+            name: "TsumigeyaTests",
             dependencies: ["TsumigeyaCore"],
-            path: "Tests/TsumigeyaNativeTests",
+            path: "Tests/TsumigeyaTests",
             // ⚠️ **Fixtures 必须声明为资源**（P7 加的）。
             //
             //    里面有 `dlsite-RJ294126.html` —— 从**真实 DLsite 页面**

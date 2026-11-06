@@ -103,9 +103,6 @@ public enum EngineDependencies {
                     x86_64: "https://github.com/xmoezzz/siglus_rs/releases/download/pre-release/siglus-macos-x86_64.app.tar.gz")),
             ]
 
-        // ---- Godot（官方编辑器二进制当运行时，D92）----
-        //
-        // ⚠️ 161MB。本鱼**没有真下载验证过包内结构**（只用扫 Godot*.app 的防御式写法）。
         case "godot":
             return [
                 ("godot", .universal(

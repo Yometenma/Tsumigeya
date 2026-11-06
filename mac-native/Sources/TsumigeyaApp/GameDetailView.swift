@@ -68,12 +68,6 @@ struct GameDetailView: View {
             // ===== 背景：有封面就用封面，没有就用引擎色渐变（P7）=====
             coverBackground
 
-            // ⚠️⚠️ **手柄图标只在「没有封面」时出现**（用户 2026-11-06 反馈：
-            //    「封面前叠了一个蒙版，灰灰的，还有个半透明的手柄图标」）。
-            //
-            //    那个图标本来是**占位符** —— 没有封面时告诉用户「这是一个游戏」。
-            //    有真封面时还叠着它，等于在一块海报上印了个半透明图标，
-            //    又脏又多余。
             if !hasCover {
                 Image(systemName: "gamecontroller.fill")
                     .font(.system(size: 76))
@@ -315,7 +309,6 @@ struct GameDetailView: View {
             }
             .controlSize(.small)
         } else {
-            // 走决策链（用户 2026-11-06 要求：RJ 优先，不行就按名字）
             switch lookupStep {
             case .byRJ(let rj):
                 Button("获取作品信息") {
@@ -378,20 +371,6 @@ struct GameDetailView: View {
         }
     }
 
-    /// 封面背景（有封面用封面 + 暗色遮罩；没有用引擎色渐变）。
-    ///
-    /// ⚠️ **用 `AsyncImage`**（用户 2026-11-06 实测在真窗口里正常显示）。
-    ///
-    /// ⚠️ **快照（`--snapshot`）里看不到封面是这个工具的限制**，不是 bug：
-    ///    `AsyncImage` 靠「视图真的上屏可见」判断要不要开始下载，
-    ///    而快照窗口放在屏幕外（-3000,-3000）→ 它不下载 → 显示回落渐变。
-    ///
-    ///    本鱼试过三种绕过（等 2.5s / 预热 URLCache / DispatchGroup 等完），
-    ///    前两个无效、第三个**死锁**（主线程被堵，回调轮不到）。
-    ///    最后还错手改成了自写的 CoverImage 组件 —— **那是改错对象**：
-    ///    产品代码在真窗口里是好的，该接受限制的是快照工具。
-    ///
-    ///    → 保持 `AsyncImage`。快照里封面缺席，**用真窗口验这一条**。
     @ViewBuilder
     private var coverBackground: some View {
         if let cover = store.meta(for: game.id)?.work.coverUrl,
@@ -446,26 +425,6 @@ struct GameDetailView: View {
 
             Divider()
 
-            // ⚠️⚠️ **区块顺序按「用户最关心什么」排**（用户 2026-11-06 反馈：
-            //    「下方详情里最先映入眼帘的不是作品信息，而是一眼看到引擎和路径，
-            //     并不美观」）。
-            //
-            //    本鱼原来的顺序是照搬 P5 的（那时还没有 DLsite 元数据）：
-            //      启动 → 引擎/路径 → 引擎参数 → 作品信息 → 存档
-            //
-            //    那个顺序的问题：**引擎和路径是内部实现细节**
-            //    （`NW.js` / `/Users/.../nw.exe`），用户点开游戏页面想看的是
-            //    「这是什么作品」（社团、类型、简介）。
-            //
-            //    现在的顺序：
-            //      ① 启动按钮        —— 唯一的操作
-            //      ② 作品信息        —— 用户真正想看的（有元数据时）
-            //      ③ 引擎/路径       —— 技术细节，往下放
-            //      ④ 引擎参数        —— 更少用的技术细节
-            //      ⑤ 存档            —— 偶尔用（换机才导出）
-            //
-            //    ⚠️ 没有元数据时 `dlsiteSection` 只显示一行提示（含「手动输入 RJ」），
-            //      不会占很多空间 —— 所以这个顺序对两种状态都合理。
             dlsiteSection
 
             Divider()
@@ -573,8 +532,6 @@ struct GameDetailView: View {
 
     private var infoRows: some View {
         VStack(alignment: .leading, spacing: 10) {
-            // ⚠️ **不再重复显示「引擎」**：顶部大图上已经有 `NW.js` 的徽标了。
-            //    同一页里同一个信息出现两次是噪音（与之前「标题重复」同一个毛病）。
             infoRow("路径", game.gamePath, mono: true)
             if let pid = store.runningGames[game.id] {
                 infoRow("进程", "运行中（pid \(pid)）")

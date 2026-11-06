@@ -122,20 +122,6 @@ public enum SaveStore {
                 .appendingPathComponent("Library/RenPy/\(gameName)"),
             fm: fileManager)
 
-        // package.json 的 main（**只有 nwjs 用得到**，D85）
-        //
-        // ⚠️ **要往上找几层**：`gamePath` 可能是
-        //    · `…/Game.exe`（在游戏根）→ `gameDirForFiles` 得到根 ✅
-        //    · `…/www/save/file1.rpgsave`（**存档文件本身**）→ 得到 `…/www/save`
-        //      而 package.json 在**根** → 直接查那个目录会查不到
-        //
-        //    实测（2026-11-06）：本鱼写端到端测试时传的是存档文件路径，
-        //    4 条测试全报 `noLocation` —— 就是这个原因。
-        //
-        //    用户从详情页导出时 gamePath 是 Game.exe（在根），不会踩到；
-        //    但「能处理两种输入」比「只接受一种」更稳。
-        //
-        // ⚠️ 顺便把**真正的游戏根**也找出来（`gameRoot` 要用它拼路径）。
         let (packageMain, realGameRoot) = locatePackageMain(
             root: root, engine: engine, fileManager: fileManager)
 

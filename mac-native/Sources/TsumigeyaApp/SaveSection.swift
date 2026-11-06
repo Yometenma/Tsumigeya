@@ -61,12 +61,6 @@ struct SaveSection: View {
             }
         }
         .onAppear {
-            // ⚠️ **用 `onAppear` 而不是 `.task`**（本鱼第一版用 `.task(id:)`，
-            //    结果是「存档」区块一直转圈 —— 快照渲染时那个异步任务还没跑完）。
-            //
-            //    `SaveStore.list` 本身是**同步的**（读盘几十毫秒），
-            //    没有 await 的必要 —— 用 `.task` 只是把一个同步操作包成了异步，
-            //    反而引入了「渲染时还没值」的窗口。
             reload()
         }
         .onChange(of: store.runningGames[game.id]) { _, _ in

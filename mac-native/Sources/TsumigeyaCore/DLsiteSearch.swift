@@ -123,11 +123,6 @@ public enum DLsiteSearch {
         // ① 找所有结构化锚点（`data-list_item_product_id="RJ…"`）
         let anchors = anchorPositions(in: html)
         guard !anchors.isEmpty else {
-            // ⚠️ 没有锚点时**返回空**，不退回宽松匹配。
-            //
-            //    宽松模式（扫所有 `product_id/RJ\d+`）会把按钮文案里的 RJ 也扫进来，
-            //    得到一堆重复 + 噪音。**宁可没有，也不要脏数据** ——
-            //    脏数据会被用户当成「真搜索结果」。
             return []
         }
 

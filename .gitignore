@@ -5,6 +5,10 @@ out/
 release/
 *.tsbuildinfo
 
+# SwiftPM 构建产物
+mac-native/.build/
+mac-native/dist/
+
 # 打包与构建日志
 *.log
 *.local
@@ -12,7 +16,7 @@ release/
 # 系统
 .DS_Store
 
-# 本机调试数据目录（`.dev-data` 及所有探针变体如 .dev-data-m42probe / .dev-data-m3probe）
+# 本机调试数据目录（`.dev-data` 及所有探针变体）
 .dev-data/
 .dev-data-*/
 .dev-scratch/
@@ -20,9 +24,6 @@ release/
 .vite/
 .zcode/
 
-# 探针结果文件与 boot 痕迹（项目目录内，见「验收探针」一节）
+# 探针结果文件与 boot 痕迹（项目目录内）
 .dev-*boot.txt
 .dev-*probe.json
-
-# 上游参考 clone（只读，不入库）
-_xeno_probe/

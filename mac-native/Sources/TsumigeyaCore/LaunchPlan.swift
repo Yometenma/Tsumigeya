@@ -172,17 +172,6 @@ public enum LaunchPlanner {
 
     // MARK: - NW.js
 
-    /// NW.js 的启动方案。
-    ///
-    /// 参数：游戏目录 + 可选的全屏开关。
-    /// NW.js 自己会读 `<游戏目录>/package.json` 决定主进程脚本。
-    ///
-    /// ⚠️ **全屏用命令行 `--start-fullscreen`，不改 `package.json` 的 `chromium-args`**
-    ///    —— 后者要**改写用户的游戏文件**，是 D53 明确拒绝的事（D80）。
-    ///
-    /// ⚠️ **顺序：Chromium 开关放在游戏目录之后**。
-    ///    NW.js 的用法是 `nw <path> [args]`；放在 `<path>` 之前会被当成 NW.js 自己的参数。
-    ///    实测安全位置是**游戏目录之后**（NW.js 会把无法识别的项透传给 Chromium）。
     static func nwjsPlan(
         _ ctx: LaunchContext, engine: String, fileExists: (String) -> Bool
     ) -> Result<LaunchPlan, LaunchFailure> {
@@ -231,10 +220,6 @@ public enum LaunchPlanner {
                 "[tsumigeya] Game.ini Title 修正跳过：\(iniWarning)\n".data(using: .utf8)!)
         }
 
-        // ② 建 ASCII 符号链接（D72）
-        //
-        // ⚠️ 建链接失败 → 退回真实路径。中文路径下 mkxp-z 大概率还是失败，
-        //    但至少错误发生在它那边、不在我们这，用户看到的报错是引擎自己给的。
         var gameFolder = ctx.folder
         if AsciiAlias.needsAsciiAlias(gameFolder) {
             if let alias = try? AsciiAlias.ensureAlias(for: gameFolder) {

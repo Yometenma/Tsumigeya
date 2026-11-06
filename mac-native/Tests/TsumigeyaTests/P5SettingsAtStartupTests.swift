@@ -39,7 +39,7 @@ struct SettingsLoadedAtStartupTests {
 
     /// 取出某个函数的**可执行代码**（跳过注释行）。
     func functionBody(_ source: String, signature: String) -> String? {
-        let lines = source.components(separatedBy: "\n")
+        let lines = source.components(separatedBy: .newlines)
         guard let start = lines.firstIndex(where: { $0.contains(signature) }) else {
             return nil
         }
@@ -88,7 +88,7 @@ struct SettingsLoadedAtStartupTests {
     func settingsPageDoesNotReload() throws {
         let src = try #require(source("Sources/TsumigeyaApp/SettingsPage.swift"),
                                "读不到 SettingsPage.swift")
-        let codeLines = src.components(separatedBy: "\n").filter { line in
+        let codeLines = src.components(separatedBy: .newlines).filter { line in
             let t = line.trimmingCharacters(in: .whitespaces)
             return !t.hasPrefix("//") && !t.hasPrefix("///")
         }

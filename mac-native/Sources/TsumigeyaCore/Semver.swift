@@ -56,7 +56,6 @@ import Foundation
 public struct ParsedVersion: Sendable, Equatable {
     /// 核心段（`.` 分隔），每段是「数字或字符串」。空串按 0。
     public var core: [VersionIdentifier]
-    /// 预发布段（第一个 `-` 之后、`+` 之前）。`nil` = 正式版。
     public var pre: [VersionIdentifier]?
 
     public init(core: [VersionIdentifier], pre: [VersionIdentifier]? = nil) {
@@ -132,7 +131,6 @@ public enum Semver {
         } else {
             withoutBuild = normalized
         }
-        // 再找第一个 `-`：它之前是核心段，之后是预发布段
         if let dash = withoutBuild.firstIndex(of: "-") {
             return ParsedVersion(
                 core: splitIdentifiers(String(withoutBuild[withoutBuild.startIndex..<dash])),

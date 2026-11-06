@@ -178,10 +178,6 @@ public enum ZipWriter {
          UInt8((v >> 16) & 0xFF), UInt8((v >> 24) & 0xFF)]
     }
 
-    /// DOS 时间戳（zip 格式用）。
-    ///
-    /// ⚠️ DOS 时间从 **1980** 年开始（早于它的要钳到 1980）——
-    ///    1980 年之前的日期写进去会变成负数/绕过，有些工具直接报错。
     static func dosTimestamp(_ date: Date) -> (time: UInt16, date: UInt16) {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = TimeZone(identifier: "UTC") ?? .current

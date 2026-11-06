@@ -198,13 +198,6 @@ public enum Categories {
         return updated
     }
 
-    /// 删分类：**同时从所有游戏的归属里摘掉这个 id**。
-    ///
-    /// ⚠️ 只删 defs 不删 assignments 会留下**悬空引用** ——
-    ///    筛选时显示一个不存在的分类，点进去永远是空列表。
-    ///    这正是 S7 实施时踩到的真 bug。
-    ///
-    /// ⚠️ **绝不删游戏**（D31 的精神：那是用户数据）。
     public static func remove(
         _ defs: CategoryDefs, assignments: CategoryAssignments, id: String
     ) -> (defs: CategoryDefs, assignments: CategoryAssignments) {

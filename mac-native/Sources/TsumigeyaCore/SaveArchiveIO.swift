@@ -217,7 +217,6 @@ public enum SaveArchiveIO {
 
         guard !manifest.files.isEmpty else { return .failure(.nothingToImport) }
 
-        // ③ **校验全部文件的 sha256**（一个字节都不写之前完成）
         var verified: [(name: String, data: [UInt8])] = []
         for entry in manifest.files {
             let path = (temp as NSString).appendingPathComponent(

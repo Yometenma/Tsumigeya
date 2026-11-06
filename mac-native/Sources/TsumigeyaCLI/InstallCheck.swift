@@ -1,12 +1,3 @@
-// P3 端到端安装：命令行入口。
-//
-// 这是 P3 的**最终验收**：不是「单测绿了」，而是「它真的能把一个引擎从网上下下来、
-// 解开、放到正确的路径上、并且能启动」。
-//
-// ⚠️ 验收纪律（与 AGENTS.md 的「收尾纪律」同款）：
-//   · 装进**真实数据目录**会动用户的 modules/ —— 但这是 P3 的目的（验证真实安装）
-//   · 装之前先记下「装之前的目录内容」，装完能对比「多了什么」
-//   · 不下载用户已有的引擎（那会覆盖他装好的运行时）
 import Foundation
 import TsumigeyaCore
 
@@ -44,10 +35,6 @@ func runInstall(engine: String?, dryRun: Bool) -> Int {
     print("落地目录: \(root)")
     print("状态    : \(existed ? "**已装**（会覆盖）" : "未装（全新安装）")")
 
-    // ⚠️ 安全检查：绝不覆盖用户已装的引擎（除非他明确要）
-    //
-    // 用户机器上已经装了 nwjs / mkxpz / easyrpg / renpy（共 1.1GB）。
-    // 本鱼跑验收时如果不小心装到它们头上，等于**删掉用户装好的运行时**。
     if existed && !dryRun {
         print("")
         print("⚠️ 这个引擎已经装了。为了不破坏你的运行时，这里**拒绝覆盖**。")
@@ -106,7 +93,6 @@ func installRealEngine(
     print("")
     print("=== 开始安装（下载 → 解压）===")
 
-    // 记录装之前有什么
     let before = (try? fileManager.contentsOfDirectory(atPath: root)) ?? []
     print("装之前目录内容: \(before.isEmpty ? "（不存在）" : before.joined(separator: ", "))")
 

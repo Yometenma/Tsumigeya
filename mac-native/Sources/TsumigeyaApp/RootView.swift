@@ -67,12 +67,6 @@ struct RootView: View {
                 store.startRunningPoll()
             }
         }
-        // ⚠️ **切回 app 时立刻刷新一次运行状态**（用户 2026-11-06 报：
-        //    「关掉游戏之后还是显示运行中」）。
-        //
-        //    2 秒轮询本身能修这个问题，但**从游戏切回来时等 2 秒还是慢** ——
-        //    用户刚关掉游戏、刚回到启动器，那一刻就该是对的。
-        //    `.onReceive` 订阅场景阶段变化，active 时立刻刷。
         .onReceive(
             NotificationCenter.default.publisher(
                 for: NSApplication.didBecomeActiveNotification)
@@ -309,10 +303,6 @@ struct GameListView: View {
     @Binding var selection: String?
 
     var body: some View {
-        // ⚠️ **列表视图 / 卡片视图**由设置控制（P5 接上这个消费点）。
-        //
-        //    之前这里固定用 `List` —— 设置项「游戏库用列表视图」改了也没反应。
-        //    现在两个分支都实现：设置开着用列表，关着用卡片（等 P7 有封面后更好看）。
         if store.settingBool(.listView) {
             listBody
         } else {
@@ -331,11 +321,6 @@ struct GameListView: View {
                             isRunning: store.runningGames[game.id] != nil
                         )
                         .tag(game.id)
-                        // ⚠️ **右键菜单**（用户 2026-11-06 报的第 1 个问题：
-                        //    「加入进游戏库的游戏没有移除用的按键」）。
-                        //
-                        //    mac 的惯例是右键菜单而不是每行一个删除按钮 ——
-                        //    后者会让列表看起来很吵，而且容易误点。
                         .contextMenu {
                             Button("编辑") {
                                 selection = game.id
@@ -578,7 +563,6 @@ struct WelcomeView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
-
 
 /// `store.manualRJFor` 是 `String?`，而 `.sheet(item:)` 要求 `Identifiable`。
 struct ManualRJTarget: Identifiable {

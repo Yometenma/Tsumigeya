@@ -130,7 +130,6 @@ public enum JSONStore {
             return "write tmp failed: \(error.localizedDescription)"
         }
 
-        // ---- 2. 备份旧文件（**在 rename 之前**，见文件头）----
         if fileManager.fileExists(atPath: url.path) {
             do {
                 if fileManager.fileExists(atPath: bak.path) {

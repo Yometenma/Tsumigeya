@@ -280,19 +280,6 @@ final class AppStore: ObservableObject {
     ///    而且我们的 pid 是 `spawn` 直接拿到的（不是猜的）。
     private var runningPollTask: Task<Void, Never>?
 
-    /// 开始轮询运行状态。
-    ///
-    /// ⚠️ **每次调用都先取消旧的再起新的**（而不是「已经在跑就 return」）。
-    ///
-    ///    本鱼第一版用的是 `guard runningPollTask == nil else { return }`，
-    ///    但那有个 **race**：
-    ///      ① 游戏全停 → 任务准备结束，但还没执行到 `runningPollTask = nil`
-    ///      ② 用户这时启动新游戏 → `startRunningPoll()` 看到非 nil → **直接 return**
-    ///      ③ 旧任务随后把它设为 nil 并退出
-    ///      ④ **没有任何轮询在跑** → 新游戏关了界面照样显示"运行中"
-    ///
-    ///    「先取消再起」没有这个窗口：轮询本身是无状态的（每次都重新扫一遍），
-    ///    重复启动的代价只是多一次 `kill(pid, 0)`。
     func startRunningPoll() {
         runningPollTask?.cancel()
         runningPollTask = nil
@@ -664,11 +651,6 @@ final class AppStore: ObservableObject {
     func setSetting(_ key: SettingsGroups.Key, _ value: JSONValue) {
         settings[key.rawValue] = value
         persistSettings()
-        // ⚠️ **改完立刻应用副作用**（这是 P5 补的）。
-        //
-        //    在此之前，设置只是被存下来但**没人消费** ——
-        //    用户改了主题却看不出变化，会以为「这个应用坏了」。
-        //    表现比「没有这个开关」更糟：没有开关他不会期待，有开关没反应会让他怀疑软件。
         applySettingSideEffect(key, value)
     }
 

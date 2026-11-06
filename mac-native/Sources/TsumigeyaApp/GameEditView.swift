@@ -53,19 +53,6 @@ struct GameEditView: View {
     // ===== 状态 =====
     @State private var saveError: String?
 
-    /// 是否有未保存的改动。
-    ///
-    /// ⚠️ **这是「派生状态」，不是一个标志位**。
-    ///
-    /// 本鱼第一版用 `@State private var isDirty` + `.onChange(of:) { isDirty = true }`，
-    /// 结果是「一进编辑页就显示有未保存的改动」（用户 2026-11-06 报的第 4 个问题）。
-    ///
-    /// 根因：`.onAppear` 里 `title = game.gameTitle`（从 "" 变成真值）→
-    /// `.onChange` 在**下一个渲染周期**触发 → 把 `onAppear` 里设的 `isDirty = false`
-    /// **覆盖掉了**。SwiftUI 的 onChange 不是同步的，这个顺序很容易想错。
-    ///
-    /// 正确做法：直接比较**当前值与原始值**。这样即使 onChange 多触发几次，
-    /// 只要值没真变，结果就是 false。**没有标志位就不可能搞错**。
     private var isDirty: Bool {
         if title != game.gameTitle { return true }
         if engine != game.gameEngine { return true }
@@ -74,16 +61,6 @@ struct GameEditView: View {
     }
 
     var body: some View {
-        // ⚠️ **用 `safeAreaInset` 而不是 VStack 装 header**（本鱼改了两次才修对）。
-        //
-        //    第一版：`VStack { header; Form }` → Form 内容超高时把 header **顶出可视区**
-        //            （快照实测：返回/保存按钮完全看不到）。
-        //    第二版：加 `.frame(maxHeight: .infinity)` → **没用**，
-        //            Form 自己要求内容高度，VStack 还是把 header 挤走。
-        //
-        //    正解：`safeAreaInset(edge: .top)` —— Form 自己滚动，
-        //    header **固定悬在内容之上**，永远看得见。
-        //    这也是 mac 编辑类界面的惯例（工具条不该被内容滚动带走）。
         Form {
             localSection
             metaSection
@@ -111,10 +88,6 @@ struct GameEditView: View {
 
     private var header: some View {
         HStack(spacing: 12) {
-            // ⚠️ **返回按钮**（用户 2026-11-06 报的第 2 个问题：编辑后没有返回的按键）。
-            //
-            //    mac 的惯例是左上角一个「‹ 返回」——本鱼漏了这个。
-            //    用 `chevron.left` + 文字而不是纯图标：文字让意图更明确。
             Button {
                 onDone()
             } label: {
@@ -492,10 +465,6 @@ struct EngineArgRow: View {
             case .dropdown(let options):
                 HStack(spacing: 10) {
                     labelText
-                    // ⚠️ **有内置选项表时显示中文标签，不是裸数字**。
-                    //
-                    //    本鱼原来直接把 `options`（["0","1","2","3"]）画进 Picker，
-                    //    用户看到的是数字 —— 与文本框没区别，白做了下拉。
                     if let rich = EngineArgsOptions.options(engine: engine, key: name) {
                         Picker("", selection: Binding(
                             // ⚠️ **必须用 normalizedValue 同时认 string 与 int**。
@@ -513,10 +482,6 @@ struct EngineArgRow: View {
                             ForEach(rich, id: \.value) { opt in
                                 Text(opt.label).tag(opt.value)
                             }
-                            // ⚠️ 存了个不认识的值（用户手改过 gameArgs）→
-                            //    单独列一项，让用户看到它是什么。
-                            //    不加这一项的话 Picker 会显示空白，
-                            //    而用户一改就**丢掉**他原来的值。
                             if let v = EngineArgsOptions.normalizedValue(value),
                                !EngineArgsOptions.isKnown(v, options: rich) {
                                 Text("未知值（\(v)）").tag(v)

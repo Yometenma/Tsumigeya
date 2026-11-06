@@ -58,14 +58,6 @@ public enum EngineArgs {
         key: String = "",
         availableVersions: [String] = []
     ) -> Control {
-        // ⚠️ **内置选项表优先于 manifest 的 type**（P5 补的）。
-        //
-        //    原因：manifest 里 `type: "dropdown"` 但**没有 options**
-        //    （上游 schema 里 gameArgs 只有 `{type, label, default}`），
-        //    所以 `rgssVersion` 原来回落成了文本框 —— 用户得手打 0/1/2/3，
-        //    而不知道 1 是 XP、3 是 VX Ace。
-        //
-        //    现在：有内置选项表就用下拉；没有才看 manifest 的 type。
         if let options = EngineArgsOptions.options(engine: engine, key: key) {
             return .dropdown(options.map(\.value))
         }

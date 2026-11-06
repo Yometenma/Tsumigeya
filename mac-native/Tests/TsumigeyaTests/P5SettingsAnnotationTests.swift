@@ -39,21 +39,38 @@ struct SettingsAnnotationConsistencyTests {
     func annotatedAsWorking() throws -> Set<String> {
         let src = try #require(source("Sources/TsumigeyaApp/SettingsPage.swift"),
                                "读不到 SettingsPage.swift")
-        let lines = src.components(separatedBy: "\n")
+        let lines = src.components(separatedBy: .newlines)
         guard let start = lines.firstIndex(where: { $0.contains("var pendingNote") }) else {
             throw TestError.notFound
         }
+        // ⚠️ **终止条件不能用 `// MARK:`**（本鱼实测踩到）。
+        //
+        //    那条 MARK 注释本身可能被清理脚本删掉（它属于「历史型」块），
+        //    删了之后扫描会跑出整个文件 → 收集到后面无关的 `case` →
+        //    测试假失败。
+        //
+        //    改用「**函数体的右括号**」作为终止条件：数花括号深度，
+        //    回到 0 就停。这才是不依赖注释的结构判据。
         var body: [String] = []
+        var depth = 0
         for idx in (start + 1)..<lines.count {
-            if lines[idx].contains("// MARK:") { break }
-            body.append(lines[idx])
+            let line = lines[idx]
+            body.append(line)
+            for ch in line {
+                if ch == "{" { depth += 1 }
+                else if ch == "}" {
+                    depth -= 1
+                    if depth <= 0 { break }
+                }
+            }
+            if depth <= 0 && body.count > 1 { break }
         }
         let text = body.joined(separator: "\n")
 
         var working: Set<String> = []
         var currentCases: [String] = []
 
-        for line in text.components(separatedBy: "\n") {
+        for line in text.components(separatedBy: .newlines) {
             let t = line.trimmingCharacters(in: .whitespaces)
             if t.hasPrefix("case ") {
                 let namesPart = t

@@ -254,15 +254,6 @@ public enum DLsiteParser {
             work.title = first["name"]?.stringValue
             work.workType = first["work_type"]?.stringValue
 
-            // ⚠️⚠️ **`brand` 是社团 ID（`RG51931`），不是名字**。
-            //
-            //    本鱼第一版直接把它赋给 `circle`，于是界面上会显示「RG51931」——
-            //    而真实页面的 `og:title` 里明明有名字（`[青春×フェティシズム]`）。
-            //
-            //    **真实数据一跑就暴露**（手写 HTML 用 `brand: "社团名"` 会掩盖这个 bug）。
-            //
-            //    处置：JSON 的 brand 只当「ID 兜底」，名字从 meta 取（下面 ② 那段），
-            //    取到名字就**覆盖**。
             if let brand = first["brand"]?.stringValue, !brand.isEmpty {
                 work.circle = brand
             }
@@ -295,11 +286,6 @@ public enum DLsiteParser {
                 metaContent(html, property: "og:description"))
         }
 
-        // ③ 年龄分级（从 URL 的 category 或 meta 里推）
-        //
-        // ⚠️ `category` 是 `maniax`（R18）/ `home`（一般向）等 ——
-        //    这不是「年龄分级」，但它**确实**决定是否 R18。
-        //    本鱼用 `ageRating` 记录，留给 UI 决定要不要模糊。
         if let json = extractContentsJSON(html),
            let cat = json.objectValue?["detail"]?.arrayValue?
             .first?.objectValue?["category"]?.stringValue {
@@ -390,16 +376,6 @@ public enum DLsiteParser {
         return nil
     }
 
-    /// 从一个标签字符串里取某个属性的值（支持单/双引号）。
-    ///
-    /// ⚠️⚠️ **本鱼第一版写错了**：用字符串拼接构造正则时
-    ///    `"\(name)=\\(quote)([^\\(quote)]*)\\(quote)"` 的转义在 Swift 里
-    ///    会变成 `content=\"([^\"]*)\"` —— **多了一层反斜杠**，
-    ///    于是正则要求字面上有 `\"` 而不是 `"` → **永远匹配不到**。
-    ///
-    ///    真实页面里的 `<meta property="og:title" content="...">` 明明存在，
-    ///    但 `metaContent` 返回 nil —— 正是这个原因。
-    ///    **用真数据跑一次就暴露了，单测（手写 HTML）无论如何都发现不了。**
     static func attribute(in tag: String, name: String) -> String? {
         for quote in ["\"", "'"] {
             // 用 `NSRegularExpression.escapedPattern` 或者直接手写两条正则，

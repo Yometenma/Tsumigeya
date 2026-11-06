@@ -35,19 +35,6 @@ struct SettingsPage: View {
             .padding(.top, 14)
             .padding(.bottom, 10)
 
-            // ⚠️ **不用 ScrollView 包外层**（本鱼实测踩到：设置页渲染成全白）。
-            //
-            //    `ScrollView` + `GroupBox` 的组合在**离屏 NSWindow** 里
-            //    拿不到完整布局（内容高度依赖滚动容器的提议尺寸，
-            //    而离屏时那个提议尺寸可能是 0 → 内容高度算成 0 → 什么都不画）。
-            //
-            //    在真实窗口里它可能是正常的（窗口会给出确定的高度），
-            //    但本鱼**没法在 SSH 会话里确认这一点** —— 而用户上次就报过
-            //    「引擎页有问题」。宁可写一个**不依赖滚动容器**的版本：
-            //    用 `Form`（它自己有滚动与分组语义）或者干脆不加滚动。
-            //
-            //    折中：设置项只有 12 条，900px 高度下放得下大部分；
-            //    放不下时用 `LazyVStack` + 外层 `Form`。
             Form {
                 ForEach(SettingsGroups.groups, id: \.id) { group in
                     Section {
@@ -68,17 +55,6 @@ struct SettingsPage: View {
             .formStyle(.grouped)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        // ⚠️ **不再在这里 loadSettings()**（P6 修）。
-        //
-        //    原来是 `.task { store.loadSettings() }` —— 那是**唯一的读取点**，
-        //    于是「启动时不读设置」成了一个 bug（用户设了列表视图，
-        //    重开 app 又是卡片，只有进一次设置页才对）。
-        //
-        //    现在读取移到 `AppStore.load()`（启动时），这里**只负责渲染**。
-        //
-        //    ⚠️ 而且留着它还有个坏处：每次进设置页都重读文件，
-        //       如果那时内存里有未落盘的改动就会被覆盖
-        //       （现在所有改动都立刻落盘，所以不会丢，但重复读是浪费）。
     }
 }
 

@@ -166,7 +166,6 @@ public enum SaveLocate {
             return SaveLocation(dir: dir)
         }
 
-        // ② 读不到 main → 退回启发式（**存在才用**）
         if let wwwSave, !wwwSave.entries.isEmpty { return SaveLocation(dir: wwwSave.path) }
         if let gameSave, !gameSave.entries.isEmpty { return SaveLocation(dir: gameSave.path) }
         return nil
