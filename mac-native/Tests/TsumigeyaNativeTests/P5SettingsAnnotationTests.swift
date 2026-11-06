@@ -1,31 +1,20 @@
-// 「设置标注与真实状态一致」判据测试。
+// 设置标注与真实状态一致：判据测试。
 //
 // ===== 这个文件守的是什么 =====
 //
-// 本鱼在设置页给未生效的项标了「未启用」+ 原因。那是**可证伪的自我披露**：
+// 本鱼在设置页给未生效的项标了「未启用」+ 原因。那是可证伪的自我披露：
 // 用户能区分「坏了」和「还没做」。
 //
-// ⚠️ 但**标注会过时**。本鱼实际踩到过：
+// 但标注会过时，而且标注本身也会说谎。本鱼实际踩到过两次：
 //
-//   `deletionConfirmation` 标着「还没有删除游戏的界面」，
-//   而同一轮里本鱼刚做完删除功能 —— 它**已经生效了**。
+// 1. deletionConfirmation 标着「还没有删除游戏的界面」，而同一轮刚做完删除。
+// 2. saveSyncMode 标着「只有手动模式能用」，但一律渲染成「未启用」胶囊 ——
+//    用户直接问「开关开着的时候为什么还是显示未启用」。
 //
-//   `saveSyncMode` 标着「存档功能还没做」，
-//   而 P6 做完后 `manual`（手动导入导出）**已经能用了**。
+// 第 2 个的根因更根本：只有一个字符串，两种语义被混成一个标签。
+// 「功能没做」和「能用但有须知」被同一句「未启用」否定了。
 //
-// ⚠️ **过时的「未启用」标注比不标更糟**：用户明明能用，
-//    却被告诉「未启用」，于是不会去用。
-//
-// ===== 判据怎么定 =====
-//
-// 「有没有逻辑消费」是可以**机械化判定**的（见 audit-settings.py）：
-//   · 有消费 → 不该有「未启用」标注
-//   · 没消费 → 必须有标注
-//
-// 本文件用**源码扫描**核对这个对应关系，因为：
-//   · 标注在 `SettingsPage.swift` 里
-//   · 消费点可能在 `AppStore.swift` / 其他视图 / 任何地方
-// 两者都在代码里，都能扫。
+// 修法：Note 带 isNotImplemented 标记，.caveat 不挂胶囊。
 import Foundation
 import Testing
 
@@ -44,32 +33,12 @@ struct SettingsAnnotationConsistencyTests {
                            encoding: .utf8)
     }
 
-    /// 全部 Swift 源码（App 层）。
-    func allAppSources() -> [String: String] {
-        let thisFile = URL(fileURLWithPath: #filePath)
-        let packageRoot = thisFile
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let appDir = packageRoot.appendingPathComponent("Sources/TsumigeyaApp")
-
-        var out: [String: String] = [:]
-        if let names = try? FileManager.default.contentsOfDirectory(atPath: appDir.path) {
-            for name in names where name.hasSuffix(".swift") {
-                if let text = try? String(
-                    contentsOf: appDir.appendingPathComponent(name), encoding: .utf8) {
-                    out[name] = text
-                }
-            }
-        }
-        return out
-    }
-
-    /// `pendingNote` 里返回 nil 的项 = 被认为「已生效」。
+    /// pendingNote 里被当成「能用」的项。
+    ///
+    /// 「能用」= return nil（无需说明）或 return .caveat(...)（有须知但能用）。
     func annotatedAsWorking() throws -> Set<String> {
         let src = try #require(source("Sources/TsumigeyaApp/SettingsPage.swift"),
                                "读不到 SettingsPage.swift")
-        // 找 `private var pendingNote: String? {` 的函数体
         let lines = src.components(separatedBy: "\n")
         guard let start = lines.firstIndex(where: { $0.contains("var pendingNote") }) else {
             throw TestError.notFound
@@ -81,35 +50,41 @@ struct SettingsAnnotationConsistencyTests {
         }
         let text = body.joined(separator: "\n")
 
-        // 抓 `case .a, .b:\n    return nil` 这种形态
-        // ⚠️ 用简单扫描而不是正则：Swift 代码里的 case 形态有限
         var working: Set<String> = []
         var currentCases: [String] = []
 
         for line in text.components(separatedBy: "\n") {
             let t = line.trimmingCharacters(in: .whitespaces)
             if t.hasPrefix("case ") {
-                // `case .appearance, .listView:` → 收集项名
                 let namesPart = t
                     .replacingOccurrences(of: "case ", with: "")
                     .components(separatedBy: ":")[0]
                 let names = namesPart
                     .components(separatedBy: ",")
-                    .map { $0.trimmingCharacters(in: .whitespaces)
-                        .replacingOccurrences(of: ".", with: "") }
+                    .map {
+                        $0.trimmingCharacters(in: .whitespaces)
+                            .replacingOccurrences(of: ".", with: "")
+                    }
                     .filter { !$0.isEmpty }
                 currentCases = names
             } else if t == "return nil" {
                 working.formUnion(currentCases)
                 currentCases = []
-            } else if t.hasPrefix("return ") {
-                currentCases = []   // 有标注 → 不算生效
+            } else if t.hasPrefix("return .caveat") || t.hasPrefix("return Note.caveat") {
+                // .caveat 也算能用 —— 那只是「有个须知」。
+                // 用户报的「开关开着还显示未启用」就是把它误判成未实现的后果。
+                working.formUnion(currentCases)
+                currentCases = []
+            } else if t.hasPrefix("return .notImplemented")
+                        || t.hasPrefix("return Note.notImplemented")
+                        || t.hasPrefix("return ") {
+                currentCases = []
             }
         }
         return working
     }
 
-    /// ⚠️⚠️ **`deletionConfirmation` 必须被标成「已生效」**（P6 已实现删除）。
+    /// deletionConfirmation 必须被标成「已生效」（P6 已实现删除）。
     @Test("删除确认已生效")
     func deletionConfirmationIsWorking() throws {
         let working = try annotatedAsWorking()
@@ -117,44 +92,61 @@ struct SettingsAnnotationConsistencyTests {
         #expect(ok, "deletionConfirmation 被标成未启用但功能已做好")
     }
 
-    /// ⚠️ **`listView` / `appearance` 必须被标成「已生效」**（这两个真的接了）。
+    /// listView / appearance 必须被标成「已生效」。
     @Test("外观与列表视图已生效")
     func appearanceAndListViewWorking() throws {
         let working = try annotatedAsWorking()
-        #expect(working.contains("appearance"))
-        #expect(working.contains("listView"))
+        let a = working.contains("appearance")
+        let l = working.contains("listView")
+        #expect(a, "appearance 被标成未启用但主题切换已生效")
+        #expect(l, "listView 被标成未启用但列表卡片切换已生效")
     }
 
-    /// ⚠️ **还没做的那几个必须标上**（不能悄悄写成「生效」）。
+    /// saveSyncMode 必须被算成「能用」（用户报的那个 bug）。
     ///
-    /// 守的是：把没做的标成生效，用户就会去点它、发现没反应、
-    /// 然后怀疑整个软件坏了。
+    /// 它用 .caveat（「只有手动模式能用；不接任何云」）——
+    /// 那是事实披露，不是「未启用」。
+    @Test("存档同步算能用")
+    func saveSyncModeIsWorking() throws {
+        let working = try annotatedAsWorking()
+        let ok = working.contains("saveSyncMode")
+        #expect(ok, "saveSyncMode 被标成未启用但 P6 之后 manual 模式真能用")
+    }
+
+    /// 还没做的那几个必须标成未实现。
     @Test("未实现的项有标注")
     func unimplementedAreAnnotated() throws {
         let working = try annotatedAsWorking()
         let notReady = [
-            "language",                 // 只有中文
-            "preferredLanguage",        // 多语言检测没做
+            "language",
+            "preferredLanguage",
             "fallbackLanguage",
             "languageSwitchPrompt",
-            "showAdultCovers",          // P7 才有封面
-            "diagnoseBeforeLaunch",     // 诊断没做
+            "showAdultCovers",
+            "diagnoseBeforeLaunch",
             "checkModuleUpdatesOnStartup",
+            "nonInstalledAutodetect",
         ]
         for key in notReady {
             let marked = working.contains(key)
-            #expect(!marked, "\(key) 被标成已生效但功能还没实现")
+            #expect(!marked, "该项被标成能用但功能还没实现")
         }
     }
 
-    /// ⚠️ **`saveSyncMode` 现在有一半能用**（manual 模式 = 存档页那两个按钮）。
-    ///
-    /// 它仍带标注（说明「不接云」），但那句话是**事实披露**而不是「未启用」。
-    @Test("存档同步标注说明不接云")
+    /// 两种语义必须用不同的渲染方式（胶囊只给「未启用」）。
+    @Test("胶囊只给未实现")
+    func capsuleOnlyForUnimplemented() throws {
+        let src = try #require(source("Sources/TsumigeyaApp/SettingsPage.swift"))
+        let conditional = src.contains("if note.isNotImplemented")
+        #expect(conditional)
+    }
+
+    /// saveSyncMode 的说明必须写明「不接任何云」（D83）。
+    @Test("存档同步说明不接云")
     func saveSyncNoteMentionsNoCloud() throws {
         let src = try #require(source("Sources/TsumigeyaApp/SettingsPage.swift"))
         let ok = src.contains("不接任何云")
-        #expect(ok, "saveSyncMode 的说明必须写明不接任何云")
+        #expect(ok, "saveSyncMode 的说明必须写明不接任何云（D83）")
     }
 
     enum TestError: Error { case notFound }

@@ -114,15 +114,30 @@ struct SettingRow: View {
             //
             //    所以：**没实现的前面挂一个「未启用」标记**，说清它现在没作用。
             //    这不是甩锅，是让用户能区分「坏了」和「还没做」。
-            if let pending = pendingNote {
+            // ⚠️⚠️ **标注的两种语义必须分开**（用户 2026-11-06 报：
+            //    「开关开着的时候为什么还是显示未启用」）。
+            //
+            //    本鱼原来只有一个 `pendingNote` 字符串，**一律渲染成「未启用」胶囊**。
+            //    于是 `saveSyncMode`（manual 模式**明明能用**）也挂上了「未启用」——
+            //    自己写的说明「只有手动模式能用」被自己的标签否定掉了。
+            //
+            //    ⚠️ 这与审计发现的「过时标注」是同一类问题：
+            //       **标签在替内容判断**，而标签是硬编码的。
+            //
+            //    现在分开：
+            //      · 功能没做      → 「未启用」胶囊 + 灰字说明
+            //      · 能用但有须知  → **只有**灰字说明（不挂胶囊）
+            if let note = pendingNote {
                 HStack(spacing: 6) {
-                    Text("未启用")
-                        .font(.system(size: 9, weight: .medium))
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 1)
-                        .background(Color.secondary.opacity(0.15), in: Capsule())
-                        .foregroundStyle(.secondary)
-                    Text(pending)
+                    if note.isNotImplemented {
+                        Text("未启用")
+                            .font(.system(size: 9, weight: .medium))
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(Color.secondary.opacity(0.15), in: Capsule())
+                            .foregroundStyle(.secondary)
+                    }
+                    Text(note.text)
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                 }
@@ -250,39 +265,52 @@ struct SettingRow: View {
     ///    · `appearance` → 已接（改窗口外观）
     ///    · `listView`   → 已接（库页两种视图）
     ///    · 其余         → **还没接**（它们依赖 P6 存档 / P7 元数据 / 诊断等功能）
-    private var pendingNote: String? {
+    /// 设置项下方的说明。
+    ///
+    /// ⚠️ **两种语义分开**（用户 2026-11-06 报「开关开着还显示未启用」）。
+    ///
+    /// 返回 nil = 无需说明。
+    struct Note {
+        /// 这句说明是「功能没做」还是「能用但有须知」。
+        ///
+        /// ⚠️ 这个区分**必须显式**，不能让渲染层去猜：
+        ///    猜错的表现就是 `saveSyncMode`（能用）被标成「未启用」，
+        ///    而它自己的说明却写着「只有手动模式能用」—— 自相矛盾。
+        let isNotImplemented: Bool
+        let text: String
+
+        static func notImplemented(_ text: String) -> Note {
+            Note(isNotImplemented: true, text: text)
+        }
+
+        /// 能用，但有件事用户需要知道（**不挂「未启用」胶囊**）。
+        static func caveat(_ text: String) -> Note {
+            Note(isNotImplemented: false, text: text)
+        }
+    }
+
+    private var pendingNote: Note? {
         switch key {
-        case .appearance, .listView:
-            return nil
-        case .deletionConfirmation:
-            // ⚠️ **这条已从「未启用」移除了**（P6 修的）。
-            //
-            //    本鱼原来写的是「还没有删除游戏的界面」—— 那是**过时的标注**：
-            //    同一轮里本鱼已经加上了删除（列表右键 + 详情页「更多」菜单），
-            //    而 `AppStore.confirmDelete` **真的读这个开关**。
-            //
-            //    ⚠️ 过时的「未启用」标注比不标更糟：用户明明能用，
-            //       却被告诉「未启用」，于是不会去用。
+        case .appearance, .listView, .deletionConfirmation:
+            // 这三个**真的能用**，不需要任何说明
             return nil
         case .showAdultCovers:
-            return "还没有封面（等 DLsite 集成）"
+            return .notImplemented("还没有封面（等 DLsite 集成）")
         case .saveSyncMode:
-            // ⚠️ **这条也更新了**：P6 做完了存档导出/导入，
-            //    所以 `manual`（手动导入导出）**现在真的能用**。
-            //
-            //    但它仍然标着提示，因为文案要说明「不接任何云」——
-            //    那是个**用户需要知道的事实**，不是「未启用」。
-            return "只有「手动」模式能用；不接任何云（D83）"
+            // ⚠️ **P6 做完后 manual 模式真的能用** → caveat 而不是 notImplemented。
+            //    「不接任何云」是用户**需要知道的事实**（D83：半成品云比没有更糟，
+            //    用户会以为存档在云上从而不再手动备份）。
+            return .caveat("只有「手动」模式能用；不接任何云，存档不会上传。")
         case .language:
-            return "目前只有简体中文界面"
+            return .notImplemented("目前只有简体中文界面")
         case .preferredLanguage, .fallbackLanguage, .languageSwitchPrompt:
-            return "多语言版本检测还没做"
+            return .notImplemented("多语言版本检测还没做")
         case .nonInstalledAutodetect:
-            return "自动识别走的是引擎页，还没接这个开关"
+            return .notImplemented("自动识别走的是引擎页，还没接这个开关")
         case .diagnoseBeforeLaunch:
-            return "启动诊断还没做"
+            return .notImplemented("启动诊断还没做")
         case .checkModuleUpdatesOnStartup:
-            return "启动更新检查还没做"
+            return .notImplemented("启动更新检查还没做")
         }
     }
 }

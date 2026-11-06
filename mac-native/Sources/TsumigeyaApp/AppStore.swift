@@ -682,14 +682,17 @@ final class AppStore: ObservableObject {
         switch key {
         case .appearance:
             let mode = value.stringValue ?? "system"
+            // ⚠️ 用 `NSApplication.shared` 而不是 `NSApp`（`NSApp` 是隐式解包，
+            //    在某些初始化时机是 nil —— 见 `applyAppearance` 的注释）
+            let app = NSApplication.shared
             switch mode {
             case "light":
-                NSApp.appearance = NSAppearance(named: .aqua)
+                app.appearance = NSAppearance(named: .aqua)
             case "dark":
-                NSApp.appearance = NSAppearance(named: .darkAqua)
+                app.appearance = NSAppearance(named: .darkAqua)
             default:
                 // 跟随系统：置 nil（系统会自己决定）
-                NSApp.appearance = nil
+                app.appearance = nil
             }
         default:
             // 其余项由各自的消费方读（见上面的注释）
@@ -701,12 +704,26 @@ final class AppStore: ObservableObject {
     ///
     /// ⚠️ 启动时也要应用：用户上次选了「深色」，这次打开就该是深色 ——
     ///    不能等他进设置页才生效。
+    ///
+    /// ⚠️⚠️ **`NSApp` 是隐式解包可选值，必须判空**（本鱼实测崩过一次）。
+    ///
+    ///    `AppKit` 里声明的是 `public let NSApp: NSApplication!` ——
+    ///    它只在 `NSApplication.shared` 被访问过、且 app 已初始化后才非 nil。
+    ///
+    ///    **崩溃场景**：本鱼的 `--snapshot` 模式在 `App.init()` 里就构造 `AppStore`
+    ///    并调 `load()` → `applyAppearance()` → `NSApp.appearance = nil`
+    ///    → **Fatal error: Unexpectedly found nil**。
+    ///
+    ///    用 `NSApplication.shared`（**不判空的懒加载属性**）比 `NSApp` 安全：
+    ///    访问它会创建/返回共享实例，不会返回 nil。
     func applyAppearance() {
         let mode = settingString(.appearance)
+        // ⚠️ 用 `NSApplication.shared` 而不是 `NSApp`（见上）
+        let app = NSApplication.shared
         switch mode {
-        case "light": NSApp.appearance = NSAppearance(named: .aqua)
-        case "dark": NSApp.appearance = NSAppearance(named: .darkAqua)
-        default: NSApp.appearance = nil
+        case "light": app.appearance = NSAppearance(named: .aqua)
+        case "dark": app.appearance = NSAppearance(named: .darkAqua)
+        default: app.appearance = nil
         }
     }
 

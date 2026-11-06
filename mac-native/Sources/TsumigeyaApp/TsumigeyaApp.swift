@@ -116,8 +116,11 @@ enum AboutPanel {
     ///
     /// ⚠️ 用 `orderFrontStandardAboutPanel` 而不是自建窗口：
     ///    它会自动读 Info.plist 里的版本号、应用名、图标 —— 与系统一致。
+    ///
+    /// ⚠️ 用 `NSApplication.shared` 而不是 `NSApp`（后者是隐式解包，
+    ///    在 `--snapshot` 之类未进入 app 生命周期的路径下是 nil）。
     static func show() {
-        NSApp.orderFrontStandardAboutPanel(nil)
+        NSApplication.shared.orderFrontStandardAboutPanel(nil)
     }
 }
 
