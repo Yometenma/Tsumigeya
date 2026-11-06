@@ -22,6 +22,7 @@ mac-native/dist/
 .dev-scratch/
 .verify-dist/
 .vite/
+__pycache__/
 .zcode/
 
 # 探针结果文件与 boot 痕迹（项目目录内）
