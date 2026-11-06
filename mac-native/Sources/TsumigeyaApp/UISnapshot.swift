@@ -121,8 +121,13 @@ enum UISnapshot {
         //
         // ⚠️ **必须挑一个有最多参数的游戏来渲染**（nwjs 只有 1 项，看不出表单效果）。
         //    挑 `gameArgs` 项最多的那个（通常是 mkxpz 或 easyrpg）。
+        // ⚠️ **优先挑「既有元数据、参数又多」的游戏** ——
+        //    这样编辑页快照能同时验到元数据编辑字段与引擎参数。
         let richestGame = store.games.max { a, b in
-            (store.manifest(for: a.gameEngine)?.gameArgs.count ?? 0)
+            let aMeta = store.meta(for: a.id) != nil ? 1 : 0
+            let bMeta = store.meta(for: b.id) != nil ? 1 : 0
+            if aMeta != bMeta { return aMeta < bMeta }
+            return (store.manifest(for: a.gameEngine)?.gameArgs.count ?? 0)
                 < (store.manifest(for: b.gameEngine)?.gameArgs.count ?? 0)
         }
         if let first = richestGame {

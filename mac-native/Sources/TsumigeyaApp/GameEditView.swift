@@ -38,6 +38,12 @@ struct GameEditView: View {
     @State private var localOpen = true
     @State private var argsOpen = true
     @State private var categoriesOpen = false
+    /// 元数据区块默认**展开**。
+    ///
+    /// ⚠️ 本鱼原来设的是 `false`（理由是「有元数据之后才需要改」），
+    ///    但那样用户进编辑页**看不到这个功能存在**（要自己点开才知道）。
+    ///    有元数据时它是「你要改的东西」，没有时只显示一行提示 —— 都不占地方。
+    @State private var metaOpen = true
 
     // ===== 暂存的编辑值（**点保存才落盘**）=====
     @State private var title: String = ""
@@ -80,6 +86,7 @@ struct GameEditView: View {
         //    这也是 mac 编辑类界面的惯例（工具条不该被内容滚动带走）。
         Form {
             localSection
+            metaSection
             argsSection
             categoriesSection
         }
@@ -209,6 +216,101 @@ struct GameEditView: View {
         } header: {
             headerRow("本地信息", "游戏名、引擎、路径", isOpen: $localOpen)
         }
+    }
+
+    // MARK: - DLsite 元数据编辑
+
+    /// 元数据编辑区块（P7）。
+    ///
+    /// ⚠️ **只在有元数据时显示区块内容**（没抓过就没有可改的东西）。
+    ///    但仍显示标题行 —— 让用户知道「这里能改元数据」，
+    ///    并给一个「去详情页抓取」的提示。
+    private var metaSection: some View {
+        Section {
+            if metaOpen {
+                if let meta = store.meta(for: game.id) {
+                    metaEditFields(meta)
+                } else {
+                    Label("还没有作品信息。先到详情页抓取 DLsite 元数据，回来才能改。",
+                          systemImage: "info.circle")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        } header: {
+            headerRow("作品信息", "标题 / 社团 / 简介（手改的值不会被刷新覆盖）",
+                      isOpen: $metaOpen)
+        }
+    }
+
+    /// 元数据编辑字段。
+    ///
+    /// ⚠️⚠️ **用户改过的字段必须记进 `editedFields`**（D26）：
+    ///    否则下次「刷新」时会被 DLsite 的值覆盖 —— 用户手改的值属于用户。
+    ///
+    /// ⚠️ **`rj` 不在可编辑列表里**（D25）：改 RJ 等于换一部作品，
+    ///    那应该重新搜索/重新添加，而不是在编辑页手打。
+    @ViewBuilder
+    private func metaEditFields(_ meta: GameDlsiteMeta) -> some View {
+        // 标题
+        HStack(spacing: 10) {
+            Text("标题")
+                .font(.callout).foregroundStyle(.secondary)
+                .frame(width: 44, alignment: .leading)
+            TextField("", text: Binding(
+                get: { meta.work.title ?? "" },
+                set: { store.editMetaField(gameId: game.id, field: "title", value: $0) }
+            ))
+            .textFieldStyle(.roundedBorder)
+        }
+
+        // 社团
+        HStack(spacing: 10) {
+            Text("社团")
+                .font(.callout).foregroundStyle(.secondary)
+                .frame(width: 44, alignment: .leading)
+            TextField("", text: Binding(
+                get: { meta.work.circle ?? "" },
+                set: { store.editMetaField(gameId: game.id, field: "circle", value: $0) }
+            ))
+            .textFieldStyle(.roundedBorder)
+        }
+
+        // 简介（多行）
+        VStack(alignment: .leading, spacing: 4) {
+            Text("简介")
+                .font(.callout).foregroundStyle(.secondary)
+            TextEditor(text: Binding(
+                get: { meta.work.description ?? "" },
+                set: { store.editMetaField(gameId: game.id, field: "description", value: $0) }
+            ))
+            .font(.system(size: 12))
+            .frame(height: 90)
+            .padding(4)
+            .background(Color(nsColor: .textBackgroundColor),
+                        in: RoundedRectangle(cornerRadius: 5))
+            .overlay(RoundedRectangle(cornerRadius: 5)
+                .strokeBorder(Color.secondary.opacity(0.25)))
+        }
+
+        // RJ（只读 —— 不可编辑，D25）
+        HStack(spacing: 10) {
+            Text("RJ")
+                .font(.callout).foregroundStyle(.secondary)
+                .frame(width: 44, alignment: .leading)
+            Text(meta.work.rj)
+                .font(.system(size: 12, design: .monospaced))
+                .textSelection(.enabled)
+            Spacer()
+            if !meta.editedFields.isEmpty {
+                Text("已手改：\(meta.editedFields.joined(separator: "、"))")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        Text("改 RJ 等于换一部作品 —— 请用「添加游戏」重新识别。")
+            .font(.caption2)
+            .foregroundStyle(.secondary)
     }
 
     // MARK: - 引擎参数
