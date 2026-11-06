@@ -24,10 +24,23 @@ struct GameDetailView: View {
 
     /// 顶图高度。
     ///
-    /// ⚠️ 从 320 降到 **240**（用户截图反馈：占的纵向空间太多，
-    ///    窗口不高的时候下面信息区被挤）。
-    ///    240 在常见窗口高度下能留出足够的信息区，同时大图仍有「海报感」。
-    private let headerHeight: CGFloat = 240
+    /// ⚠️ **按有没有封面分两档**（用户 2026-11-06 反馈：「图也不够大」）。
+    ///
+    ///    历史：
+    ///      · 原来 320 → 用户说「占的纵向空间太多」，降到 240
+    ///      · 现在有真封面了 → 240 显得**太小**（用户又说「图也不够大」）
+    ///
+    ///    判据其实是「**这张图有内容吗**」：
+    ///      · 无封面 = 一块纯色渐变 → 240 够了，大了是浪费空间
+    ///      · 有封面 = 一张海报 → 应该给足高度，那是这个页面的视觉主体
+    private var headerHeight: CGFloat {
+        hasCover ? 360 : 240
+    }
+
+    /// 这个游戏有没有 DLsite 封面。
+    private var hasCover: Bool {
+        store.meta(for: game.id)?.work.coverUrl != nil
+    }
 
     var body: some View {
         ScrollView {
@@ -53,41 +66,58 @@ struct GameDetailView: View {
     private var header: some View {
         ZStack(alignment: .bottomLeading) {
             // ===== 背景：有封面就用封面，没有就用引擎色渐变（P7）=====
-            //
-            // ⚠️ **封面必须叠一层暗色遮罩**：DLsite 的封面颜色不可预测，
-            //    而大图上的标题是**白字**。没有遮罩时浅色封面会让标题看不清。
-            //
-            // ⚠️ **加载失败要回落渐变，不能留空白**（网络断了 / 图被删了）。
             coverBackground
 
-            // 大图标（等 P7 有封面后换成 AsyncImage）
-            Image(systemName: "gamecontroller.fill")
-                .font(.system(size: 76))
-                .foregroundStyle(.white.opacity(0.22))
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // ⚠️⚠️ **手柄图标只在「没有封面」时出现**（用户 2026-11-06 反馈：
+            //    「封面前叠了一个蒙版，灰灰的，还有个半透明的手柄图标」）。
+            //
+            //    那个图标本来是**占位符** —— 没有封面时告诉用户「这是一个游戏」。
+            //    有真封面时还叠着它，等于在一块海报上印了个半透明图标，
+            //    又脏又多余。
+            if !hasCover {
+                Image(systemName: "gamecontroller.fill")
+                    .font(.system(size: 76))
+                    .foregroundStyle(.white.opacity(0.22))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
 
-            // ⚠️ **只用一层渐变遮罩**（用户截图反馈：原来叠了两层，
-            //    在 55% 处形成一条**可见的横向分界线**）。
+            // ⚠️ **遮罩强度取决于有没有封面**（用户 2026-11-06 反馈：
+            //    「封面前叠了一个蒙版，灰灰的」）。
             //
-            //    叠加两层渐变的错误在于：每层的 stops 位置不同，
-            //    交叠处（第二层从 clear 开始的点）会出现一个**斜率突变**，
-            //    人眼就会看到一条线。正确做法是**一个** `LinearGradient`，
-            //    用多个 stop 一次插值完。
+            //    本鱼原来对所有情况都压了**同样的重遮罩** —— 那是为
+            //    「引擎色渐变占位」设计的（白字要立得住）。
+            //    但**真封面上再压一层重遮罩就是糊**：用户看的是海报，
+            //    不是一块灰蒙蒙的东西。
             //
-            //    stops 设计（自上而下）：
-            //      0.00 透明        ← 顶部保留原色
-            //      0.55 轻微压暗     ← 过渡开始（缓，不要陡）
-            //      1.00 完全背景色   ← 底部融进背景
-            LinearGradient(
-                stops: [
-                    .init(color: .clear, location: 0.0),
-                    .init(color: Color(nsColor: .textBackgroundColor).opacity(0.22), location: 0.52),
-                    .init(color: Color(nsColor: .textBackgroundColor).opacity(0.72), location: 0.82),
-                    .init(color: Color(nsColor: .textBackgroundColor), location: 1.0),
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
+            //    现在的判据：
+            //      · **有封面** → 只在**底部 40%** 压暗（标题区要可读），
+            //                     顶部 **完全不压**（保留封面原色）
+            //      · **没封面** → 仍然整体轻压（渐变本身太亮，白字需要它）
+            if hasCover {
+                // 只压底部：0 → 0.55 完全透明，0.55 → 1.0 渐暗到背景色
+                LinearGradient(
+                    stops: [
+                        .init(color: .clear, location: 0.0),
+                        .init(color: .clear, location: 0.52),
+                        .init(color: Color(nsColor: .textBackgroundColor).opacity(0.55), location: 0.78),
+                        .init(color: Color(nsColor: .textBackgroundColor), location: 1.0),
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            } else {
+                // 无封面：整体轻压（渐变占位需要它让白字立得��）
+                LinearGradient(
+                    stops: [
+                        .init(color: .clear, location: 0.0),
+                        .init(color: Color(nsColor: .textBackgroundColor).opacity(0.22), location: 0.52),
+                        .init(color: Color(nsColor: .textBackgroundColor).opacity(0.72), location: 0.82),
+                        .init(color: Color(nsColor: .textBackgroundColor), location: 1.0),
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            }
 
             // 标题叠在图上（左下角）
             VStack(alignment: .leading, spacing: 7) {
@@ -328,6 +358,30 @@ struct GameDetailView: View {
 
             Divider()
 
+            // ⚠️⚠️ **区块顺序按「用户最关心什么」排**（用户 2026-11-06 反馈：
+            //    「下方详情里最先映入眼帘的不是作品信息，而是一眼看到引擎和路径，
+            //     并不美观」）。
+            //
+            //    本鱼原来的顺序是照搬 P5 的（那时还没有 DLsite 元数据）：
+            //      启动 → 引擎/路径 → 引擎参数 → 作品信息 → 存档
+            //
+            //    那个顺序的问题：**引擎和路径是内部实现细节**
+            //    （`NW.js` / `/Users/.../nw.exe`），用户点开游戏页面想看的是
+            //    「这是什么作品」（社团、类型、简介）。
+            //
+            //    现在的顺序：
+            //      ① 启动按钮        —— 唯一的操作
+            //      ② 作品信息        —— 用户真正想看的（有元数据时）
+            //      ③ 引擎/路径       —— 技术细节，往下放
+            //      ④ 引擎参数        —— 更少用的技术细节
+            //      ⑤ 存档            —— 偶尔用（换机才导出）
+            //
+            //    ⚠️ 没有元数据时 `dlsiteSection` 只显示一行提示（含「手动输入 RJ」），
+            //      不会占很多空间 —— 所以这个顺序对两种状态都合理。
+            dlsiteSection
+
+            Divider()
+
             infoRows
 
             Divider()
@@ -336,17 +390,6 @@ struct GameDetailView: View {
 
             Divider()
 
-            // ⚠️ DLsite 元数据（P7）：封面 + 社团 + 简介
-            //
-            //    位置在引擎参数之后、存档之前：它是「作品信息」，
-            //    比引擎参数次要，但比存档常用（第一次添加游戏就要抓）。
-            dlsiteSection
-
-            Divider()
-
-            // ⚠️ **存档区块放在最下面**（P6）。
-            //    位置的理由：它是「偶尔用一次」的功能（换机才导出），
-            //    不该占最显眼的位置。而启动按钮永远在最上面。
             SaveSection(game: game)
         }
         .padding(.horizontal, 28)
@@ -442,7 +485,8 @@ struct GameDetailView: View {
 
     private var infoRows: some View {
         VStack(alignment: .leading, spacing: 10) {
-            infoRow("引擎", engineDisplayName)
+            // ⚠️ **不再重复显示「引擎」**：顶部大图上已经有 `NW.js` 的徽标了。
+            //    同一页里同一个信息出现两次是噪音（与之前「标题重复」同一个毛病）。
             infoRow("路径", game.gamePath, mono: true)
             if let pid = store.runningGames[game.id] {
                 infoRow("进程", "运行中（pid \(pid)）")
