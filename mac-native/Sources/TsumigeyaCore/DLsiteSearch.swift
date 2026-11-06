@@ -218,6 +218,15 @@ public enum DLsiteSearch {
 
     /// 从一条记录里提取社团名（`maker_name` 块）。
     static func extractCircle(_ chunk: String) -> String? {
+        // ⚠️ **从 `class="maker_name"` 之后才开始找 `</dd>`**。
+        //
+        //    本鱼第一版从 `blockStart.upperBound` 找 —— 那是对的，
+        //    但**最后一条记录**的 chunk 范围会延伸到文件末尾（没有下一条记录），
+        //    里面还可能含 `</dd>` 之外的 HTML（`</div></body></html>`）。
+        //    实测第 4 条返回 nil，前 3 条正常 —— 正是这个边界差。
+        //
+        //    修法：明确限定「这条 `maker_name` 块的 `</dd>`」，
+        //    且如果找不到，说明结构不完整 → 返回 nil（不猜）。
         guard let blockStart = chunk.range(of: "class=\"maker_name\""),
               let blockEnd = chunk.range(
                 of: "</dd>", range: blockStart.upperBound..<chunk.endIndex) else {
