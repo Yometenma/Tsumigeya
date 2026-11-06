@@ -34,6 +34,19 @@ func main() {
         exit(runSaveCheck() == 0 ? 0 : 1)
     case "rj-probe":
         exit(runRjProbe(paths: Array(args.dropFirst())) == 0 ? 0 : 1)
+    case "dlsite-fetch":
+        // dlsite-fetch <RJ> [category]：真实抓取（验限速与缓存）
+        let rj = args.count > 1 ? args[args.index(args.startIndex, offsetBy: 1)] : "RJ294126"
+        let cat = args.count > 2 ? args[args.index(args.startIndex, offsetBy: 2)] : "maniax"
+        // main.swift 顶层不能 await；用锁盒 + semaphore 把异步转同步。
+        let sem = DispatchSemaphore(value: 0)
+        let box = ExitCodeBox()
+        Task {
+            box.value = Int32(await runDlsiteFetch(rj: rj, category: cat))
+            sem.signal()
+        }
+        sem.wait()
+        exit(box.value)
     case "dlsite-probe":
         // dlsite-probe <html文件>：用真实页面验证 DLsite 解析器
         let path = args.count > 1
@@ -193,3 +206,14 @@ func roundtripGames() -> Int {
 }
 
 main()
+
+
+/// 跨并发域传退出码。
+final class ExitCodeBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _value: Int32 = 1
+    var value: Int32 {
+        get { lock.lock(); defer { lock.unlock() }; return _value }
+        set { lock.lock(); defer { lock.unlock() }; _value = newValue }
+    }
+}
