@@ -93,11 +93,15 @@ enum UISnapshot {
             name: "03-engines",
             dir: directory, appearance: appearance)
 
-        if let first = store.games.first {
+        // 渲染**有封面**的那个游戏（P7）：优先挑有 DLsite 元数据的。
+        let detailGame = store.games.first { game in
+            store.meta(for: game.id)?.work.coverUrl != nil
+        } ?? store.games.first
+        if let detailGame {
             failures += captureWindow(
-                GameDetailRepresentable(game: first, store: store),
+                GameDetailRepresentable(game: detailGame, store: store),
                 size: CGSize(width: 900, height: 760),
-                name: "04-detail-\(first.id)",
+                name: "04-detail-\(detailGame.id)",
                 dir: directory, appearance: appearance)
         }
 
@@ -192,6 +196,28 @@ enum UISnapshot {
         RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.15))
         hosting.layoutSubtreeIfNeeded()
         RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.15))
+
+        // ⚠️⚠️ **再等一会儿**：`AsyncImage` 下载网络封面是**异步**的。
+        //
+        //    P7 实测：详情页快照里封面是空的（显示回落渐变的蓝底），
+        //    因为本鱼上面只等了 0.3 秒，而 DLsite 的封面要几百毫秒到几秒。
+        //
+        //    这里等 2.5 秒（够下载一张 200KB 的图），并让 RunLoop 真的转起来
+        //    （`run(mode:)` 会让主线程处理事件，包括 URLSession 的回调）。
+        //
+        //    ⚠️ 代价：每张详情页快照慢 2.5 秒。但**不等的代价是快照永远看不到封面** ——
+        //       那等于 P7 的视觉部分一直没验过。
+        // 再转一圈，让 SwiftUI 完成第二次布局。
+        //
+        // ⚠️ **不再等 3 秒**：那是本鱼为了等 `AsyncImage` 下载封面加的，
+        //    而实测**根本等不到** —— `AsyncImage` 在离屏窗口里不触发下载
+        //    （它靠「视图真的上屏可见」判断）。
+        //
+        //    → 快照里封面缺席是**这个工具的限制**，不是产品 bug：
+        //      用户在真窗口里看是正常的（2026-11-06 确认）。
+        //      封面那一条**用真窗口验**，快照只管布局与文本。
+        RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.3))
+        hosting.layoutSubtreeIfNeeded()
 
         // 取像素
         guard let rep = hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds) else {

@@ -163,11 +163,27 @@ public enum DLsiteParser {
     /// 对应 Electron 版：`extractContentsJson`
     ///
     /// - Returns: 解析出的 JSON；找不到 / 解析失败返回 nil。
+    ///
+    /// ⚠️⚠️ **必须找 `var contents`，不能只找 `contents`**（本鱼实测踩到）。
+    ///
+    ///    真实页面（RJ331590）里 `contents` 这个词出现了 **7 次**：
+    ///    · 前 6 次是 HTML class 名 `work_parts_multitype_item type_contents`
+    ///    · 第 7 次才是真正的 `var contents = {...}`
+    ///
+    ///    本鱼第一版用 `html.range(of: "contents")` 找**第一个** ——
+    ///    于是从一个无关位置往后找 `{`，扫到了别的东西 → **解析失败**。
+    ///
+    ///    症状很隐蔽：meta 兜底能成功（标题/社团/封面都对），
+    ///    所以界面上「看起来能用」—— 但 `work_type` / `ageRating` 永远是空。
+    ///
+    ///    ⚠️ 而且 RJ294126 那个页面**只有 1 处 `contents`** ——
+    ///       所以本鱼用那个页面做的测试**全部通过**，掩盖了这个 bug。
+    ///       **两个真实样本才能暴露它。**
     public static func extractContentsJSON(_ html: String) -> JSONValue? {
-        // 找 `var contents` 之后第一个 `{`
-        guard let varRange = html.range(of: "contents") else { return nil }
+        // 找 `var contents`（也接受 `let contents` / `contents =` 的变体）
+        guard let varRange = html.range(of: "var contents") else { return nil }
 
-        // 从 `contents` 之后找第一个 `{`
+        // 从 `var contents` 之后找第一个 `{`
         let after = html[varRange.upperBound...]
         guard let braceRel = after.firstIndex(of: "{") else { return nil }
 

@@ -88,6 +88,17 @@ struct RootView: View {
             CreateCategorySheet()
                 .environmentObject(store)
         }
+        // 手动输入 RJ 号（P7）
+        //
+        // ⚠️ 为什么需要：用户的真实游戏**全部检测不到 RJ**，
+        //    没有手动入口的话 P7 完全无法使用。
+        .sheet(item: Binding(
+            get: { store.manualRJFor.map(ManualRJTarget.init(id:)) },
+            set: { if $0 == nil { store.closeManualRJ() } }
+        )) { target in
+            ManualRJSheet(gameId: target.id)
+                .environmentObject(store)
+        }
         // 删除游戏确认
         .alert("从游戏库移除？", isPresented: Binding(
             get: { store.pendingDelete != nil },
@@ -566,4 +577,10 @@ struct WelcomeView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
+}
+
+
+/// `store.manualRJFor` 是 `String?`，而 `.sheet(item:)` 要求 `Identifiable`。
+struct ManualRJTarget: Identifiable {
+    let id: String
 }

@@ -52,22 +52,13 @@ struct GameDetailView: View {
 
     private var header: some View {
         ZStack(alignment: .bottomLeading) {
-            // 占位背景：引擎配色渐变
+            // ===== 背景：有封面就用封面，没有就用引擎色渐变（P7）=====
             //
-            // ⚠️ **必须够深**（用户截图反馈的第一个隐患）：
-            //    大图上的标题是**白字**，底色太浅就看不清。
-            //    原来用 `tint.opacity(0.55)`，浅色引擎（teal / cyan / mint）配白字会发灰。
+            // ⚠️ **封面必须叠一层暗色遮罩**：DLsite 的封面颜色不可预测，
+            //    而大图上的标题是**白字**。没有遮罩时浅色封面会让标题看不清。
             //
-            //    现在：底色用 tint 的**混合暗色**（与 .black 混），保证足够暗；
-            //    并且底部再压一层渐变，标题区的对比度恒定。
-            LinearGradient(
-                colors: [
-                    engineTint.mix(with: .black, by: 0.35),
-                    engineTint.mix(with: .black, by: 0.05),
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
+            // ⚠️ **加载失败要回落渐变，不能留空白**（网络断了 / 图被删了）。
+            coverBackground
 
             // 大图标（等 P7 有封面后换成 AsyncImage）
             Image(systemName: "gamecontroller.fill")
@@ -135,6 +126,193 @@ struct GameDetailView: View {
         .clipped()
     }
 
+    // MARK: - DLsite 元数据
+
+    /// DLsite 元数据区块（P7）。
+    ///
+    /// 三种状态：
+    ///   · 没有元数据 → 「获取作品信息」按钮（自动从路径检测 RJ）
+    ///   · 正在抓 → 进度
+    ///   · 有元数据 → 社团/作品类型/简介 + 刷新按钮
+    private var dlsiteSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Text("作品信息")
+                    .font(.system(size: 13, weight: .semibold))
+                if let rj = store.meta(for: game.id)?.work.rj
+                    ?? store.detectRJ(for: game).first {
+                    Text(rj)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.tertiary)
+                }
+                Spacer()
+                dlsiteActions
+            }
+
+            if store.fetchingMeta.contains(game.id) {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small)
+                    Text("正在从 DLsite 抓取…")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            } else if let error = store.metaError[game.id] {
+                // ⚠️ **错误必须是可读的**（`DLsiteError.message` 每种说不同的话）
+                Label(error, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if let meta = store.meta(for: game.id) {
+                dlsiteInfo(meta)
+            } else {
+                // 还没有元数据
+                Text(noMetaHint)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    /// 没有元数据时的提示（区分「检测不到 RJ」与「还没抓」）。
+    private var noMetaHint: String {
+        let detected = store.detectRJ(for: game)
+        if detected.isEmpty {
+            return "这个游戏的路径里没有 RJ 号。把游戏目录名改成含 RJ 号（如 RJ294126）后重试。"
+        } else if detected.count > 1 {
+            return "检测到多个 RJ（\(detected.prefix(3).joined(separator: " / "))）"
+                + "，会先用第一个。点「获取作品信息」试试。"
+        } else {
+            return "还没有抓取作品信息。点「获取作品信息」会从 DLsite 拉封面与简介。"
+        }
+    }
+
+    @ViewBuilder
+    private var dlsiteActions: some View {
+        let detected = store.detectRJ(for: game)
+        if store.fetchingMeta.contains(game.id) {
+            EmptyView()
+        } else if store.meta(for: game.id) != nil {
+            Button("刷新") {
+                if let rj = store.meta(for: game.id)?.work.rj ?? detected.first {
+                    store.fetchMeta(gameId: game.id, rj: rj, refresh: true)
+                }
+            }
+            .controlSize(.small)
+        } else if let rj = detected.first {
+            // 自动检测到 RJ → 一键抓取
+            Button("获取作品信息") {
+                store.fetchMeta(gameId: game.id, rj: rj)
+            }
+            .controlSize(.small)
+        } else {
+            // ⚠️⚠️ **检测不到 RJ 时必须有手动输入入口**（本鱼实测发现的关键缺口）
+            //
+            //    用户的 5 个真实游戏**全部没有 RJ**：目录名不带 RJ、
+            //    KARRYN'S PRISON 与苍蓝星连 readme 都没有、
+            //    Unholy maiden 的 readme 里也没有 RJ 号。
+            //
+            //    → 没有手动入口的话，P7 对这个用户**完全没用**。
+            //
+            //    ⚠️ 而且**不能自动去搜**：D24 明确「搜索绝不自动选第一条」
+            //       （实测首条常不是目标作品），自动选错了就是拿错的封面。
+            Button("手动输入 RJ") {
+                store.beginManualRJ(gameId: game.id)
+            }
+            .controlSize(.small)
+        }
+    }
+
+    /// 有元数据时的信息行。
+    private func dlsiteInfo(_ meta: GameDlsiteMeta) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 14) {
+                if let circle = meta.work.circle, !circle.isEmpty {
+                    HStack(spacing: 4) {
+                        Text("社团").font(.caption2).foregroundStyle(.secondary)
+                        Text(circle).font(.caption2)
+                    }
+                }
+                if let workType = meta.work.workType, !workType.isEmpty {
+                    HStack(spacing: 4) {
+                        Text("类型").font(.caption2).foregroundStyle(.secondary)
+                        // ⚠️ 作品类型码是 DLsite 内部的（SOU / RPG / ADV），
+                        //    这里**原样显示**（翻译表留到有需要时）
+                        Text(workType).font(.caption2)
+                    }
+                }
+                if meta.editedFields.contains("title") {
+                    Text("标题已手改")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+                Spacer()
+            }
+
+            if let desc = meta.work.description, !desc.isEmpty {
+                Text(desc)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(4)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+            }
+        }
+    }
+
+    /// 封面背景（有封面用封面 + 暗色遮罩；没有用引擎色渐变）。
+    ///
+    /// ⚠️ **用 `AsyncImage`**（用户 2026-11-06 实测在真窗口里正常显示）。
+    ///
+    /// ⚠️ **快照（`--snapshot`）里看不到封面是这个工具的限制**，不是 bug：
+    ///    `AsyncImage` 靠「视图真的上屏可见」判断要不要开始下载，
+    ///    而快照窗口放在屏幕外（-3000,-3000）→ 它不下载 → 显示回落渐变。
+    ///
+    ///    本鱼试过三种绕过（等 2.5s / 预热 URLCache / DispatchGroup 等完），
+    ///    前两个无效、第三个**死锁**（主线程被堵，回调轮不到）。
+    ///    最后还错手改成了自写的 CoverImage 组件 —— **那是改错对象**：
+    ///    产品代码在真窗口里是好的，该接受限制的是快照工具。
+    ///
+    ///    → 保持 `AsyncImage`。快照里封面缺席，**用真窗口验这一条**。
+    @ViewBuilder
+    private var coverBackground: some View {
+        if let cover = store.meta(for: game.id)?.work.coverUrl,
+           let url = URL(string: cover) {
+            AsyncImage(url: url) { phase in
+                switch phase {
+                case .success(let image):
+                    image
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        // ⚠️ **遮罩**：DLsite 的封面颜色不可预测，
+                        //    而大图上的标题是白字。没有遮罩时浅色封面会让标题看不清。
+                        .overlay(Color.black.opacity(0.42))
+                default:
+                    // 加载中 / 失败 → 引擎色渐变（与没有封面时一样）
+                    engineGradient
+                }
+            }
+        } else {
+            engineGradient
+        }
+    }
+
+    /// 引擎色渐变（没有封面时的占位）。
+    ///
+    /// ⚠️ **必须够深**（用户截图反馈的第一个隐患）：
+    ///    大图上的标题是**白字**，底色太浅就看不清。
+    ///    用 `tint` 的**混合暗色**（与 .black 混）保证足够暗。
+    private var engineGradient: some View {
+        LinearGradient(
+            colors: [
+                engineTint.mix(with: .black, by: 0.35),
+                engineTint.mix(with: .black, by: 0.05),
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+
     /// 游戏目录名（父目录的最后一段）。
     private var folderHint: String {
         let dir = DetectPath.gameDirForFiles(game.gamePath)
@@ -155,6 +333,14 @@ struct GameDetailView: View {
             Divider()
 
             engineArgsSection
+
+            Divider()
+
+            // ⚠️ DLsite 元数据（P7）：封面 + 社团 + 简介
+            //
+            //    位置在引擎参数之后、存档之前：它是「作品信息」，
+            //    比引擎参数次要，但比存档常用（第一次添加游戏就要抓）。
+            dlsiteSection
 
             Divider()
 

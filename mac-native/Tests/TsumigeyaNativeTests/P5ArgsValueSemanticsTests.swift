@@ -115,7 +115,7 @@ struct EditViewBindingSourceTests {
         //    本鱼第一版扫全文，结果命中了**解释这个 bug 的注释本身**
         //    （注释里写了 `in: [:], schema: def` 这个错误写法）。
         //    判据要盯的是**可执行代码**，不是注释。
-        let codeLines = source.split(separator: "\n").filter { line in
+        let codeLines = source.components(separatedBy: .newlines).filter { line in
             let t = line.trimmingCharacters(in: .whitespaces)
             return !t.hasPrefix("//") && !t.hasPrefix("///") && !t.hasPrefix("*")
         }

@@ -98,8 +98,18 @@ struct RunningPollWiringTests {
     }
 
     /// 去掉注释行后的代码行。
+    ///
+    /// ⚠️⚠️ **必须用 `components(separatedBy: .newlines)`，不能用 `split(separator: "\n")`**
+    ///    —— 这是本项目**第三次**踩这个坑（AGENTS.md 里记过两次）。
+    ///
+    ///    原因：Swift 的 `String` 按 **grapheme cluster** 比较，
+    ///    而 CRLF 的 `\r\n` 是**一个 Character**，不等于 `"\n"`
+    ///    → `split(separator: "\n")` 对 CRLF 文件**一行都切不出来**（整份文件当 1 段）。
+    ///
+    ///    症状：本测试统计「调用点数量」时永远得到 1（实际是 2）→ 假失败。
+    ///    ⚠️ 而且这种失败看起来像「代码真的少了一处调用」，会误导排查方向。
     func codeLines(_ source: String) -> [String] {
-        source.split(separator: "\n").compactMap { line -> String? in
+        source.components(separatedBy: .newlines).compactMap { line -> String? in
             let t = line.trimmingCharacters(in: .whitespaces)
             if t.hasPrefix("//") || t.hasPrefix("///") || t.hasPrefix("*") { return nil }
             return t
@@ -129,7 +139,7 @@ struct RunningPollWiringTests {
     @Test("启动后开始轮询")
     func pollAfterLaunch() throws {
         let source = try #require(appStoreSource(), "读不到 AppStore.swift")
-        let lines = source.split(separator: "\n", omittingEmptySubsequences: false)
+        let lines = source.components(separatedBy: .newlines)
         var found = false
         for (idx, line) in lines.enumerated() {
             guard line.contains("runningGames[game.id] = pid") else { continue }

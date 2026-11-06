@@ -28,7 +28,7 @@ struct DlsiteRealPageTests {
         guard let url = Bundle.module.url(
             forResource: "dlsite-RJ294126", withExtension: "html") else {
             Issue.record("找不到夹具 dlsite-RJ294126.html（Package.swift 里的 resources 声明有问题？）")
-            throw FixtureError.missing
+            throw MultiSampleFixtureError.missing
         }
         return try String(contentsOf: url, encoding: .utf8)
     }
@@ -137,3 +137,81 @@ struct DlsiteRealPageTests {
         #expect(cands.contains("RJ294126"), "页面里该有 RJ294126")
     }
 }
+
+// MARK: - 第二个真实样本（暴露「多个 contents」的 bug）
+
+/// ⚠️⚠️ **本 suite 存在的理由：单个样本会掩盖 bug**。
+///
+/// `extractContentsJSON` 原来用 `html.range(of: "contents")` 找**第一个** `contents`。
+/// RJ294126 的页面里 `contents` **只有 1 处**（就是 `var contents` 那处）→ **测试全过**。
+///
+/// 而 RJ331590 的页面里有 **7 处**：
+///   · 前 6 处是 HTML class 名 `work_parts_multitype_item type_contents`
+///   · 第 7 处才是 `var contents = {...}`
+///
+/// → 从第一个 `contents` 往后找 `{`，扫到无关内容 → **解析失败**。
+///
+/// 症状很隐蔽：meta 兜底能成功（标题/社团/封面都对），界面上「看起来能用」，
+/// 但 `work_type` / `ageRating` **永远是空**。
+///
+/// **两个真实样本才能暴露它。**
+@Suite("真实页面：两个样本")
+struct DlsiteTwoSampleTests {
+
+    func fixture(_ name: String) throws -> String {
+        guard let url = Bundle.module.url(forResource: name, withExtension: "html") else {
+            Issue.record("找不到夹具 \(name).html")
+            throw MultiSampleFixtureError.missing
+        }
+        return try String(contentsOf: url, encoding: .utf8)
+    }
+
+    /// ⚠️ **有多个 `contents` 的页面也能解析**。
+    @Test("多个 contents 干扰")
+    func survivesMultipleContents() throws {
+        let html = try fixture("dlsite-RJ331590")
+        // 先确认夹具里真有干扰项
+        let count = html.components(separatedBy: "contents").count - 1
+        #expect(count > 1, "夹具里该有多个 contents（干扰项）")
+
+        let json = try #require(DLsiteParser.extractContentsJSON(html),
+                                "有干扰项时解析失败 —— 可能又从第一个 contents 找了")
+        let obj = try #require(json.objectValue)
+        #expect(obj["detail"] != nil)
+    }
+
+    /// ⚠️ **`work_type` 与 `ageRating` 必须能解析**（它们是 meta 兜底给不了的）。
+    @Test("workType 与 ageRating")
+    func workTypeAndAgeRating() throws {
+        let html = try fixture("dlsite-RJ331590")
+        let work = try #require(DLsiteParser.parseWork(
+            from: html, rj: "RJ331590", fetchedAt: "t"))
+
+        // ⚠️ 这两个字段**只能从 JSON 拿到**（meta 里没有）
+        let workType = try #require(work.workType,
+            "workType 为空 —— JSON 没解析成功，只有 meta 兜底")
+        #expect(workType == "RPG")
+        #expect(work.ageRating == "r18")
+
+        // 其他字段也对
+        #expect(work.title?.contains("KARRYN") == true)
+        let circle = try #require(work.circle)
+        #expect(circle.contains("Remtairy"))
+    }
+
+    /// 两个样本都不能因为多语言的 `lang_options` 出问题。
+    @Test("lang_options 不影响解析")
+    func langOptionsHarmless() throws {
+        let html = try fixture("dlsite-RJ331590")
+        // 这个页面有 `lang_options: "ENG#CHI#CHI_HANS#CHI_HANT#JPN#KO_KR"`
+        #expect(html.contains("lang_options"))
+        let work = try #require(DLsiteParser.parseWork(
+            from: html, rj: "RJ331590", fetchedAt: "t"))
+        #expect(work.title != nil)
+    }
+}
+
+/// 夹具读取失败。
+///
+/// ⚠️ 定义在文件级（不在某个 suite 里）：两个 suite 都要用。
+enum MultiSampleFixtureError: Error { case missing }

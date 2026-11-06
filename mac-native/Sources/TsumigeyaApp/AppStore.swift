@@ -881,6 +881,143 @@ final class AppStore: ObservableObject {
         return id
     }
 
+    // MARK: - DLsite 元数据（P7）
+
+    /// 每个游戏的元数据（gameId → meta）。
+    ///
+    /// ⚠️ 懒加载：`load()` 时**不读**（一部游戏一个文件读取，几十个游戏会慢）。
+    ///    进详情页时才按需读，读过的缓存在这里。
+    @Published private(set) var gameMeta: [String: GameDlsiteMeta] = [:]
+
+    /// 正在抓取元数据的游戏（防重复点击）。
+    @Published private(set) var fetchingMeta: Set<String> = []
+
+    /// 抓取失败的原因（gameId → 说明）。
+    @Published private(set) var metaError: [String: String] = [:]
+
+    /// DLsite 服务（懒加载，首次用到才建）。
+    private var dlsiteService: DLsiteService?
+
+    /// 取一个游戏的元数据（**没有就返回 nil，不猜**）。
+    func meta(for gameId: String) -> GameDlsiteMeta? {
+        if let cached = gameMeta[gameId] { return cached }
+        let loaded = GameMetaStore.load(dataDir: dataDir, gameId: gameId)
+        if let loaded {
+            // ⚠️ 这里**不能直接改 @Published 字典**
+            //    （在 View 的 body 里调这个方法会导致「修改状态时正在渲染」警告）
+            //    所以只返回值，不写缓存。真要缓存请走 `loadMeta(for:)`。
+            return loaded
+        }
+        return nil
+    }
+
+    /// 主动加载并缓存元数据（在 `.task` / 按钮里调）。
+    func loadMeta(for gameId: String) {
+        guard gameMeta[gameId] == nil else { return }
+        if let loaded = GameMetaStore.load(dataDir: dataDir, gameId: gameId) {
+            gameMeta[gameId] = loaded
+        }
+    }
+
+    /// 从游戏路径自动检测 RJ（不联网）。
+    func detectRJ(for game: GameRecord) -> [String] {
+        RJNumber.detectFromPath(gamePath: game.gamePath)
+    }
+
+    /// 抓取 DLsite 元数据（**联网**）。
+    ///
+    /// - Parameters:
+    ///   - gameId: 游戏 id
+    ///   - rj: RJ 号
+    ///   - refresh: 强制重抓（忽略缓存）
+    ///
+    /// ⚠️ **异步**：网络请求不能阻塞主线程。
+    func fetchMeta(gameId: String, rj: String, refresh: Bool = false) {
+        guard !fetchingMeta.contains(gameId) else { return }
+        fetchingMeta.insert(gameId)
+        metaError.removeValue(forKey: gameId)
+
+        Task { @MainActor in
+            defer { fetchingMeta.remove(gameId) }
+
+            // 懒建服务
+            if dlsiteService == nil {
+                dlsiteService = DLsiteService(dataDir: dataDir)
+            }
+            guard let service = dlsiteService else { return }
+
+            let result = await service.fetchWork(rj: rj, refresh: refresh)
+
+            switch result {
+            case .success(let work):
+                // ⚠️ **合并时保护用户改过的字段**（D26）
+                let existing = gameMeta[gameId]
+                    ?? GameMetaStore.load(dataDir: dataDir, gameId: gameId)
+                let edited = Set(existing?.editedFields ?? [])
+                let merged = EditedFields.merge(
+                    old: existing?.work, incoming: work, edited: edited)
+
+                let meta = GameDlsiteMeta(
+                    work: merged, editedFields: existing?.editedFields ?? [])
+                if let err = GameMetaStore.save(
+                    dataDir: dataDir, gameId: gameId, meta: meta) {
+                    metaError[gameId] = "保存元数据失败：\(err)"
+                    return
+                }
+                gameMeta[gameId] = meta
+            case .failure(let error):
+                // ⚠️ 结构化错误 → 直接显示它的 message（每种错误说不同的话）
+                metaError[gameId] = error.message
+            }
+        }
+    }
+
+    /// 用户手动编辑一个元数据字段（**标记为已编辑，刷新时不覆盖**，D26）。
+    func editMetaField(gameId: String, field: String, value: String?) {
+        guard var meta = meta(for: gameId) else { return }
+
+        var work = meta.work
+        switch field {
+        case "title": work.title = value
+        case "titleSub": work.titleSub = value
+        case "circle": work.circle = value
+        case "description": work.description = value
+        default: return
+        }
+        meta.work = work
+
+        // ⚠️ **必须记进 editedFields**，否则下次刷新会被 DLsite 的值覆盖
+        if !meta.editedFields.contains(field) {
+            meta.editedFields.append(field)
+        }
+        _ = GameMetaStore.save(dataDir: dataDir, gameId: gameId, meta: meta)
+        gameMeta[gameId] = meta
+    }
+
+    /// 正在手动输入 RJ 的游戏 id（nil = 没在输）。
+    ///
+    /// ⚠️ **为什么必须有这条路**（本鱼实测发现）：
+    ///    用户的 5 个真实游戏**全部检测不到 RJ** ——
+    ///    目录名不带 RJ、有的连 readme 都没有、有 readme 的里面也没有 RJ 号。
+    ///
+    ///    → 没有手动入口的话，P7 对这个用户**完全没用**。
+    @Published var manualRJFor: String?
+
+    func beginManualRJ(gameId: String) {
+        manualRJFor = gameId
+    }
+
+    func closeManualRJ() {
+        manualRJFor = nil
+    }
+
+    /// 清掉一个游戏的元数据（删游戏时调）。
+    func removeMeta(gameId: String) {
+        GameMetaStore.remove(dataDir: dataDir, gameId: gameId)
+        gameMeta.removeValue(forKey: gameId)
+        metaError.removeValue(forKey: gameId)
+    }
+
     // MARK: - 分类操作
 
     /// 当前筛选的分类（`nil` = 全部）。
