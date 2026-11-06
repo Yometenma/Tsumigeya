@@ -32,6 +32,12 @@ func main() {
         exit(runDependencyCheck() == 0 ? 0 : 1)
     case "saves":
         exit(runSaveCheck() == 0 ? 0 : 1)
+    case "zip-probe":
+        // zip-probe <目录>：生成一个测试 zip（给外部工具验证用）
+        let out = args.count > 1
+            ? args[args.index(args.startIndex, offsetBy: 1)]
+            : FileManager.default.temporaryDirectory.path
+        exit(runZipProbe(to: out) == 0 ? 0 : 1)
     case "install":
         // install <引擎> [--dry-run]
         let rest = Array(args.dropFirst())

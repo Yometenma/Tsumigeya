@@ -155,6 +155,13 @@ struct GameDetailView: View {
             Divider()
 
             engineArgsSection
+
+            Divider()
+
+            // ⚠️ **存档区块放在最下面**（P6）。
+            //    位置的理由：它是「偶尔用一次」的功能（换机才导出），
+            //    不该占最显眼的位置。而启动按钮永远在最上面。
+            SaveSection(game: game)
         }
         .padding(.horizontal, 28)
         .padding(.top, 18)

@@ -123,15 +123,21 @@ public enum SaveStore {
             fm: fileManager)
 
         // package.json 的 main（**只有 nwjs 用得到**，D85）
-        let packageMain: String? = {
-            guard engine == "nwjs" else { return nil }
-            let pkgPath = (root as NSString).appendingPathComponent("package.json")
-            guard let data = fileManager.contents(atPath: pkgPath),
-                  let obj = try? JSONDecoder().decode([String: JSONValue].self, from: data) else {
-                return nil
-            }
-            return obj["main"]?.stringValue
-        }()
+        //
+        // ⚠️ **要往上找几层**：`gamePath` 可能是
+        //    · `…/Game.exe`（在游戏根）→ `gameDirForFiles` 得到根 ✅
+        //    · `…/www/save/file1.rpgsave`（**存档文件本身**）→ 得到 `…/www/save`
+        //      而 package.json 在**根** → 直接查那个目录会查不到
+        //
+        //    实测（2026-11-06）：本鱼写端到端测试时传的是存档文件路径，
+        //    4 条测试全报 `noLocation` —— 就是这个原因。
+        //
+        //    用户从详情页导出时 gamePath 是 Game.exe（在根），不会踩到；
+        //    但「能处理两种输入」比「只接受一种」更稳。
+        //
+        // ⚠️ 顺便把**真正的游戏根**也找出来（`gameRoot` 要用它拼路径）。
+        let (packageMain, realGameRoot) = locatePackageMain(
+            root: root, engine: engine, fileManager: fileManager)
 
         let location = SaveLocate.detect(
             engine: engine,
@@ -139,9 +145,10 @@ public enum SaveStore {
             dataDir: dataDir, saveDir: saveDir,
             root: rootSnap, external: external,
             packageMain: packageMain,
-            // ⚠️ 传 gameRoot：目标目录可能还不存在（用户没存过档），
+            // ⚠️ 传**真正的游戏根**（不是 root —— root 可能是 `…/www/save`）：
+            //    目标目录可能还不存在（用户没存过档），
             //    那时也要能拼出**完整路径**（不能是相对的 `www/save`）。
-            gameRoot: root)
+            gameRoot: realGameRoot)
 
         guard let location else {
             // **不知道在哪** —— 与「空」是两件事
@@ -174,5 +181,35 @@ public enum SaveStore {
         }
         let entries = (try? fm.contentsOfDirectory(atPath: path)) ?? []
         return DirSnapshot(path: path, entries: entries)
+    }
+
+    /// 找 `package.json` 的 `main`，同时确定**真正的游戏根**。
+    ///
+    /// - Returns: (main 字段, 游戏根目录)。找不到 package.json 时 main 为 nil，
+    ///   根目录退回传进来的 `root`。
+    ///
+    /// ⚠️ **为什么要往上找**：`gamePath` 可能是存档文件本身
+    ///    （`…/www/save/file1.rpgsave`），那时 `gameDirForFiles` 得到的是
+    ///    `…/www/save`，而 `package.json` 在**游戏根**。
+    ///
+    ///    上限 2 层，与 `ImportTarget.maxAscend` 同一个取向
+    ///    （再深就不是游戏目录了）。
+    static func locatePackageMain(
+        root: String, engine: String, fileManager: FileManager
+    ) -> (main: String?, gameRoot: String) {
+        guard engine == "nwjs" else { return (nil, root) }
+
+        var candidate = root
+        for _ in 0...2 {
+            let pkgPath = (candidate as NSString).appendingPathComponent("package.json")
+            if let data = fileManager.contents(atPath: pkgPath),
+               let obj = try? JSONDecoder().decode([String: JSONValue].self, from: data) {
+                return (obj["main"]?.stringValue, candidate)
+            }
+            let parent = (candidate as NSString).deletingLastPathComponent
+            if parent == candidate || parent.isEmpty || parent == "/" { break }
+            candidate = parent
+        }
+        return (nil, root)
     }
 }
