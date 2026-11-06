@@ -42,10 +42,14 @@ actor FakeTransport: DLsiteTransport {
 @Suite("DLsite 抓取服务")
 struct DLsiteServiceTests {
 
+    /// 造一个**唯一**的临时数据目录。
+    ///
+    /// ⚠️ **不能用固定路径**：Swift Testing 默认并行执行，
+    ///    同一批测试共享一个固定目录（`dlsite-svc`）会互相覆盖缓存，
+    ///    表现是**随机几条失败**（本鱼实测踩到「缓存命中」那条）。
     func makeDataDir() -> String {
         let dir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("dlsite-svc")
-        try? FileManager.default.removeItem(at: dir)
+            .appendingPathComponent("dlsite-svc-\(UUID().uuidString)")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir.path
     }

@@ -32,6 +32,9 @@ func main() {
         exit(runDependencyCheck() == 0 ? 0 : 1)
     case "saves":
         exit(runSaveCheck() == 0 ? 0 : 1)
+    case "meta-probe":
+        let dir = args.count > 1 ? args[args.index(args.startIndex, offsetBy: 1)] : "/tmp/meta-probe"
+        exit(runMetaProbe(dataDir: dir) == 0 ? 0 : 1)
     case "rj-probe":
         exit(runRjProbe(paths: Array(args.dropFirst())) == 0 ? 0 : 1)
     case "dlsite-fetch":
