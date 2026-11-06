@@ -994,6 +994,62 @@ final class AppStore: ObservableObject {
         gameMeta[gameId] = meta
     }
 
+    // MARK: - DLsite 搜索（P7）
+
+    /// 搜索进行中（gameId → 是否在搜）。
+    @Published private(set) var searchingFor: String?
+    /// 搜索结果（gameId → 候选列表）。
+    @Published private(set) var searchHits: [String: [DLsiteSearch.Hit]] = [:]
+    /// 搜索错误（gameId → 说明）。
+    @Published private(set) var searchError: [String: String] = [:]
+    /// 上次搜索用的关键词（用于界面显示「搜了什么」）。
+    @Published private(set) var lastKeyword: [String: String] = [:]
+
+    /// 按名字搜索（用户要求：「不能（找到 RJ）就按名字来」）。
+    ///
+    /// ⚠️ **只返回候选，绝不自动选**（D24 —— 实测搜 Karryn 返回正片 + 3 个 DLC）。
+    func searchMeta(gameId: String, keyword: String) {
+        guard searchingFor == nil else { return }
+        searchingFor = gameId
+        searchError.removeValue(forKey: gameId)
+        searchHits.removeValue(forKey: gameId)
+        lastKeyword[gameId] = keyword
+
+        Task { @MainActor in
+            defer { searchingFor = nil }
+
+            if dlsiteService == nil {
+                dlsiteService = DLsiteService(dataDir: dataDir)
+            }
+            guard let service = dlsiteService else { return }
+
+            let result = await service.search(keyword: keyword)
+
+            switch result {
+            case .success(let hits):
+                searchHits[gameId] = hits
+                if hits.isEmpty {
+                    searchError[gameId] = "没搜到「\(keyword)」。试试更短的词，或者手动输入 RJ。"
+                }
+            case .failure(let error):
+                searchError[gameId] = error.message
+            }
+        }
+    }
+
+    /// 用户从候选里点选一个（**这时候才确定是哪个作品**）。
+    func selectSearchHit(gameId: String, rj: String) {
+        searchHits.removeValue(forKey: gameId)
+        searchError.removeValue(forKey: gameId)
+        fetchMeta(gameId: gameId, rj: rj)
+    }
+
+    func clearSearch(gameId: String) {
+        searchHits.removeValue(forKey: gameId)
+        searchError.removeValue(forKey: gameId)
+        lastKeyword.removeValue(forKey: gameId)
+    }
+
     /// 正在手动输入 RJ 的游戏 id（nil = 没在输）。
     ///
     /// ⚠️ **为什么必须有这条路**（本鱼实测发现）：

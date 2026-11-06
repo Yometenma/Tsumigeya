@@ -179,7 +179,25 @@ struct GameDetailView: View {
                 dlsiteActions
             }
 
-            if store.fetchingMeta.contains(game.id) {
+            if store.searchingFor == game.id {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small)
+                    Text("正在搜索「\(store.lastKeyword[game.id] ?? "")」…")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            } else if let hits = store.searchHits[game.id], !hits.isEmpty {
+                // ⚠️ **搜索结果必须让用户点选**（D24：绝不自动选第一条）
+                //
+                //    实测搜 `Karryn` 返回正片 + 3 个 DLC。
+                //    自动选第一条 = 可能拿错的封面，而用户不会意识到。
+                searchResults(hits)
+            } else if let error = store.searchError[game.id] {
+                Label(error, systemImage: "magnifyingglass")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if store.fetchingMeta.contains(game.id) {
                 HStack(spacing: 6) {
                     ProgressView().controlSize(.small)
                     Text("正在从 DLsite 抓取…")
@@ -204,48 +222,118 @@ struct GameDetailView: View {
         }
     }
 
-    /// 没有元数据时的提示（区分「检测不到 RJ」与「还没抓」）。
-    private var noMetaHint: String {
-        let detected = store.detectRJ(for: game)
-        if detected.isEmpty {
-            return "这个游戏的路径里没有 RJ 号。把游戏目录名改成含 RJ 号（如 RJ294126）后重试。"
-        } else if detected.count > 1 {
-            return "检测到多个 RJ（\(detected.prefix(3).joined(separator: " / "))）"
-                + "，会先用第一个。点「获取作品信息」试试。"
-        } else {
-            return "还没有抓取作品信息。点「获取作品信息」会从 DLsite 拉封面与简介。"
+    /// 搜索结果列表（让用户点选）。
+    ///
+    /// ⚠️ **列出 RJ + 标题 + 社团**，让用户能辨认哪个是正片哪个是 DLC。
+    ///    `Karryn` 的 4 条里后 3 条标题都带 `DLC` —— 一眼能看出来。
+    private func searchResults(_ hits: [DLsiteSearch.Hit]) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("搜到 \(hits.count) 个结果，选一个：")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button("取消") {
+                    store.clearSearch(gameId: game.id)
+                }
+                .controlSize(.small)
+            }
+            .padding(.bottom, 6)
+
+            ForEach(Array(hits.enumerated()), id: \.element.rj) { idx, hit in
+                if idx > 0 { Divider().padding(.leading, 8) }
+                Button {
+                    store.selectSearchHit(gameId: game.id, rj: hit.rj)
+                } label: {
+                    HStack(alignment: .top, spacing: 8) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(hit.title)
+                                .font(.system(size: 11))
+                                .lineLimit(2)
+                                .multilineTextAlignment(.leading)
+                            HStack(spacing: 8) {
+                                Text(hit.rj)
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .foregroundStyle(.tertiary)
+                                if let circle = hit.circle {
+                                    Text(circle)
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(.tertiary)
+                                        .lineLimit(1)
+                                }
+                            }
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 9))
+                            .foregroundStyle(.tertiary)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 6)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
         }
+        .padding(6)
+        .background(Color(nsColor: .controlBackgroundColor),
+                    in: RoundedRectangle(cornerRadius: 7))
+    }
+
+    /// 没有元数据时的提示（走决策链）。
+    ///
+    /// ⚠️ **决策链是用户明确要求的**（2026-11-06）：
+    ///    「自动识别如果有直接能找到 rj 号就用 rj 号，不能就按名字来」
+    private var noMetaHint: String {
+        switch lookupStep {
+        case .byRJ(let rj):
+            return "检测到 RJ 号 \(rj)。点「获取作品信息」会从 DLsite 拉封面与简介。"
+        case .byKeyword(let keyword):
+            return "路径里没有 RJ 号，可以按名字搜索「\(keyword)」，"
+                + "从结果里选一个作品。"
+        case .manual:
+            return "路径里没有 RJ 号，标题也没法当关键词。请手动输入 RJ（"
+                + "从 DLsite 作品页地址里找 product_id/RJ…）。"
+        }
+    }
+
+    /// 这个游戏该怎么查（决策链）。
+    private var lookupStep: DlsiteLookup.Step {
+        DlsiteLookup.plan(
+            gamePath: game.gamePath, gameTitle: game.gameTitle)
     }
 
     @ViewBuilder
     private var dlsiteActions: some View {
-        let detected = store.detectRJ(for: game)
-        if store.fetchingMeta.contains(game.id) {
+        if store.fetchingMeta.contains(game.id) || store.searchingFor == game.id {
             EmptyView()
         } else if store.meta(for: game.id) != nil {
             Button("刷新") {
-                if let rj = store.meta(for: game.id)?.work.rj ?? detected.first {
+                if let rj = store.meta(for: game.id)?.work.rj {
                     store.fetchMeta(gameId: game.id, rj: rj, refresh: true)
                 }
             }
             .controlSize(.small)
-        } else if let rj = detected.first {
-            // 自动检测到 RJ → 一键抓取
-            Button("获取作品信息") {
-                store.fetchMeta(gameId: game.id, rj: rj)
-            }
-            .controlSize(.small)
         } else {
-            // ⚠️⚠️ **检测不到 RJ 时必须有手动输入入口**（本鱼实测发现的关键缺口）
-            //
-            //    用户的 5 个真实游戏**全部没有 RJ**：目录名不带 RJ、
-            //    KARRYN'S PRISON 与苍蓝星连 readme 都没有、
-            //    Unholy maiden 的 readme 里也没有 RJ 号。
-            //
-            //    → 没有手动入口的话，P7 对这个用户**完全没用**。
-            //
-            //    ⚠️ 而且**不能自动去搜**：D24 明确「搜索绝不自动选第一条」
-            //       （实测首条常不是目标作品），自动选错了就是拿错的封面。
+            // 走决策链（用户 2026-11-06 要求：RJ 优先，不行就按名字）
+            switch lookupStep {
+            case .byRJ(let rj):
+                Button("获取作品信息") {
+                    store.fetchMeta(gameId: game.id, rj: rj)
+                }
+                .controlSize(.small)
+            case .byKeyword(let keyword):
+                Button("按名字搜索") {
+                    store.searchMeta(gameId: game.id, keyword: keyword)
+                }
+                .controlSize(.small)
+            case .manual:
+                Button("手动输入 RJ") {
+                    store.beginManualRJ(gameId: game.id)
+                }
+                .controlSize(.small)
+            }
+            // ⚠️ **永远保留手动入口**（自动识别失败时的兜底）
             Button("手动输入 RJ") {
                 store.beginManualRJ(gameId: game.id)
             }
