@@ -47,7 +47,16 @@ let package = Package(
         .testTarget(
             name: "TsumigeyaNativeTests",
             dependencies: ["TsumigeyaCore"],
-            path: "Tests/TsumigeyaNativeTests"
+            path: "Tests/TsumigeyaNativeTests",
+            // ⚠️ **Fixtures 必须声明为资源**（P7 加的）。
+            //
+            //    里面有 `dlsite-RJ294126.html` —— 从**真实 DLsite 页面**
+            //    精简出来的结构（meta + var contents JSON 原样保留）。
+            //    用它做回归测试，DLsite 改版时能当场发现。
+            //
+            //    不声明的话 `Bundle.module` 找不到文件，测试会静默跳过
+            //    （`try?` 返回 nil）—— 那是最糟的：**看起来在测，其实没测**。
+            resources: [.process("Fixtures")]
         ),
     ]
 )

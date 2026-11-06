@@ -32,6 +32,14 @@ func main() {
         exit(runDependencyCheck() == 0 ? 0 : 1)
     case "saves":
         exit(runSaveCheck() == 0 ? 0 : 1)
+    case "rj-probe":
+        exit(runRjProbe(paths: Array(args.dropFirst())) == 0 ? 0 : 1)
+    case "dlsite-probe":
+        // dlsite-probe <html文件>：用真实页面验证 DLsite 解析器
+        let path = args.count > 1
+            ? args[args.index(args.startIndex, offsetBy: 1)]
+            : "/tmp/dl.html"
+        exit(runDlsiteProbe(htmlPath: path) == 0 ? 0 : 1)
     case "zip-probe":
         // zip-probe <目录>：生成一个测试 zip（给外部工具验证用）
         let out = args.count > 1
