@@ -37,6 +37,9 @@ func main() {
         exit(runMetaProbe(dataDir: dir) == 0 ? 0 : 1)
     case "rj-probe":
         exit(runRjProbe(paths: Array(args.dropFirst())) == 0 ? 0 : 1)
+    case "search-probe":
+        let path = args.count > 1 ? args[args.index(args.startIndex, offsetBy: 1)] : "/tmp/srch.html"
+        exit(runSearchProbe(htmlPath: path) == 0 ? 0 : 1)
     case "dlsite-fetch":
         // dlsite-fetch <RJ> [category]：真实抓取（验限速与缓存）
         let rj = args.count > 1 ? args[args.index(args.startIndex, offsetBy: 1)] : "RJ294126"

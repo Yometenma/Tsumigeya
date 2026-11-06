@@ -149,6 +149,51 @@ public actor DLsiteService {
         return .success(work)
     }
 
+    /// 按名字搜索作品。
+    ///
+    /// ⚠️ **只返回候选列表，绝不自动选**（D24 —— 实测搜 `Karryn` 返回
+    ///   正片 + 3 个 DLC，首条虽然碰巧是对的，但别的关键词常不是）。
+    ///
+    /// - Returns: 成功返回候选列表（可能为空 = 真没搜到）；
+    ///   失败返回结构化错误（与 `fetchWork` 同一套错误类型）。
+    public func search(
+        keyword: String, category: String = "maniax"
+    ) async -> Result<[DLsiteSearch.Hit], DLsiteError> {
+
+        guard let url = DLsiteSearch.searchURL(
+            keyword: keyword, category: category) else {
+            return .failure(.invalidURL(keyword))
+        }
+
+        // 限速（与 fetchWork 共用同一个时钟 —— 搜索也算一次请求）
+        if let waitMs = rateLimitWaitMs() {
+            return .failure(.rateLimited(retryAfterMs: waitMs))
+        }
+
+        lastRequestAt = now()
+        let response: (status: Int, body: String)
+        do {
+            response = try await transport.fetch(url: url, timeout: timeoutSeconds)
+        } catch {
+            return .failure(.network(error.localizedDescription))
+        }
+
+        guard response.status == 200 else {
+            return .failure(.httpStatus(response.status))
+        }
+
+        // ⚠️ **必须确认是结果页**：搜不到时 DLsite 返回普通页面，
+        //    直接解析会得到空列表，而用户分不清「没有这个作品」与「解析失败」。
+        guard DLsiteSearch.isResultPage(response.body) else {
+            return .failure(.parseFailed(rj: "搜索：\(keyword)"))
+        }
+
+        let hits = DLsiteSearch.parse(response.body)
+        // ⚠️ 结果页成立但解析出 0 条 → 这是**真的没搜到**，不是错误
+        //    （`Result.success([])` 与 `parseFailed` 是两件事）
+        return .success(hits)
+    }
+
     /// 距离下次可请求还要等多久（毫秒）；nil = 可以立刻请求。
     func rateLimitWaitMs() -> Int? {
         guard minIntervalMs > 0 else { return nil }

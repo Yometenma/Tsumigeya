@@ -163,6 +163,15 @@ struct GameEditView: View {
 
     private var localSection: some View {
         Section {
+            // ⚠️⚠️ **必须按 `localOpen` 显隐内容**（用户 2026-06 报：
+            //    「三角点了图标是变了，但并没有展开或收起」）。
+            //
+            //    本鱼原来只把 `isOpen` 传给 `headerRow` 用来切换 iconName ——
+            //    于是**图标变了、内容一直显示**。那不是折叠，那是个假的折叠按钮。
+            //
+            //    ⚠️ 这类「只改装饰不改行为」的错误很难被截图发现（
+            //       静态图里图标和内容都"正常"），只能靠用户点一下才知道。
+            if localOpen {
             TextField("游戏名", text: $title)
                 .textFieldStyle(.roundedBorder)
 
@@ -196,6 +205,7 @@ struct GameEditView: View {
             Text("要换路径请重新添加这个游戏。")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
+            }
         } header: {
             headerRow("本地信息", "游戏名、引擎、路径", isOpen: $localOpen)
         }
@@ -205,6 +215,8 @@ struct GameEditView: View {
 
     private var argsSection: some View {
         Section {
+            // ⚠️ 按 `argsOpen` 显隐（同 `localSection` 的注释：只改图标不改内容 = 假折叠）
+            if argsOpen {
             if let manifest = store.manifest(for: game.gameEngine),
                !manifest.gameArgs.isEmpty {
                 ForEach(manifest.orderedGameArgs, id: \.name) { pair in
@@ -236,6 +248,7 @@ struct GameEditView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            }
         } header: {
             headerRow("引擎参数", "与启动方式相关的设置", isOpen: $argsOpen)
         }
@@ -245,6 +258,8 @@ struct GameEditView: View {
 
     private var categoriesSection: some View {
         Section {
+            // ⚠️ 按 `categoriesOpen` 显隐（同上）
+            if categoriesOpen {
             if store.categories.isEmpty {
                 Text("还没有建任何分类。")
                     .font(.caption)
@@ -261,6 +276,7 @@ struct GameEditView: View {
                         }
                     ))
                 }
+            }
             }
         } header: {
             headerRow("分类", "立刻生效，不需要点保存", isOpen: $categoriesOpen)
