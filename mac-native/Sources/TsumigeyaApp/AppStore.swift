@@ -236,6 +236,16 @@ final class AppStore: ObservableObject {
         }
     }
 
+    /// 只读检查游戏、引擎运行时和启动计划，不执行 mkxp-z 的准备写入。
+    func diagnoseLaunch(game: GameRecord) -> LaunchDiagnosis {
+        LaunchDiagnostics.inspect(
+            game: game,
+            dataDir: dataDir,
+            arch: Arch.current().rawValue,
+            runningPID: runningGames[game.id]
+        )
+    }
+
     /// 等待进程退出会耗时数秒，不能占住界面线程。
     func stop(game: GameRecord) {
         guard let pid = runningGames[game.id], !stoppingGames.contains(game.id) else { return }

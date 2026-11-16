@@ -23,6 +23,7 @@ struct GameDetailView: View {
     }
 
     @State private var showsRelocation = false
+    @State private var showsDiagnostics = false
     @State private var tab: DetailTab
 
     init(game: GameRecord, onEdit: (() -> Void)? = nil,
@@ -67,6 +68,10 @@ struct GameDetailView: View {
             }
         }
         .background(Color(nsColor: .textBackgroundColor))
+        .sheet(isPresented: $showsDiagnostics) {
+            LaunchDiagnosticsView(game: game, onManageEngines: onManageEngines)
+                .environmentObject(store)
+        }
     }
 
     private var header: some View {
@@ -349,6 +354,8 @@ struct GameDetailView: View {
                     Button(action: onEdit) { Label("编辑游戏", systemImage: "slider.horizontal.3") }
                 }
                 Menu {
+                    Button("检查启动条件…") { showsDiagnostics = true }
+                    Divider()
                     Button("重新定位游戏目录…") { showsRelocation = true }
                         .disabled(store.privacy.hidesTitles || store.runningGames[game.id] != nil)
                     Button("在访达中显示") { store.revealInFinder(game: game) }
@@ -369,11 +376,17 @@ struct GameDetailView: View {
                 .help("更多游戏操作")
             }
             if let failure = store.lastLaunchFailure[game.id] {
-                Label(store.privacy.text(failure, replacement: "启动未完成，详细信息已隐藏。"), systemImage: "exclamationmark.triangle.fill")
-                    .font(.callout)
-                    .foregroundStyle(.orange)
-                    .textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
+                HStack(alignment: .top, spacing: 10) {
+                    Label(store.privacy.text(failure, replacement: "启动未完成，详细信息已隐藏。"), systemImage: "exclamationmark.triangle.fill")
+                        .font(.callout)
+                        .foregroundStyle(.orange)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 8)
+                    Button("检查启动条件") { showsDiagnostics = true }
+                        .buttonStyle(.bordered)
+                        .disabled(store.privacy.hidesTitles)
+                }
             }
         }
     }

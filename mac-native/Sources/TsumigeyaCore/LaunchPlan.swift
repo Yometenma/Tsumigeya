@@ -121,14 +121,15 @@ public enum LaunchPlanner {
         fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) },
         listDir: (String) -> [String] = { dir in
             (try? FileManager.default.contentsOfDirectory(atPath: dir)) ?? []
-        }
+        },
+        performPreparation: Bool = true
     ) -> Result<LaunchPlan, LaunchFailure> {
 
         switch engine {
         case "nwjs", "tyrano":
             return nwjsPlan(ctx, engine: engine, fileExists: fileExists)
         case "mkxpz":
-            return mkxpzPlan(ctx, fileExists: fileExists)
+            return mkxpzPlan(ctx, fileExists: fileExists, performPreparation: performPreparation)
         case "easyrpg":
             return easyrpgPlan(ctx, fileExists: fileExists)
         case "renpy":
@@ -206,36 +207,40 @@ public enum LaunchPlanner {
     ///   · 先写配置再修 Title → 配置对了，但 mkxp-z 还是因为 ini 读不出而回落 RGSS 1
     ///   · 先写配置再建链接 → 配置里是中文路径 → 直接 `Unknown encoding`
     static func mkxpzPlan(
-        _ ctx: LaunchContext, fileExists: (String) -> Bool
+        _ ctx: LaunchContext, fileExists: (String) -> Bool,
+        performPreparation: Bool = true
     ) -> Result<LaunchPlan, LaunchFailure> {
         let binary = BinaryPaths.mkxpzBinary(ctx.dataDir)
         guard fileExists(binary) else {
             return .failure(.engineBinaryMissing(binary: binary))
         }
 
-        // ① 修 Title（D71）：删掉 ini 也照样能跑，失败只记不拦
-        let iniWarning = MkxpzConfig.sanitizeGameIniTitle(gameDir: ctx.folder)
-        if let iniWarning {
-            FileHandle.standardError.write(
-                "[tsumigeya] Game.ini Title 修正跳过：\(iniWarning)\n".data(using: .utf8)!)
-        }
-
-        var gameFolder = ctx.folder
-        if AsciiAlias.needsAsciiAlias(gameFolder) {
-            if let alias = try? AsciiAlias.ensureAlias(for: gameFolder) {
-                gameFolder = alias
+        // 诊断只检查可行性，不能改写 Game.ini、创建别名或覆盖 app 内配置。
+        if performPreparation {
+            // ① 修 Title（D71）：删掉 ini 也照样能跑，失败只记不拦
+            let iniWarning = MkxpzConfig.sanitizeGameIniTitle(gameDir: ctx.folder)
+            if let iniWarning {
+                FileHandle.standardError.write(
+                    "[tsumigeya] Game.ini Title 修正跳过：\(iniWarning)\n".data(using: .utf8)!)
             }
-        }
 
-        // ③ 写配置到 app 包内
-        let configPath = BinaryPaths.mkxpzConfigPath(ctx.dataDir)
-        let rtp = MkxpzConfig.resolveRtp(context: ctx)
-        let config = MkxpzConfig.build(
-            context: ctx, folder: gameFolder,
-            rgssVersion: rtp.rgssVersion, rtpDirs: rtp.rtpDirs)
-        if let writeError = MkxpzConfig.write(config, to: configPath) {
-            // 写配置失败 → **不启动**。没有配置它必然弹错误框，比不启动更糟。
-            return .failure(.spawnFailed(message: "写 mkxp.json 失败：\(writeError)"))
+            var gameFolder = ctx.folder
+            if AsciiAlias.needsAsciiAlias(gameFolder) {
+                if let alias = try? AsciiAlias.ensureAlias(for: gameFolder) {
+                    gameFolder = alias
+                }
+            }
+
+            // ③ 写配置到 app 包内
+            let configPath = BinaryPaths.mkxpzConfigPath(ctx.dataDir)
+            let rtp = MkxpzConfig.resolveRtp(context: ctx)
+            let config = MkxpzConfig.build(
+                context: ctx, folder: gameFolder,
+                rgssVersion: rtp.rgssVersion, rtpDirs: rtp.rtpDirs)
+            if let writeError = MkxpzConfig.write(config, to: configPath) {
+                // 写配置失败 → **不启动**。没有配置它必然弹错误框，比不启动更糟。
+                return .failure(.spawnFailed(message: "写 mkxp.json 失败：\(writeError)"))
+            }
         }
 
         // args 为空、cwd 为 nil（见上）

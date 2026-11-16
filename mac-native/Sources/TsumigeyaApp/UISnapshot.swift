@@ -255,6 +255,19 @@ enum UISnapshot {
                 BatchImportView(previewCandidates: intakeCandidates).environmentObject(previewStore),
                 size: CGSize(width: 780, height: 590), name: "21-batch-privacy",
                 dir: directory, appearance: appearance)
+            if let game = previewStore.games.first {
+                previewStore.setSetting(.privacyMode, .bool(false))
+                failures += captureWindow(
+                    LaunchDiagnosticsView(game: game).environmentObject(previewStore),
+                    size: CGSize(width: 720, height: 590), name: "22-launch-diagnostics",
+                    dir: directory, appearance: appearance)
+                previewStore.setSetting(.privacyMode, .bool(true))
+                previewStore.setSetting(.privacyHideTitles, .bool(true))
+                failures += captureWindow(
+                    LaunchDiagnosticsView(game: game).environmentObject(previewStore),
+                    size: CGSize(width: 720, height: 590), name: "23-launch-diagnostics-privacy",
+                    dir: directory, appearance: appearance)
+            }
             for group in SettingsGroups.groups where group.id != .appearance {
                 failures += captureWindow(
                     SettingsPage(initialGroup: group.id).environmentObject(store),
