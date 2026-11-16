@@ -1,43 +1,16 @@
-// 主界面。
-//
-// ===== 布局演进（两版，第一版是错的）=====
-//
-// **v1（错）：外层 NavigationSplitView 放「页面导航」，库页内部再 HSplitView 放「列表+详情」**
-//
-// 用户 2026-11-06 截图报「引擎页有问题」：**外层侧边栏是个空白浅蓝色条**。
-// 根因有两条，而且两条都是本鱼的设计错误：
-//
-//   ① `List(selection: $page)` 里 `page` 是**非 Optional** 的 `AppPage`，
-//      mac 的侧边栏选择语义要求 `Optional` → 整行渲染成空白
-//   ② 更根本的是：**两层侧边栏在 mac 上就是挤的**。
-//      外层「游戏库/引擎」+ 内层「游戏列表」，实际可用宽度被吃掉两块。
-//
-// ===== v2（当前）：顶部分段控件切页，只保留一层侧边栏 =====
-//
-// ```
-// ┌─────────────────────────────────────────────┐
-// │  [游戏库|引擎]        搜索…              [＋] │  ← 顶部工具条（分段控件）
-// ├───────────┬─────────────────────────────────┤
-// │ 游戏列表   │  详情（大图 + 信息 + 启动）      │  ← 一层 HSplitView
-// └───────────┴─────────────────────────────────┘
-// ```
-//
-// 为什么这样更好：
-//   · **少一层侧边栏** → 内容区宽了 180px
-//   · 分段控件是 mac 的标准做法（Xcode / Finder 都用顶部切视图）
-//   · 引擎页没有「列表」这一层，直接铺满 —— 与库页共用同一个容器不会别扭
-//
-// ⚠️ 分类**不在侧边栏**（D84：分类是库页的筛选器，不是导航）。
+// 导航与游戏浏览分开：列表用于快速切换，卡片用于整库浏览。
 import SwiftUI
 import TsumigeyaCore
 
 struct RootView: View {
     @EnvironmentObject private var store: AppStore
     @State private var selection: String?
+    @State private var editingGameID: String?
     @State private var page: AppPage = .library
     private let loadsOnAppear: Bool
 
-    init(selection: String? = nil, loadsOnAppear: Bool = true) {
+    init(selection: String? = nil, loadsOnAppear: Bool = true, initialPage: AppPage = .library) {
+        _page = State(initialValue: initialPage)
         _selection = State(initialValue: selection)
         self.loadsOnAppear = loadsOnAppear
     }
@@ -48,7 +21,7 @@ struct RootView: View {
         var title: String {
             switch self {
             case .library: return "游戏库"
-            case .engines: return "引擎"
+            case .engines: return "运行时"
             case .settings: return "设置"
             }
         }
@@ -57,22 +30,13 @@ struct RootView: View {
     var body: some View {
         VStack(spacing: 0) {
             topBar
-            if page == .library {
-                Divider()
-                categoryBar
-            }
             Divider()
-            if let warning = store.dataDirWarning {
-                Label("原数据目录不可用，当前使用：\(warning.switchedTo)", systemImage: "exclamationmark.triangle")
-                    .font(.callout)
-                    .foregroundStyle(.orange)
-                    .textSelection(.enabled)
-                    .padding(10)
-            }
+            dataDirectoryNotice
             content
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: .windowBackgroundColor))
+        .tint(.indigo)
         .task {
             guard loadsOnAppear else { return }
             await store.load()
@@ -89,107 +53,55 @@ struct RootView: View {
         ) { _ in
             store.refreshRunningFromAppActivation()
         }
-        .sheet(isPresented: $store.isAddingGame) {
-            AddGameWizard()
-                .environmentObject(store)
-        }
-        // 新建分类（输入名字的小弹窗）
-        .sheet(isPresented: $store.isCreatingCategory) {
-            CreateCategorySheet()
-                .environmentObject(store)
-        }
-        // 手动输入 RJ 号（P7）
-        //
-        // ⚠️ 为什么需要：用户的真实游戏**全部检测不到 RJ**，
-        //    没有手动入口的话 P7 完全无法使用。
-        .sheet(item: Binding(
-            get: { store.manualRJFor.map(ManualRJTarget.init(id:)) },
-            set: { if $0 == nil { store.closeManualRJ() } }
-        )) { target in
-            ManualRJSheet(gameId: target.id)
-                .environmentObject(store)
-        }
-        .alert("操作未完成", isPresented: Binding(
-            get: { store.operationError != nil },
-            set: { if !$0 { store.operationError = nil } }
-        )) {
-            Button("好", role: .cancel) { store.operationError = nil }
-        } message: {
-            Text(store.operationError ?? "")
+        .modifier(AppPresentations(editingGameID: $editingGameID))
+        .onChange(of: store.editRequest, initial: true) { _, id in
+            guard let id else { return }
+            editingGameID = id
+            _ = store.consumeEditRequest()
         }
         .onChange(of: store.filteredGames.map(\.id)) { _, ids in
             if let selection, !ids.contains(selection) { self.selection = nil }
         }
-        // 删除游戏确认
-        .alert("从游戏库移除？", isPresented: Binding(
-            get: { store.pendingDelete != nil },
-            set: { if !$0 { store.cancelPendingDelete() } }
-        ), presenting: store.pendingDelete) { game in
-            // ⚠️ **必须说清「不会删游戏文件」** ——
-            //    用户最怕的是「点一下把游戏删没了」。
-            //    实际只删库里的记录，游戏目录原样不动。
-            Button("移除", role: .destructive) {
-                store.confirmPendingDelete()
-            }
-            Button("取消", role: .cancel) {
-                store.cancelPendingDelete()
-            }
-        } message: { game in
-            Text("「\(game.gameTitle)」会从游戏库移除。\n\n"
-                 + "**游戏文件不会被删除**，只是不再显示在列表里。"
-                 + "游玩记录和分类归属也会一起清掉。")
-        }
-        // 删除分类确认
-        .alert("删除分类？", isPresented: Binding(
-            get: { store.pendingDeleteCategory != nil },
-            set: { if !$0 { store.cancelDeleteCategory() } }
-        ), presenting: store.pendingDeleteCategory) { pair in
-            Button("删除", role: .destructive) {
-                store.confirmPendingDeleteCategory()
-            }
-            Button("取消", role: .cancel) {
-                store.cancelDeleteCategory()
-            }
-        } message: { pair in
-            Text("分类「\(pair.name)」会被删除。\n\n"
-                 + "**游戏不会被删除**，只是它们不再属于这个分类。")
+    }
+
+    @ViewBuilder
+    private var dataDirectoryNotice: some View {
+        if let warning = store.dataDirWarning {
+            Label("原数据目录不可用，当前使用：\(warning.switchedTo)", systemImage: "exclamationmark.triangle")
+                .font(.callout)
+                .foregroundStyle(.orange)
+                .textSelection(.enabled)
+                .padding(10)
         }
     }
 
-    // MARK: - 顶部工具条
+    // MARK: - 顶部导航
 
     private var topBar: some View {
-        HStack(spacing: 12) {
-            // ⚠️ **分段控件切页**（不是侧边栏）。
-            //    这样只有一层列表，内容区不会被两块东西吃掉宽度。
-            Picker("", selection: $page) {
-                ForEach(AppPage.allCases) { p in
-                    Text(p.title).tag(p)
-                }
+        HStack(spacing: 20) {
+            Label("Tsumigeya", systemImage: "gamecontroller.fill")
+                .font(.system(size: 15, weight: .bold))
+                .foregroundStyle(.primary)
+
+            Picker("页面", selection: $page) {
+                ForEach(AppPage.allCases) { p in Text(p.title).tag(p) }
             }
             .pickerStyle(.segmented)
             .labelsHidden()
-            .frame(width: 180)
+            .frame(width: 240)
 
-            Spacer()
-
-            // 搜索只在库页出现
-            if page == .library {
-                SearchField(text: $store.searchText)
-                    .frame(maxWidth: 280)
-            }
+            Spacer(minLength: 12)
 
             if page == .library {
-                Button {
-                    store.openAddGame()
-                } label: {
+                Button { store.openAddGame() } label: {
                     Label("添加游戏", systemImage: "plus")
                 }
-                .help("添加游戏")
+                .keyboardShortcut("o", modifiers: .command)
+                .help("添加游戏（⌘O）")
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 12)
     }
 
     // MARK: - 分类栏（库页顶部）
@@ -237,10 +149,9 @@ struct RootView: View {
 
                 Spacer()
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 7)
+            .padding(.vertical, 4)
         }
-        .frame(height: 40)
+        .frame(height: 32)
     }
 
     private func categoryChip(
@@ -248,7 +159,7 @@ struct RootView: View {
     ) -> some View {
         Button(action: action) {
             Text(title)
-                .font(.system(size: 11, weight: isActive ? .medium : .regular))
+                .font(.system(size: 12, weight: isActive ? .semibold : .regular))
                 .padding(.horizontal, 9)
                 .padding(.vertical, 3)
                 .background(
@@ -279,27 +190,26 @@ struct RootView: View {
                         NSWorkspace.shared.open(URL(fileURLWithPath: store.dataDir))
                     }
                 }
-            } else if !store.games.isEmpty && store.filteredGames.isEmpty {
-                LibraryNoResultsView()
+            } else if store.games.isEmpty {
+                WelcomeView()
             } else {
-                // ⚠️ **一层 HSplitView**：左边游戏列表、右边详情。
-                //    这是 mac 的「侧边栏 + 内容」惯例（Finder / Mail 都是这样）。
-                HSplitView {
-                    GameListView(selection: $selection)
-                        .frame(minWidth: 190, idealWidth: 230, maxWidth: 320)
-
-                    Group {
-                        if let id = selection, let game = store.game(id: id) {
-                            // ⚠️ **详情页与编辑页用同一个容器切换**（不是两个独立窗口）：
-                            //    编辑是「对这个游戏的临时操作」，不该占一个窗口位。
-                            //    用 `@State` 记忆「当前是详情还是编辑」。
-                            GamePane(game: game)
-                                .id(game.id)
-                        } else {
-                            WelcomeView()
+                VStack(spacing: 0) {
+                    libraryToolbar
+                    Divider()
+                    if store.filteredGames.isEmpty {
+                        LibraryNoResultsView()
+                    } else if store.settingBool(.listView) {
+                        HSplitView {
+                            GameListView(selection: $selection)
+                                .frame(minWidth: 260, idealWidth: 300, maxWidth: 380)
+                            selectedGamePane
+                                .frame(minWidth: 480, maxWidth: .infinity, maxHeight: .infinity)
                         }
+                    } else if selection != nil {
+                        selectedGamePane
+                    } else {
+                        GameListView(selection: $selection)
                     }
-                    .frame(minWidth: 400, maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
         case .engines:
@@ -308,6 +218,54 @@ struct RootView: View {
             SettingsPage()
         }
     }
+
+    private var libraryToolbar: some View {
+        HStack(spacing: 12) {
+            if !store.settingBool(.listView), selection != nil {
+                Button { selection = nil } label: {
+                    Label("返回游戏库", systemImage: "chevron.left")
+                }
+                .keyboardShortcut(.cancelAction)
+            } else {
+                Text("\(store.filteredGames.count) 个游戏")
+                    .font(.callout.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .fixedSize()
+            }
+            categoryBar
+                .frame(maxWidth: .infinity)
+            SearchField(text: $store.searchText)
+                .frame(width: 250)
+            Picker("显示方式", selection: Binding(
+                get: { store.settingBool(.listView) },
+                set: { value in
+                    store.setSetting(.listView, .bool(value))
+                    if !value { selection = nil }
+                }
+            )) {
+                Image(systemName: "list.bullet").tag(true)
+                Image(systemName: "square.grid.2x2").tag(false)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(width: 76)
+            .help("切换列表或卡片视图")
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 10)
+    }
+
+    @ViewBuilder
+    private var selectedGamePane: some View {
+        if let id = selection, let game = store.game(id: id) {
+            GameDetailView(game: game, onEdit: { editingGameID = game.id },
+                           onManageEngines: { page = .engines })
+                .id(game.id)
+        } else {
+            WelcomeView()
+        }
+    }
+
 }
 
 // MARK: - 搜索框
@@ -319,15 +277,23 @@ struct RootView: View {
 ///    自绘一个小的更好控制，而且样式与 mac 一致（圆角 + 放大镜 + 清除按钮）。
 struct SearchField: View {
     @Binding var text: String
+    @FocusState private var isFocused: Bool
 
     var body: some View {
         HStack(spacing: 5) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
+            Button { isFocused = true } label: {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .keyboardShortcut("f", modifiers: .command)
+            .accessibilityLabel("搜索游戏")
+            .help("搜索游戏（⌘F）")
             TextField("搜索游戏名、路径或引擎", text: $text)
+                .focused($isFocused)
                 .textFieldStyle(.plain)
-                .font(.system(size: 12))
+                .font(.system(size: 13))
             if !text.isEmpty {
                 Button {
                     text = ""
@@ -337,10 +303,11 @@ struct SearchField: View {
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("清除搜索")
             }
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 5)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
         .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 7))
     }
 }
@@ -394,14 +361,11 @@ struct GameListView: View {
         .listStyle(.sidebar)
     }
 
-    /// 卡片视图（网格）。
-    ///
-    /// ⚠️ P5 还没有 DLsite 封面（P7）。所以卡片是「引擎色 + 标题」的占位形态。
-    ///    **不伪造封面**（不从游戏目录随便挖图 —— 会挖到素材）。
+    /// 卡片整库浏览，封面来源与详情页一致。
     private var cardBody: some View {
         ScrollView {
             LazyVGrid(
-                columns: [GridItem(.adaptive(minimum: 170, maximum: 260), spacing: 12)],
+                columns: [GridItem(.adaptive(minimum: 210, maximum: 300), spacing: 12)],
                 alignment: .leading, spacing: 12
             ) {
                 ForEach(store.filteredGames, id: \.id) { game in
@@ -411,9 +375,18 @@ struct GameListView: View {
                         isSelected: selection == game.id,
                         onSelect: { selection = game.id }
                     )
+                    .contextMenu {
+                        Button("编辑游戏") {
+                            selection = game.id
+                            store.requestEdit(gameId: game.id)
+                        }
+                        Button("在访达中显示") { store.revealInFinder(game: game) }
+                        Divider()
+                        Button("从游戏库移除", role: .destructive) { store.confirmDelete(game: game) }
+                    }
                 }
             }
-            .padding(14)
+            .padding(24)
         }
     }
 
@@ -460,23 +433,18 @@ struct GameCardTile: View {
     var body: some View {
         Button(action: onSelect) {
             VStack(alignment: .leading, spacing: 0) {
-                // 封面位（占位：引擎色）
-                ZStack {
-                    Rectangle().fill(engineTint.opacity(0.22))
-                    Image(systemName: "gamecontroller.fill")
-                        .font(.system(size: 22))
-                        .foregroundStyle(engineTint.opacity(0.55))
-                    if isRunning {
-                        VStack {
-                            HStack {
-                                Spacer()
-                                Circle().fill(.green).frame(width: 7, height: 7).padding(7)
-                            }
-                            Spacer()
+                GameArtwork(game: game)
+                    .frame(height: 148)
+                    .clipped()
+                    .overlay(alignment: .topTrailing) {
+                        if isRunning {
+                            Label("运行中", systemImage: "circle.fill")
+                                .font(.caption2.weight(.medium))
+                                .padding(6)
+                                .background(.regularMaterial, in: Capsule())
+                                .padding(8)
                         }
                     }
-                }
-                .aspectRatio(4.0 / 3.0, contentMode: .fit)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(game.gameTitle)
@@ -489,7 +457,7 @@ struct GameCardTile: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 9)
-                .padding(.vertical, 7)
+                .padding(.vertical, 12)
             }
         }
         .buttonStyle(.plain)
@@ -501,25 +469,13 @@ struct GameCardTile: View {
                     isSelected ? Color.accentColor : (isHovering ? Color.accentColor.opacity(0.4) : .clear),
                     lineWidth: isSelected ? 2 : 1)
         )
+        .clipShape(RoundedRectangle(cornerRadius: 8))
         .onHover { isHovering = $0 }
         .animation(.easeOut(duration: 0.12), value: isHovering)
         .help(game.gamePath)
     }
 
-    private var engineTint: Color {
-        switch game.gameEngine {
-        case "nwjs": return .blue
-        case "mkxpz": return .orange
-        case "easyrpg": return .green
-        case "renpy": return .pink
-        case "tyrano": return .purple
-        case "kirikiri": return .teal
-        case "nscripter": return .indigo
-        case "siglus": return .brown
-        case "godot": return .cyan
-        default: return .gray
-        }
-    }
+
 }
 
 // MARK: - 列表行
@@ -529,80 +485,30 @@ struct GameListRow: View {
     let isRunning: Bool
 
     var body: some View {
-        HStack(spacing: 7) {
-            Circle()
-                .fill(engineTint)
-                .frame(width: 7, height: 7)
-
-            Text(game.gameTitle)
-                .lineLimit(1)
-                .truncationMode(.tail)
-
-            Spacer(minLength: 4)
-
+        HStack(spacing: 10) {
+            GameArtwork(game: game)
+                .frame(width: 44, height: 36)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+            VStack(alignment: .leading, spacing: 4) {
+                Text(game.gameTitle)
+                    .font(.system(size: 13, weight: .medium))
+                    .lineLimit(2)
+                Text(EngineRegistry.find(folder: game.gameEngine)?.name ?? game.gameEngine)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
             if isRunning {
-                HStack(spacing: 3) {
-                    Circle().fill(.green).frame(width: 5, height: 5)
-                    Text("运行中")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
+                Image(systemName: "play.circle.fill")
+                    .foregroundStyle(.green)
+                    .accessibilityLabel("运行中")
             }
         }
-        .padding(.vertical, -2)
+        .padding(.vertical, 6)
         .help(game.gamePath)
     }
 
-    /// 引擎配色（**同一个引擎永远同一个色**）。
-    private var engineTint: Color {
-        switch game.gameEngine {
-        case "nwjs": return .blue
-        case "mkxpz": return .orange
-        case "easyrpg": return .green
-        case "renpy": return .pink
-        case "tyrano": return .purple
-        case "kirikiri": return .teal
-        case "nscripter": return .indigo
-        case "siglus": return .brown
-        case "godot": return .cyan
-        default: return .gray
-        }
-    }
-}
 
-// MARK: - 详情 / 编辑（同一个容器的两种模式）
-
-/// 详情页与编辑页的容器。
-///
-/// ⚠️ **为什么合成一个 View 而不是两个**：
-///    编辑是「对这个游戏的临时操作」，不该占一个窗口位或一个导航层级。
-///    但**换游戏时必须重置为详情**（否则用户点下一个游戏会直接进编辑页 ——
-///    那是个让人意外的行为）。
-///
-///    判据：用 `id(game.id)` 在游戏切换时重建，`@State isEditing` 自然归 false。
-struct GamePane: View {
-    let game: GameRecord
-    @EnvironmentObject private var store: AppStore
-    @State private var isEditing = false
-
-    var body: some View {
-        Group {
-            if isEditing {
-                GameEditView(game: game, onDone: { isEditing = false })
-            } else {
-                GameDetailView(game: game, onEdit: { isEditing = true })
-            }
-        }
-        // ⚠️ **响应右键菜单的「编辑」请求**。
-        //
-        //    列表行右键「编辑」时，`GamePane` 的 `isEditing` 是它自己的 `@State`，
-        //    store 拿不到 → 用「请求 + 消费」的桥接（store.requestEdit / consumeEditRequest）。
-        .onChange(of: store.editRequest, initial: true) { _, newValue in
-            guard let newValue, newValue == game.id else { return }
-            isEditing = true
-            _ = store.consumeEditRequest()
-        }
-    }
 }
 
 // MARK: - 空选择时的欢迎页
@@ -619,13 +525,16 @@ struct WelcomeView: View {
             if store.games.isEmpty {
                 Text("游戏库还是空的")
                     .font(.title2.weight(.medium))
-                Text("点右上角的「＋」添加游戏。")
+                Text("添加游戏文件或文件夹，自动识别引擎后即可开始。")
                     .font(.callout)
                     .foregroundStyle(.secondary)
+                Button("添加第一个游戏") { store.openAddGame() }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
             } else {
-                Text("从左侧选一个游戏")
+                Text("选一个游戏，开始游玩")
                     .font(.title2.weight(.medium))
-                Text("共 \(store.games.count) 个游戏")
+                Text("从左侧选择游戏，查看作品信息、管理存档或调整启动设置。")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
@@ -634,7 +543,90 @@ struct WelcomeView: View {
     }
 }
 
-/// `store.manualRJFor` 是 `String?`，而 `.sheet(item:)` 要求 `Identifiable`。
-struct ManualRJTarget: Identifiable {
+/// 游戏 id 是字符串，而模态表单需要稳定的 Identifiable 目标。
+struct GameSheetTarget: Identifiable {
     let id: String
+}
+
+/// 弹窗与导航拆开，避免根视图的泛型链过长、拖慢 Swift 的类型检查。
+private struct AppPresentations: ViewModifier {
+    @EnvironmentObject private var store: AppStore
+    @Binding var editingGameID: String?
+
+    func body(content: Content) -> some View {
+        content
+        // 编辑目标独立于列表筛选；保存标题后即使不再匹配搜索，也不能关闭尚未保存完的表单。
+        .sheet(item: Binding(
+            get: { editingGameID.map(GameSheetTarget.init(id:)) },
+            set: { if $0 == nil { editingGameID = nil } }
+        )) { target in
+            if let game = store.game(id: target.id) {
+                GameEditView(game: game, onDone: { editingGameID = nil })
+                    .environmentObject(store)
+                    .frame(minWidth: 720, idealWidth: 800, minHeight: 600, idealHeight: 720)
+            }
+        }
+        .sheet(isPresented: $store.isAddingGame) {
+            AddGameWizard()
+                .environmentObject(store)
+        }
+        // 新建分类（输入名字的小弹窗）
+        .sheet(isPresented: $store.isCreatingCategory) {
+            CreateCategorySheet()
+                .environmentObject(store)
+        }
+        // 手动输入 RJ 号（P7）
+        //
+        // ⚠️ 为什么需要：用户的真实游戏**全部检测不到 RJ**，
+        //    没有手动入口的话 P7 完全无法使用。
+        .sheet(item: Binding(
+            get: { store.manualRJFor.map(GameSheetTarget.init(id:)) },
+            set: { if $0 == nil { store.closeManualRJ() } }
+        )) { target in
+            ManualRJSheet(gameId: target.id)
+                .environmentObject(store)
+        }
+        .alert("操作未完成", isPresented: Binding(
+            get: { store.operationError != nil },
+            set: { if !$0 { store.operationError = nil } }
+        )) {
+            Button("好", role: .cancel) { store.operationError = nil }
+        } message: {
+            Text(store.operationError ?? "")
+        }
+        // 删除游戏确认
+        .alert("从游戏库移除？", isPresented: Binding(
+            get: { store.pendingDelete != nil },
+            set: { if !$0 { store.cancelPendingDelete() } }
+        ), presenting: store.pendingDelete) { game in
+            // ⚠️ **必须说清「不会删游戏文件」** ——
+            //    用户最怕的是「点一下把游戏删没了」。
+            //    实际只删库里的记录，游戏目录原样不动。
+            Button("移除", role: .destructive) {
+                store.confirmPendingDelete()
+            }
+            Button("取消", role: .cancel) {
+                store.cancelPendingDelete()
+            }
+        } message: { game in
+            Text("「\(game.gameTitle)」会从游戏库移除。\n\n"
+                 + "**游戏文件不会被删除**，只是不再显示在列表里。"
+                 + "游玩记录和分类归属也会一起清掉。")
+        }
+        // 删除分类确认
+        .alert("删除分类？", isPresented: Binding(
+            get: { store.pendingDeleteCategory != nil },
+            set: { if !$0 { store.cancelDeleteCategory() } }
+        ), presenting: store.pendingDeleteCategory) { pair in
+            Button("删除", role: .destructive) {
+                store.confirmPendingDeleteCategory()
+            }
+            Button("取消", role: .cancel) {
+                store.cancelDeleteCategory()
+            }
+        } message: { pair in
+            Text("分类「\(pair.name)」会被删除。\n\n"
+                 + "**游戏不会被删除**，只是它们不再属于这个分类。")
+        }
+    }
 }

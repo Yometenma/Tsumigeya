@@ -28,28 +28,30 @@ struct EnginesPage: View {
         //    那个修饰符不会生效，也不会显示标题）。
         //    改成页面自己的标题行 —— 与库页顶部的分段控件同一视觉层级。
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 8) {
-                Text("引擎运行时")
-                    .font(.system(size: 15, weight: .semibold))
-                Text("已装 \(EngineStatus.installedCount(store.engineEntries)) / \(EngineRegistry.launchable.count)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Spacer()
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("运行时管理").font(.system(size: 24, weight: .bold))
+                    Spacer()
+                    Text("已就绪 \(EngineStatus.installedCount(store.engineEntries)) / \(EngineRegistry.launchable.count)")
+                        .font(.callout).foregroundStyle(.secondary)
+                }
+                Text("安装游戏所需的引擎即可，无需全部安装。重装与卸载位于每行的更多菜单中。")
+                    .font(.callout).foregroundStyle(.secondary)
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 14)
-            .padding(.bottom, 8)
+            .padding(24)
 
             List {
                 Section {
-                    ForEach(store.engineEntries) { entry in
+                    ForEach(store.engineEntries.filter { $0.definition.launchable }) { entry in
                         EngineRow(entry: entry)
                     }
-                } footer: {
-                    Text("引擎运行时是启动游戏的必需品。装好对应的运行时之后，游戏就能用你自己的 Mac 跑起来。")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .padding(.vertical, 6)
+                } header: {
+                    Text("可安装的运行时")
+                }
+                Section("仅识别 · 暂不支持直接启动") {
+                    ForEach(store.engineEntries.filter { !$0.definition.launchable }) { entry in
+                        EngineRow(entry: entry)
+                    }
                 }
             }
             .listStyle(.inset)
@@ -67,6 +69,7 @@ struct EnginesPage: View {
 struct EngineRow: View {
     let entry: EngineStatus.Entry
     @EnvironmentObject private var store: AppStore
+    @State private var confirmsUninstall = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -110,7 +113,13 @@ struct EngineRow: View {
                 progressView(progress)
             }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 12)
+        .alert("卸载运行时？", isPresented: $confirmsUninstall) {
+            Button("卸载", role: .destructive) { store.uninstallEngine(entry.id) }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("使用 \(entry.definition.name) 的游戏将暂时无法启动。游戏文件和存档不会删除，之后可重新安装。")
+        }
     }
 
     // MARK: 状态色
@@ -157,15 +166,18 @@ struct EngineRow: View {
                 Text("已装")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Button("重装") {
-                    store.installEngine(entry.id, force: true)
+                Menu {
+                    Button("重新安装") { store.installEngine(entry.id, force: true) }
+                    Button("卸载运行时…", role: .destructive) { confirmsUninstall = true }
+                        .disabled(!store.runningGames.isEmpty)
+                } label: {
+                    Image(systemName: "ellipsis.circle")
                 }
-                .controlSize(.small)
-                Button("卸载") {
-                    store.uninstallEngine(entry.id)
-                }
-                .controlSize(.small)
-                .tint(.red)
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .accessibilityLabel("\(entry.definition.name)的更多操作")
+                .help(store.runningGames.isEmpty ? "重新安装或卸载运行时" : "请先停止游戏再卸载运行时")
             }
         } else {
             Button("安装") {

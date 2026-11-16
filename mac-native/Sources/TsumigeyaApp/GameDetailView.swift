@@ -1,153 +1,104 @@
-// 详情页。
-//
-// 布局参考 phoenix（MIT）的 `GameDetailView`：
-//   · 顶部**大图**（400px 高）+ 渐变遮罩把下边缘融进背景
-//   · 图下方是信息区：标题 / 引擎 / 路径 / 操作按钮
-//
-// ⚠️ **只参考结构，不抄代码**（见 RootView 文件头）。
-//
-// ===== 封面图的现实 =====
-//
-// P4 还没有 DLsite 集成（P7）。所以顶部大图位置显示**占位**：
-// 引擎配色渐变 + 大图标 + 游戏名。
-//
-// ⚠️ **绝不伪造封面**：不从游戏目录里随便挖图 —— 那会挖到素材（可能是 R18 或无关图），
-//    用户会以为那是封面。宁可显示占位，也不要骗人。
+// 主操作保持可见；作品、存档和排障信息分层，避免所有功能挤在一条长页面中。
 import SwiftUI
 import TsumigeyaCore
 
 struct GameDetailView: View {
     let game: GameRecord
-    /// 点「编辑」时调（由 `GamePane` 提供）。
+    /// 编辑入口由根视图提供，弹窗不依附于当前筛选结果。
     var onEdit: (() -> Void)? = nil
     @EnvironmentObject private var store: AppStore
 
-    /// 顶图高度。
-    ///
-    /// ⚠️ **按有没有封面分两档**（用户 2026-11-06 反馈：「图也不够大」）。
-    ///
-    ///    历史：
-    ///      · 原来 320 → 用户说「占的纵向空间太多」，降到 240
-    ///      · 现在有真封面了 → 240 显得**太小**（用户又说「图也不够大」）
-    ///
-    ///    判据其实是「**这张图有内容吗**」：
-    ///      · 无封面 = 一块纯色渐变 → 240 够了，大了是浪费空间
-    ///      · 有封面 = 一张海报 → 应该给足高度，那是这个页面的视觉主体
-    private var headerHeight: CGFloat {
-        hasCover ? 360 : 240
+    var onManageEngines: (() -> Void)? = nil
+
+    enum DetailTab: String, CaseIterable, Identifiable {
+        case overview, saves, runtime
+        var id: String { rawValue }
+        var title: String {
+            switch self {
+            case .overview: return "概览"
+            case .saves: return "存档"
+            case .runtime: return "运行信息"
+            }
+        }
     }
 
-    /// 这个游戏有没有 DLsite 封面。
-    private var hasCover: Bool {
-        store.meta(for: game.id)?.work.coverUrl != nil
+    @State private var tab: DetailTab
+
+    init(game: GameRecord, onEdit: (() -> Void)? = nil,
+         onManageEngines: (() -> Void)? = nil, initialTab: DetailTab = .overview) {
+        self.game = game
+        self.onEdit = onEdit
+        self.onManageEngines = onManageEngines
+        _tab = State(initialValue: initialTab)
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                header
-                bodyContent
+        VStack(alignment: .leading, spacing: 0) {
+            header
+            launchSection
+                .padding(.horizontal, 24)
+                .padding(.bottom, 20)
+
+            Picker("游戏信息", selection: $tab) {
+                ForEach(DetailTab.allCases) { item in Text(item.title).tag(item) }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(maxWidth: 320)
+            .padding(.horizontal, 24)
+            .padding(.bottom, 16)
+
+            Divider()
+            // 保持标签内容挂载，切页不能丢掉进行中的存档任务状态而允许重复操作。
+            ZStack(alignment: .topLeading) {
+                ForEach(DetailTab.allCases) { item in
+                    ScrollView {
+                        bodyContent(for: item)
+                            .frame(maxWidth: 860, alignment: .leading)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(24)
+                    }
+                    .opacity(tab == item ? 1 : 0)
+                    .allowsHitTesting(tab == item)
+                    .disabled(tab != item)
+                    .accessibilityHidden(tab != item)
+                }
             }
         }
         .background(Color(nsColor: .textBackgroundColor))
-        // ⚠️ **标题交给 RootView 统一管**（用户截图反馈：原来标题重复了 ——
-        //    窗口标题栏显示游戏名，大图里又有一遍）。
-        //
-        //    这里不再设 navigationTitle（否则会和 RootView 的冲突，
-        //    SwiftUI 的 NavigationSplitView 只有 detail 侧那个生效，
-        //    而侧边栏折叠后就会看到两个不同的标题）。
-        //
-        //    现在：窗口标题 = 「游戏库」（侧边栏视角），
-        //          游戏名只在大图上（内容区的身份）。
     }
 
-    // MARK: - 顶部大图
-
     private var header: some View {
-        ZStack(alignment: .bottomLeading) {
-            // ===== 背景：有封面就用封面，没有就用引擎色渐变（P7）=====
-            coverBackground
+        HStack(alignment: .top, spacing: 20) {
+            GameArtwork(game: game)
+                .frame(width: 160, height: 120)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
 
-            if !hasCover {
-                Image(systemName: "gamecontroller.fill")
-                    .font(.system(size: 76))
-                    .foregroundStyle(.white.opacity(0.22))
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-
-            // ⚠️ **遮罩强度取决于有没有封面**（用户 2026-11-06 反馈：
-            //    「封面前叠了一个蒙版，灰灰的」）。
-            //
-            //    本鱼原来对所有情况都压了**同样的重遮罩** —— 那是为
-            //    「引擎色渐变占位」设计的（白字要立得住）。
-            //    但**真封面上再压一层重遮罩就是糊**：用户看的是海报，
-            //    不是一块灰蒙蒙的东西。
-            //
-            //    现在的判据：
-            //      · **有封面** → 只在**底部 40%** 压暗（标题区要可读），
-            //                     顶部 **完全不压**（保留封面原色）
-            //      · **没封面** → 仍然整体轻压（渐变本身太亮，白字需要它）
-            if hasCover {
-                // 只压底部：0 → 0.55 完全透明，0.55 → 1.0 渐暗到背景色
-                LinearGradient(
-                    stops: [
-                        .init(color: .clear, location: 0.0),
-                        .init(color: .clear, location: 0.52),
-                        .init(color: Color(nsColor: .textBackgroundColor).opacity(0.55), location: 0.78),
-                        .init(color: Color(nsColor: .textBackgroundColor), location: 1.0),
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            } else {
-                // 无封面：整体轻压（渐变占位需要它让白字立得��）
-                LinearGradient(
-                    stops: [
-                        .init(color: .clear, location: 0.0),
-                        .init(color: Color(nsColor: .textBackgroundColor).opacity(0.22), location: 0.52),
-                        .init(color: Color(nsColor: .textBackgroundColor).opacity(0.72), location: 0.82),
-                        .init(color: Color(nsColor: .textBackgroundColor), location: 1.0),
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            }
-
-            // 标题叠在图上（左下角）
-            VStack(alignment: .leading, spacing: 7) {
+            VStack(alignment: .leading, spacing: 10) {
                 Text(game.gameTitle)
-                    .font(.system(size: 26, weight: .bold))
-                    .foregroundStyle(.white)
-                    // ⚠️ 阴影用黑色半透明 + 小半径：让白字在任何底色上都立得住
-                    .shadow(color: .black.opacity(0.45), radius: 8, y: 1)
+                    .font(.system(size: 23, weight: .bold))
                     .lineLimit(3)
-                    .fixedSize(horizontal: false, vertical: true)
-
+                    .textSelection(.enabled)
                 HStack(spacing: 8) {
-                    engineBadge
+                    Text(engineDisplayName)
+                        .font(.caption.weight(.medium))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(.indigo.opacity(0.12), in: Capsule())
                     if store.runningGames[game.id] != nil {
-                        runningBadge
+                        Label("运行中", systemImage: "play.circle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.green)
                     }
                 }
-
-                // ⚠️ **大图空白处补一句路径摘要**（用户截图反馈：240px 全蓝很空）。
-                //    放大图右下角而不是底部：底部已经在渐隐，
-                //    右下角是「视觉上仍然清晰」的区域。
-                //
-                //    信息选择：只显示**路径末尾**（父目录名），
-                //    因为完整路径太长会挤标题，而父目录名正好能告诉用户「这是哪个文件夹」。
                 Text(folderHint)
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundStyle(.white.opacity(0.62))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                     .lineLimit(1)
-                    .truncationMode(.head)
-                    .padding(.top, 2)
             }
-            .padding(.horizontal, 24)
-            .padding(.bottom, 18)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(height: headerHeight)
-        .clipped()
+        .padding(24)
     }
 
     // MARK: - DLsite 元数据
@@ -162,7 +113,7 @@ struct GameDetailView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Text("作品信息")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: 15, weight: .semibold))
                 if let rj = store.meta(for: game.id)?.work.rj
                     ?? store.detectRJ(for: game).first {
                     Text(rj)
@@ -322,10 +273,7 @@ struct GameDetailView: View {
                 .controlSize(.small)
                 .disabled(store.searchingFor != nil)
             case .manual:
-                Button("手动输入 RJ") {
-                    store.beginManualRJ(gameId: game.id)
-                }
-                .controlSize(.small)
+                EmptyView()
             }
             // ⚠️ **永远保留手动入口**（自动识别失败时的兜底）
             Button("手动输入 RJ") {
@@ -363,52 +311,13 @@ struct GameDetailView: View {
 
             if let desc = meta.work.description, !desc.isEmpty {
                 Text(desc)
-                    .font(.caption)
+                    .font(.callout)
                     .foregroundStyle(.secondary)
-                    .lineLimit(4)
+                    .lineSpacing(5)
                     .fixedSize(horizontal: false, vertical: true)
                     .textSelection(.enabled)
             }
         }
-    }
-
-    @ViewBuilder
-    private var coverBackground: some View {
-        if let cover = store.meta(for: game.id)?.work.coverUrl,
-           let url = URL(string: cover) {
-            AsyncImage(url: url) { phase in
-                switch phase {
-                case .success(let image):
-                    image
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        // ⚠️ **遮罩**：DLsite 的封面颜色不可预测，
-                        //    而大图上的标题是白字。没有遮罩时浅色封面会让标题看不清。
-                        .overlay(Color.black.opacity(0.42))
-                default:
-                    // 加载中 / 失败 → 引擎色渐变（与没有封面时一样）
-                    engineGradient
-                }
-            }
-        } else {
-            engineGradient
-        }
-    }
-
-    /// 引擎色渐变（没有封面时的占位）。
-    ///
-    /// ⚠️ **必须够深**（用户截图反馈的第一个隐患）：
-    ///    大图上的标题是**白字**，底色太浅就看不清。
-    ///    用 `tint` 的**混合暗色**（与 .black 混）保证足够暗。
-    private var engineGradient: some View {
-        LinearGradient(
-            colors: [
-                engineTint.mix(with: .black, by: 0.35),
-                engineTint.mix(with: .black, by: 0.05),
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
     }
 
     /// 游戏目录名（父目录的最后一段）。
@@ -419,114 +328,86 @@ struct GameDetailView: View {
 
     // MARK: - 信息区
 
-    private var bodyContent: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            // 启动按钮（D41 的精神：**操作在详情页**，卡片/列表只是浏览入口）
-            launchSection
-
-            Divider()
-
+    @ViewBuilder
+    private func bodyContent(for section: DetailTab) -> some View {
+        switch section {
+        case .overview:
             dlsiteSection
-
-            Divider()
-
-            infoRows
-
-            Divider()
-
-            engineArgsSection
-
-            Divider()
-
+        case .saves:
             SaveSection(game: game)
+        case .runtime:
+            VStack(alignment: .leading, spacing: 24) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("运行环境").font(.headline)
+                        Text("此游戏使用 \(engineDisplayName)。启动异常时，可检查运行时和下方的启动参数。")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 12)
+                    if let onManageEngines {
+                        Button("管理运行时", action: onManageEngines)
+                    }
+                }
+                Divider()
+                infoRows
+                engineArgsSection
+            }
         }
-        .padding(.horizontal, 28)
-        .padding(.top, 18)
-        .padding(.bottom, 40)
     }
 
     // MARK: 启动
 
     private var launchSection: some View {
-        HStack(spacing: 12) {
-            let isRunning = store.runningGames[game.id] != nil
-
-            // ⚠️ **主按钮必须「实心、醒目」**（用户截图反馈：原来那个浅紫描边
-            //    看起来像**禁用状态**，完全看不出是主操作）。
-            //
-            //    SwiftUI 的 `.borderedProminent` + `.tint` 是实心填充的正确做法。
-            //    但**不能用 label 里的 Label 图标把它压暗** —— 图标与文字都该是白的。
-            //
-            //    尺寸：`.controlSize(.large)` + 自定义 padding，让按钮有分量感
-            //    （mac 的主操作用户期待它大一点）。
-            Button {
-                if isRunning {
-                    store.stop(game: game)
-                } else {
-                    store.launch(game: game)
-                }
-            } label: {
-                HStack(spacing: 7) {
-                    Image(systemName: isRunning ? "stop.fill" : "play.fill")
-                        .font(.system(size: 13, weight: .semibold))
-                    Text(store.stoppingGames.contains(game.id) ? "正在停止…" : (isRunning ? "停止" : "启动"))
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
+                let isRunning = store.runningGames[game.id] != nil
+                let isStopping = store.stoppingGames.contains(game.id)
+                Button {
+                    if isRunning { store.stop(game: game) }
+                    else { store.launch(game: game) }
+                } label: {
+                    Label(isStopping ? "正在停止…" : (isRunning ? "停止游戏" : "开始游戏"),
+                          systemImage: isRunning ? "stop.fill" : "play.fill")
                         .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(minWidth: 108)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 11)
+                        .background(isRunning ? Color.red : Color.indigo,
+                                    in: RoundedRectangle(cornerRadius: 9))
+                        .opacity(isStopping ? 0.55 : 1)
                 }
-                .frame(minWidth: 96)
-                .padding(.vertical, 4)
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            // 运行中 → 红色（停止是「危险/打断」动作）；否则 → 引擎主色
-            .tint(isRunning ? .red : .accentColor)
-            .disabled(store.stoppingGames.contains(game.id))
-            .keyboardShortcut(.defaultAction)
+                .buttonStyle(.plain)
+                .disabled(isStopping)
+                .keyboardShortcut(.defaultAction)
 
+                Spacer(minLength: 8)
+                if let onEdit {
+                    Button(action: onEdit) { Label("编辑游戏", systemImage: "slider.horizontal.3") }
+                }
+                Menu {
+                    Button("在访达中显示") { store.revealInFinder(game: game) }
+                    Button("手动关联作品信息…") { store.beginManualRJ(gameId: game.id) }
+                    Divider()
+                    Button("从游戏库移除…", role: .destructive) { store.confirmDelete(game: game) }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .frame(width: 20, height: 20)
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .accessibilityLabel("更多游戏操作")
+                .help("更多游戏操作")
+            }
             if let failure = store.lastLaunchFailure[game.id] {
-                // ⚠️ 启动失败要**明确显示原因**，不能静默。
-                //    Electron 版的教训（D36）：失败必须返回结构化结果，不抛错。
                 Label(failure, systemImage: "exclamationmark.triangle.fill")
                     .font(.callout)
                     .foregroundStyle(.orange)
-                    .lineLimit(2)
                     .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-
-            Spacer()
-
-            // 编辑入口（P5）
-            if let onEdit {
-                Button {
-                    onEdit()
-                } label: {
-                    Label("编辑", systemImage: "pencil")
-                }
-                .controlSize(.large)
-            }
-
-            // ⚠️ **移除入口**（用户 2026-11-06 报的第 1 个问题：
-            //    「加入进游戏库的游戏没有移除用的按键」）。
-            //
-            //    右键菜单也有，但**详情页必须有一个看得见的** ——
-            //    用户不会去猜「右键试试」。
-            //
-            //    用 `Menu` 而不是裸按钮：删除是危险操作，收进菜单里能减少误点，
-            //    同时又让入口看得见（菜单箭头就是提示）。
-            Menu {
-                Button("在访达中显示") {
-                    store.revealInFinder(game: game)
-                }
-                Divider()
-                Button("从游戏库移除…", role: .destructive) {
-                    store.confirmDelete(game: game)
-                }
-            } label: {
-                Label("更多", systemImage: "ellipsis.circle")
-            }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .frame(width: 30)
-            .help("更多操作")
         }
     }
 
@@ -611,45 +492,7 @@ struct GameDetailView: View {
         }
     }
 
-    // MARK: 徽标
-
-    private var engineBadge: some View {
-        Text(engineDisplayName)
-            .font(.caption.weight(.medium))
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
-            .background(.white.opacity(0.22), in: Capsule())
-            .foregroundStyle(.white)
-    }
-
-    private var runningBadge: some View {
-        HStack(spacing: 4) {
-            Circle().fill(.green).frame(width: 6, height: 6)
-            Text("运行中")
-                .font(.caption.weight(.medium))
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 3)
-        .background(.black.opacity(0.35), in: Capsule())
-        .foregroundStyle(.white)
-    }
-
     private var engineDisplayName: String {
         EngineRegistry.find(folder: game.gameEngine)?.name ?? game.gameEngine
-    }
-
-    private var engineTint: Color {
-        switch game.gameEngine {
-        case "nwjs": return .blue
-        case "mkxpz": return .orange
-        case "easyrpg": return .green
-        case "renpy": return .pink
-        case "tyrano": return .purple
-        case "kirikiri": return .teal
-        case "nscripter": return .indigo
-        case "siglus": return .brown
-        case "godot": return .cyan
-        default: return .gray
-        }
     }
 }

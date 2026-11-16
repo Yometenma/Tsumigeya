@@ -111,6 +111,7 @@ struct TsumigeyaApp: App {
 
 // MARK: - 关于面板
 
+@MainActor
 enum AboutPanel {
     /// 显示系统标准「关于」面板。
     ///

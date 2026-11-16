@@ -21,30 +21,50 @@ import SwiftUI
 import TsumigeyaCore
 
 struct SettingsPage: View {
-    @EnvironmentObject private var store: AppStore
+    @State private var selectedGroup: SettingsGroups.GroupId
+
+    init(initialGroup: SettingsGroups.GroupId = .appearance) {
+        _selectedGroup = State(initialValue: initialGroup)
+    }
 
     var body: some View {
-        VStack(spacing: 0) {
-            // 标题行（与引擎页同一视觉层级 —— v2 布局没有导航容器）
-            HStack {
-                Text("设置")
-                    .font(.system(size: 15, weight: .semibold))
-                Spacer()
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("设置").font(.system(size: 24, weight: .bold))
+                Text("更改后自动保存，无需另外确认。")
+                    .font(.callout).foregroundStyle(.secondary)
+                Picker("设置分组", selection: $selectedGroup) {
+                    ForEach(SettingsGroups.groups, id: \.id) { group in
+                        Text(group.id.title).tag(group.id)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .padding(.top, 12)
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 14)
-            .padding(.bottom, 10)
+            .padding(24)
 
             Form {
-                ForEach(SettingsGroups.groups, id: \.id) { group in
+                ForEach(SettingsGroups.groups.filter { $0.id == selectedGroup }, id: \.id) { group in
                     Section {
                         if group.keys.isEmpty {
-                            // ⚠️ `data` 组没有设置项 —— **只放只读信息**。
-                            //    但它必须在页面上存在（否则用户找不到数据目录）。
                             InfoRows()
                         } else {
-                            ForEach(group.keys, id: \.self) { key in
+                            ForEach(group.keys.filter { SettingRow(key: $0).isAvailable }, id: \.self) { key in
                                 SettingRow(key: key)
+                            }
+                            if group.id == .language {
+                                LabeledContent("界面语言", value: "简体中文")
+                                Text("目前仅提供简体中文，不会自动切换游戏的语言版本。")
+                                    .font(.callout).foregroundStyle(.secondary)
+                            }
+                            let unavailable = group.keys.filter { !SettingRow(key: $0).isAvailable }
+                            if !unavailable.isEmpty {
+                                DisclosureGroup("尚未提供的选项（\(unavailable.count)）") {
+                                    ForEach(unavailable, id: \.self) { key in
+                                        SettingRow(key: key).disabled(true)
+                                    }
+                                }
                             }
                         }
                     } header: {
@@ -53,8 +73,11 @@ struct SettingsPage: View {
                 }
             }
             .formStyle(.grouped)
+            .id(selectedGroup)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .frame(maxWidth: 900, maxHeight: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(Color(nsColor: .windowBackgroundColor))
     }
 }
 
@@ -106,7 +129,7 @@ struct SettingRow: View {
             if let note = pendingNote {
                 HStack(spacing: 6) {
                     if note.isNotImplemented {
-                        Text("未启用")
+                        Text("尚未实现")
                             .font(.system(size: 9, weight: .medium))
                             .padding(.horizontal, 5)
                             .padding(.vertical, 1)
@@ -146,7 +169,7 @@ struct SettingRow: View {
                     get: { store.settingBool(.listView) },
                     set: { store.setSetting(.listView, .bool($0)) }
                 ))
-                Text("关掉就是卡片网格（等 P7 接上封面后更好看）。")
+                Text("也可以在游戏库右上角随时切换列表与卡片。")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
 
@@ -166,18 +189,8 @@ struct SettingRow: View {
                     .foregroundStyle(.secondary)
 
             case .saveSyncMode:
-                Picker("存档同步", selection: Binding(
-                    get: { store.settingString(.saveSyncMode) },
-                    set: { store.setSetting(.saveSyncMode, .string($0)) }
-                )) {
-                    Text("不启用").tag("none")
-                    Text("手动导入导出").tag("manual")
-                }
-                .pickerStyle(.segmented)
-                .frame(maxWidth: 260)
-                // ⚠️ 必须说清「不接云」（D83）。用户看到「同步」两个字
-                //    会以为存档在云上 —— 那个误解比没有这个功能更糟。
-                Text("**不会上传任何数据到网络。** 手动模式就是详情页那两个导出/导入按钮。")
+                LabeledContent("存档备份", value: "手动导入导出")
+                Text("在游戏详情的「存档」页操作，无需另外启用。备份文件只保存在你选择的位置。")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
 
@@ -265,18 +278,20 @@ struct SettingRow: View {
         }
     }
 
+    var isAvailable: Bool { pendingNote?.isNotImplemented != true }
+
     private var pendingNote: Note? {
         switch key {
         case .appearance, .listView, .deletionConfirmation:
             // 这三个**真的能用**，不需要任何说明
             return nil
         case .showAdultCovers:
-            return .notImplemented("还没有封面（等 DLsite 集成）")
+            return .notImplemented("封面隐私过滤尚未实现，当前封面不会模糊处理")
         case .saveSyncMode:
             // ⚠️ **P6 做完后 manual 模式真的能用** → caveat 而不是 notImplemented。
             //    「不接任何云」是用户**需要知道的事实**（D83：半成品云比没有更糟，
             //    用户会以为存档在云上从而不再手动备份）。
-            return .caveat("只有「手动」模式能用；不接任何云，存档不会上传。")
+            return .caveat("只提供手动导入导出；不接任何云，存档不会上传。")
         case .language:
             return .notImplemented("目前只有简体中文界面")
         case .preferredLanguage, .fallbackLanguage, .languageSwitchPrompt:
@@ -297,6 +312,9 @@ struct InfoRows: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             InfoRow("数据目录", store.dataDir, mono: true)
+            Button("在访达中打开数据目录") {
+                NSWorkspace.shared.open(URL(fileURLWithPath: store.dataDir))
+            }
             InfoRow("版本", appVersion)
             InfoRow("平台", "macOS \(platformString)")
         }

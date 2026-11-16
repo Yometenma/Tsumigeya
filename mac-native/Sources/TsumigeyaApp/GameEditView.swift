@@ -23,7 +23,7 @@ import TsumigeyaCore
 
 struct GameEditView: View {
     let game: GameRecord
-    /// 点「返回」时调（由 `GamePane` 提供）。
+    /// 完成或确认放弃草稿时关闭编辑表单。
     var onDone: () -> Void = {}
     @EnvironmentObject private var store: AppStore
 
@@ -59,6 +59,7 @@ struct GameEditView: View {
     @State private var original: Snapshot?
     @State private var loadedGameID: String?
     @State private var saveError: String?
+    @State private var confirmsDiscard = false
 
     private var current: Snapshot {
         Snapshot(title: title, engine: engine, gameArgs: gameArgs, meta: metaDraft)
@@ -85,6 +86,13 @@ struct GameEditView: View {
             // ⚠️ 必须给背景色，否则 Form 的内容会透上来与 header 重叠
             .background(.bar)
         }
+        .interactiveDismissDisabled(isDirty)
+        .alert("放弃未保存的修改？", isPresented: $confirmsDiscard) {
+            Button("放弃修改", role: .destructive, action: onDone)
+            Button("继续编辑", role: .cancel) {}
+        } message: {
+            Text("尚未保存的信息会丢失。分类归属为即时保存，不会撤销。")
+        }
         .onAppear {
             loadIfNeeded()
         }
@@ -98,16 +106,17 @@ struct GameEditView: View {
     private var header: some View {
         HStack(spacing: 12) {
             Button {
-                onDone()
+                if isDirty { confirmsDiscard = true }
+                else { onDone() }
             } label: {
-                Label("返回", systemImage: "chevron.left")
+                Text("完成")
             }
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
 
             Divider().frame(height: 16)
 
-            Text("编辑")
+            Text("编辑游戏")
                 .font(.system(size: 15, weight: .semibold))
             Text(game.gameTitle)
                 .font(.callout)

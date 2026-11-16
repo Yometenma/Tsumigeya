@@ -163,7 +163,65 @@ enum UISnapshot {
                 dir: directory, appearance: appearance)
         }
 
-        // 引擎页还写着 P5，但先渲染一个「未实现」占位以证明多页渲染通路通了
+        // 新入口必须纳入快照；使用临时设置副本，不能为验 UI 改写用户的显示偏好。
+        let previewDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tsmg-ui-preview-" + UUID().uuidString)
+        do {
+            try FileManager.default.createDirectory(at: previewDirectory, withIntermediateDirectories: true)
+            defer { try? FileManager.default.removeItem(at: previewDirectory) }
+            for name in ["games.json", "library-meta.json", "global-settings.json"] {
+                let source = URL(fileURLWithPath: store.dataDir).appendingPathComponent(name)
+                if FileManager.default.fileExists(atPath: source.path) {
+                    try FileManager.default.copyItem(at: source, to: previewDirectory.appendingPathComponent(name))
+                }
+            }
+            let previewStore = AppStore()
+            await previewStore.load(dataDirectory: previewDirectory.path)
+            previewStore.setSetting(.listView, .bool(false))
+            failures += captureWindow(
+                RootView(selection: nil, loadsOnAppear: false).environmentObject(previewStore),
+                size: CGSize(width: 1280, height: 800), name: "08-library-grid",
+                dir: directory, appearance: appearance)
+            if let game = store.games.first {
+                for (tab, name) in [(GameDetailView.DetailTab.saves, "09-detail-saves"),
+                                    (.runtime, "10-detail-runtime")] {
+                    failures += captureWindow(
+                        GameDetailView(game: game, initialTab: tab).environmentObject(store),
+                        size: CGSize(width: 600, height: 620), name: name,
+                        dir: directory, appearance: appearance)
+                }
+            }
+            if var game = store.games.first {
+                game.gameTitle = "超长标题布局验收：遠い星の物語・異世界の冒険と約束の記憶 — 完全版 "
+                    + "追加章节与多语言游戏名称的显示检查"
+                failures += captureWindow(
+                    GameDetailView(game: game, onEdit: {}, onManageEngines: {}, initialTab: .runtime)
+                        .environmentObject(store),
+                    size: CGSize(width: 480, height: 500), name: "14-detail-long-title",
+                    dir: directory, appearance: appearance)
+            }
+            previewStore.setSetting(.listView, .bool(true))
+            failures += captureWindow(
+                RootView(selection: previewStore.games.first?.id, loadsOnAppear: false)
+                    .environmentObject(previewStore),
+                size: CGSize(width: 900, height: 600), name: "11-library-minimum",
+                dir: directory, appearance: appearance)
+            failures += captureWindow(
+                RootView(selection: previewStore.games.first?.id, loadsOnAppear: false)
+                    .environmentObject(previewStore),
+                size: CGSize(width: 1100, height: 760), name: "12-library-light",
+                dir: directory, appearance: NSAppearance(named: .aqua))
+            for group in SettingsGroups.groups where group.id != .appearance {
+                failures += captureWindow(
+                    SettingsPage(initialGroup: group.id).environmentObject(store),
+                    size: CGSize(width: 900, height: 650), name: "13-settings-" + group.id.rawValue,
+                    dir: directory, appearance: appearance)
+            }
+        } catch {
+            print("❌ 无法创建 UI 验收数据副本：\(error)")
+            failures += 1
+        }
+
         print("")
         if failures == 0 {
             print("✅ 全部渲染成功 → \(directory)")
@@ -327,7 +385,7 @@ struct EnginesPageRepresentable: View {
     let store: AppStore
 
     var body: some View {
-        EnginesPage()
+        RootView(loadsOnAppear: false, initialPage: .engines)
             .environmentObject(store)
             .frame(width: 1000, height: 800)
     }
@@ -338,7 +396,7 @@ struct SettingsPageRepresentable: View {
     let store: AppStore
 
     var body: some View {
-        SettingsPage()
+        RootView(loadsOnAppear: false, initialPage: .settings)
             .environmentObject(store)
             .frame(width: 900, height: 900)
     }
