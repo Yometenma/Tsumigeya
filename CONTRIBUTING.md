@@ -56,6 +56,7 @@ swift run Tsumigeya
 | `detect` / `deps` / `install <引擎> [--dry-run]` | 引擎识别、依赖检查与安装 |
 | `plan` / `launch [id]` / `saves` | 检查启动计划、真实启动和存档位置 |
 | `dlsite-fetch <RJ> [category]` / `dlsite-probe <html>` | 真实网络抓取与本地页面解析 |
+| `dlsite-search <关键词> [category]` | 真实网络搜索，核对成人向／一般向候选与失败提示 |
 | `search-probe <html>` / `rj-probe <路径…>` | 搜索结果解析与 RJ 编号提取 |
 | `meta-probe [目录]` / `zip-probe [目录]` | 元数据读写与 ZIP 格式检查 |
 | `scan-games <目录>` | 受限批量扫描，只预览，不写入；不可读或达到范围上限时非零退出 |
