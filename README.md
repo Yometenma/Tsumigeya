@@ -1,10 +1,6 @@
 <p align="center">
-  <img src="assets/icon-source.jpg" width="320" alt="Tsumigeya，像素风剑与爱心标识">
+  <img src=".github/assets/readme-banner.png" width="960" alt="Tsumigeya：在 Mac 上整理、运行你的 DLsite 游戏；银发魔女看板娘与剑心标识">
 </p>
-
-<h1 align="center">Tsumigeya</h1>
-
-<p align="center"><strong>在 Mac 上整理、运行你的 DLsite 游戏。</strong></p>
 
 <p align="center">
   <a href="https://github.com/Yometenma/Tsumigeya/releases/latest">下载最新版</a> ·
