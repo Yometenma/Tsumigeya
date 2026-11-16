@@ -268,3 +268,58 @@ struct NaturalCompareTests {
         #expect(SaveEntries.naturalCompare("abc", "abd"))
     }
 }
+// MARK: - 手动指定目录
+
+@Suite("手动指定存档目录")
+struct SaveDirectoryOverrideTests {
+
+    @Test("有效的空目录保持 empty 而不是 unknown")
+    func emptyDirectoryIsKnown() throws {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory.appendingPathComponent("tsmg-save-override-\(UUID().uuidString)")
+        let directory = root.appendingPathComponent("自定义存档")
+        try fm.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: root) }
+
+        let listing = SaveStore.list(
+            gamePath: root.appendingPathComponent("Game.exe").path,
+            engine: "tyrano",
+            overrideDirectory: directory.path)
+
+        #expect(listing.dir == directory.path)
+        #expect(listing.items.isEmpty)
+    }
+
+    @Test("手动目录中的存档可列出")
+    func listsFilesFromOverride() throws {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory.appendingPathComponent("tsmg-save-override-\(UUID().uuidString)")
+        let directory = root.appendingPathComponent("save")
+        try fm.createDirectory(at: directory, withIntermediateDirectories: true)
+        try Data([1, 2, 3]).write(to: directory.appendingPathComponent("file1.sav"))
+        defer { try? fm.removeItem(at: root) }
+
+        let listing = SaveStore.list(
+            gamePath: root.appendingPathComponent("Game.exe").path,
+            engine: "tyrano",
+            overrideDirectory: directory.path)
+
+        #expect(listing.dir == directory.path)
+        #expect(listing.items.map(\.name) == ["file1.sav"])
+    }
+
+    @Test("失效手动目录仍是 unknown")
+    func missingOverrideIsUnknown() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tsmg-save-override-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let listing = SaveStore.list(
+            gamePath: root.appendingPathComponent("Game.exe").path,
+            engine: "kirikiri",
+            overrideDirectory: root.appendingPathComponent("不存在").path)
+
+        #expect(listing.dir == nil)
+        #expect(listing.items.isEmpty)
+    }
+}

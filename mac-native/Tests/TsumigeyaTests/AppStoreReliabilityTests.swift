@@ -77,6 +77,39 @@ struct AppStoreReliabilityTests {
         #expect(store.meta(for: game.id) == nil)
     }
 
+    @Test("手动存档目录写回并保留未知字段，清除后恢复自动探测")
+    func saveDirectoryOverridePersists() async throws {
+        let dir = try directory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let saves = dir.appendingPathComponent("手动存档")
+        try FileManager.default.createDirectory(at: saves, withIntermediateDirectories: true)
+
+        let store = AppStore()
+        await store.load(dataDirectory: dir.path)
+        #expect(store.addGame(title: "测试游戏", folder: dir.path, engine: "tyrano"))
+        let game = try #require(store.games.first)
+
+        let gamesURL = dir.appendingPathComponent("games.json")
+        guard case .loaded(var map) = JSONStore.load(GameMap.self, from: gamesURL, quarantineCorrupt: false) else {
+            Issue.record("games.json 应该可读")
+            return
+        }
+        map.games[game.id]?.unknownFields["futureField"] = .object(["kept": .bool(true)])
+        #expect(JSONStore.save(map, to: gamesURL) == nil)
+        await store.load(dataDirectory: dir.path)
+
+        #expect(store.setSaveDirectoryOverride(gameId: game.id, path: saves.path))
+        #expect(store.games.first?.saveDirectoryOverride == saves.standardizedFileURL.path)
+        let saved = try #require(JSONStore.load(GameMap.self, from: gamesURL).value?.games[game.id])
+        #expect(saved.saveDirectoryOverride == saves.standardizedFileURL.path)
+        #expect(saved.unknownFields["futureField"] == .object(["kept": .bool(true)]))
+
+        #expect(store.setSaveDirectoryOverride(gameId: game.id, path: nil))
+        #expect(store.games.first?.saveDirectoryOverride == nil)
+        let cleared = try #require(JSONStore.load(GameMap.self, from: gamesURL).value?.games[game.id])
+        #expect(cleared.unknownFields["tsumigeyaSaveDirectory"] == nil)
+        #expect(cleared.unknownFields["futureField"] == .object(["kept": .bool(true)]))
+    }
     @Test("元数据写失败不更新缓存，并给出可呈现错误")
     func failedMetaWriteDoesNotPublishSuccess() async throws {
         let dir = try directory()

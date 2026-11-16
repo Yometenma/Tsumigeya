@@ -78,6 +78,21 @@ public struct GameMap: Sendable, Equatable {
 
 // MARK: - Codable（手写，带未知字段保留）
 
+extension GameRecord {
+    /// 用户明确选择的存档目录。放在未知字段中，避免破坏旧版 games.json 的兼容性。
+    public var saveDirectoryOverride: String? {
+        unknownFields["tsumigeyaSaveDirectory"]?.stringValue
+    }
+
+    public mutating func setSaveDirectoryOverride(_ path: String?) {
+        if let path, !path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            unknownFields["tsumigeyaSaveDirectory"] = .string(path)
+        } else {
+            unknownFields.removeValue(forKey: "tsumigeyaSaveDirectory")
+        }
+    }
+}
+
 extension GameRecord: Codable {
     private enum KnownKeys: String, CaseIterable {
         case gameTitle, gamePath, gameEngine, iconPath, tags, gameArgs

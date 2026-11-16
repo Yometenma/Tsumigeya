@@ -76,14 +76,15 @@ public enum SaveArchiveIO {
     /// - Returns: 成功返回结果；失败返回错误
     public static func export(
         gamePath: String, engine: String, gameTitle: String,
-        outputDir: String, isRunning: Bool,
+        outputDir: String, isRunning: Bool, overrideDirectory: String? = nil,
         at date: Date = Date(),
         fileManager: FileManager = .default
     ) -> Result<ExportResult, SaveArchiveError> {
 
         // ① 先探测存档位置
         let listing = SaveStore.list(
-            gamePath: gamePath, engine: engine, fileManager: fileManager)
+            gamePath: gamePath, engine: engine,
+            overrideDirectory: overrideDirectory, fileManager: fileManager)
 
         // ② 判阻断（**顺序很重要**：先判运行再判位置，见 `SaveExportPolicy`）
         if let block = SaveExportPolicy.blocked(
@@ -195,7 +196,7 @@ public enum SaveArchiveIO {
     ///   - fileManager: 注入用
     public static func importArchive(
         archivePath: String, gamePath: String, engine: String,
-        fileManager: FileManager = .default
+        overrideDirectory: String? = nil, fileManager: FileManager = .default
     ) -> Result<ImportResult, SaveArchiveError> {
 
         // ① 解到临时目录（**先不动用户的存档**）
@@ -233,7 +234,8 @@ public enum SaveArchiveIO {
 
         // ④ 确定目标目录
         let listing = SaveStore.list(
-            gamePath: gamePath, engine: engine, fileManager: fileManager)
+            gamePath: gamePath, engine: engine,
+            overrideDirectory: overrideDirectory, fileManager: fileManager)
         guard let saveDir = listing.dir else {
             return .failure(.blocked(.noLocation))
         }

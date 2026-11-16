@@ -101,7 +101,8 @@ public enum SaveStore {
     ///
     /// - Returns: 列表结果。`dir == nil` 表示**不知道存档在哪**（不是「没有存档」）
     public static func list(
-        gamePath: String, engine: String, fileManager: FileManager = .default
+        gamePath: String, engine: String, overrideDirectory: String? = nil,
+        fileManager: FileManager = .default
     ) -> SaveListing {
         let root = DetectPath.gameDirForFiles(gamePath)
 
@@ -125,16 +126,28 @@ public enum SaveStore {
         let (packageMain, realGameRoot) = locatePackageMain(
             root: root, engine: engine, fileManager: fileManager)
 
-        let location = SaveLocate.detect(
-            engine: engine,
-            wwwSave: wwwSave, gameSave: gameSave,
-            dataDir: dataDir, saveDir: saveDir,
-            root: rootSnap, external: external,
-            packageMain: packageMain,
-            // ⚠️ 传**真正的游戏根**（不是 root —— root 可能是 `…/www/save`）：
-            //    目标目录可能还不存在（用户没存过档），
-            //    那时也要能拼出**完整路径**（不能是相对的 `www/save`）。
-            gameRoot: realGameRoot)
+        let location: SaveLocation?
+        if let overrideDirectory, !overrideDirectory.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            var isDirectory: ObjCBool = false
+            guard fileManager.fileExists(atPath: overrideDirectory, isDirectory: &isDirectory),
+                  isDirectory.boolValue,
+                  fileManager.isReadableFile(atPath: overrideDirectory) else {
+                // 手动指定的目录被移动或删除：仍然保持 unknown，不把它伪装成空目录。
+                return SaveListing(dir: nil, items: [])
+            }
+            location = SaveLocation(dir: overrideDirectory)
+        } else {
+            location = SaveLocate.detect(
+                engine: engine,
+                wwwSave: wwwSave, gameSave: gameSave,
+                dataDir: dataDir, saveDir: saveDir,
+                root: rootSnap, external: external,
+                packageMain: packageMain,
+                // ⚠️ 传**真正的游戏根**（不是 root —— root 可能是 `…/www/save`）：
+                //    目标目录可能还不存在（用户没存过档），
+                //    那时也要能拼出**完整路径**（不能是相对的 `www/save`）。
+                gameRoot: realGameRoot)
+        }
 
         guard let location else {
             // **不知道在哪** —— 与「空」是两件事
@@ -143,7 +156,21 @@ public enum SaveStore {
 
         // 列出那个目录里的文件
         let entries = (try? fileManager.contentsOfDirectory(atPath: location.dir)) ?? []
-        let classified = SaveEntries.classify(entries: entries, engine: engine)
+        var classified = SaveEntries.classify(entries: entries, engine: engine)
+
+        // 用户手动指定目录时，未知引擎不能因为没有内置扩展名规则而显示空列表。
+        // 这里退回到“目录内的安全普通文件”，导出本来也会打包整个目录。
+        // 自动探测仍然保持严格规则，避免误把游戏目录里的普通文件当存档。
+        if overrideDirectory != nil && classified.slots.isEmpty && classified.configs.isEmpty {
+            let files = entries.filter { name in
+                guard SaveManifestParser.isSafeFileName(name) else { return false }
+                let full = (location.dir as NSString).appendingPathComponent(name)
+                var isDirectory: ObjCBool = false
+                return fileManager.fileExists(atPath: full, isDirectory: &isDirectory)
+                    && !isDirectory.boolValue
+            }.sorted(by: SaveEntries.naturalCompare)
+            classified = (slots: files, configs: [])
+        }
 
         var items: [SaveItem] = []
         for name in classified.slots + classified.configs {

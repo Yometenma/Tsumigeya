@@ -191,6 +191,33 @@ enum UISnapshot {
                         dir: directory, appearance: appearance)
                 }
             }
+            // 手动指定存档目录的三种关键状态：未知、有效空目录，以及隐私模式。
+            let savePreviewRoot = previewDirectory.appendingPathComponent("manual-save")
+            try FileManager.default.createDirectory(at: savePreviewRoot, withIntermediateDirectories: true)
+            let unknownSaveGame = GameRecord(
+                id: "__save-preview__", gameTitle: "存档位置未知示例",
+                gamePath: previewDirectory.appendingPathComponent("Game.exe").path,
+                gameEngine: "tyrano", gameArgs: [:])
+            failures += captureWindow(
+                SaveSection(game: unknownSaveGame).environmentObject(previewStore),
+                size: CGSize(width: 600, height: 470), name: "22-save-unknown",
+                dir: directory, appearance: appearance)
+
+            var manualSaveGame = unknownSaveGame
+            manualSaveGame.setSaveDirectoryOverride(savePreviewRoot.path)
+            failures += captureWindow(
+                SaveSection(game: manualSaveGame).environmentObject(previewStore),
+                size: CGSize(width: 600, height: 520), name: "23-save-manual-directory",
+                dir: directory, appearance: appearance)
+
+            previewStore.setSetting(.privacyMode, .bool(true))
+            previewStore.setSetting(.privacyHideTitles, .bool(true))
+            failures += captureWindow(
+                SaveSection(game: manualSaveGame).environmentObject(previewStore),
+                size: CGSize(width: 600, height: 300), name: "24-save-privacy",
+                dir: directory, appearance: appearance)
+            previewStore.setSetting(.privacyMode, .bool(false))
+            previewStore.setSetting(.privacyHideTitles, .bool(false))
             if var game = store.games.first {
                 game.gameTitle = "超长标题布局验收：遠い星の物語・異世界の冒険と約束の記憶 — 完全版 "
                     + "追加章节与多语言游戏名称的显示检查"

@@ -439,6 +439,39 @@ struct SaveArchiveE2ETests {
         }
     }
 
+    @Test("手动目录用于导出与导入")
+    func overrideDirectoryRoundTrip() throws {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory.appendingPathComponent("tsmg-override-\(UUID().uuidString)")
+        let source = root.appendingPathComponent("source")
+        let target = root.appendingPathComponent("target")
+        let out = root.appendingPathComponent("out")
+        try fm.createDirectory(at: source, withIntermediateDirectories: true)
+        try fm.createDirectory(at: target, withIntermediateDirectories: true)
+        try fm.createDirectory(at: out, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: root) }
+
+        let file = source.appendingPathComponent("slot.dat")
+        try Data("源存档".utf8).write(to: file)
+        let exported = try SaveArchiveIO.export(
+            gamePath: root.appendingPathComponent("Game.exe").path,
+            engine: "kirikiri", gameTitle: "手动目录测试",
+            outputDir: out.path, isRunning: false,
+            overrideDirectory: source.path,
+            at: Date(timeIntervalSince1970: 0)).get()
+        #expect(exported.fileCount == 1)
+
+        let targetFile = target.appendingPathComponent("slot.dat")
+        try Data("旧存档".utf8).write(to: targetFile)
+        let imported = try SaveArchiveIO.importArchive(
+            archivePath: exported.archivePath,
+            gamePath: root.appendingPathComponent("Other.exe").path,
+            engine: "kirikiri", overrideDirectory: target.path).get()
+
+        #expect(imported.files == ["slot.dat"])
+        #expect(String(data: try Data(contentsOf: targetFile), encoding: .utf8) == "源存档")
+        #expect(fm.fileExists(atPath: targetFile.path + SaveArchive.backupSuffix))
+    }
     // MARK: - 辅助
 
     func readManifest(from archivePath: String) throws -> SaveManifest {

@@ -669,6 +669,69 @@ final class AppStore: ObservableObject {
         return NwjsVersion.availableVersions(dataDir: dataDir)
     }
 
+    /// 设置某个游戏的手动存档目录。
+    ///
+    /// 只保存用户明确选择的目录，不会移动或创建存档文件。清除时传 `nil`，
+    /// 之后恢复引擎的自动探测。目录必须已经存在且可读取；运行中的游戏不能修改。
+    func setSaveDirectoryOverride(gameId: String, path: String?) -> Bool {
+        lastAddGameError = nil
+        refreshRunning()
+
+        guard !privacy.hidesTitles else {
+            lastAddGameError = "请先关闭标题隐藏。"
+            return false
+        }
+        guard runningGames[gameId] == nil else {
+            lastAddGameError = "游戏运行中，不能更改存档目录。"
+            return false
+        }
+
+        let url = URL(fileURLWithPath: dataDir).appendingPathComponent("games.json")
+        guard case .loaded(let map) = JSONStore.load(
+            GameMap.self, from: url, quarantineCorrupt: false
+        ) else {
+            lastAddGameError = "无法读取游戏库，未更改存档目录。"
+            return false
+        }
+        guard var record = map.games[gameId] else {
+            lastAddGameError = "游戏 id \(gameId) 不存在。"
+            return false
+        }
+
+        let normalizedPath: String?
+        if let path {
+            let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty {
+                normalizedPath = nil
+            } else {
+                let candidate = URL(fileURLWithPath: trimmed).standardizedFileURL.path
+                var isDirectory: ObjCBool = false
+                guard FileManager.default.fileExists(atPath: candidate, isDirectory: &isDirectory),
+                      isDirectory.boolValue,
+                      FileManager.default.isReadableFile(atPath: candidate) else {
+                    lastAddGameError = "存档目录不存在或无法读取：\(candidate)"
+                    return false
+                }
+                normalizedPath = candidate
+            }
+        } else {
+            normalizedPath = nil
+        }
+
+        record.setSaveDirectoryOverride(normalizedPath)
+        let result = GameLibrary.save(into: map, draft: record, id: gameId)
+        guard case .success(let saved) = result else {
+            if case .failure(let error) = result { lastAddGameError = error.message }
+            return false
+        }
+        if let writeError = JSONStore.save(saved.map, to: url) {
+            lastAddGameError = "写 games.json 失败：\(writeError)"
+            return false
+        }
+
+        games = saved.map.ordered
+        return true
+    }
     /// 更新一个游戏（**全页一个保存**，U8 的核心）。
     ///
     /// - Returns: 是否成功。失败原因写在 `lastAddGameError`。
