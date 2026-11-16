@@ -72,10 +72,15 @@ struct GameEditView: View {
 
     var body: some View {
         Form {
-            localSection
-            metaSection
-            argsSection
-            categoriesSection
+            if store.privacy.hidesTitles {
+                Text("编辑内容已隐藏，关闭标题隐藏后可继续编辑；未保存的草稿仍然保留。")
+                    .foregroundStyle(.secondary)
+            } else {
+                localSection
+                metaSection
+                argsSection
+                categoriesSection
+            }
         }
         .formStyle(.grouped)
         .safeAreaInset(edge: .top, spacing: 0) {
@@ -118,7 +123,7 @@ struct GameEditView: View {
 
             Text("编辑游戏")
                 .font(.system(size: 15, weight: .semibold))
-            Text(game.gameTitle)
+            Text(store.displayTitle(for: game))
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
@@ -132,7 +137,7 @@ struct GameEditView: View {
             }
 
             if let saveError {
-                Label(saveError, systemImage: "exclamationmark.triangle.fill")
+                Label(store.privacy.text(saveError, replacement: "保存未完成，详细信息已隐藏。"), systemImage: "exclamationmark.triangle.fill")
                     .font(.caption)
                     .foregroundStyle(.red)
                     .lineLimit(2)
@@ -141,14 +146,14 @@ struct GameEditView: View {
             Button("还原") {
                 restore()
             }
-            .disabled(!isDirty)
+            .disabled(!isDirty || store.privacy.hidesTitles)
 
             Button("保存") {
                 save()
             }
             .buttonStyle(.borderedProminent)
             .keyboardShortcut("s", modifiers: .command)
-            .disabled(!isDirty)
+            .disabled(!isDirty || store.privacy.hidesTitles)
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 12)

@@ -26,14 +26,19 @@ struct ManualRJSheet: View {
             Text("输入 RJ 号")
                 .font(.title3.weight(.semibold))
 
-            TextField("RJ294126", text: $text)
-                .textFieldStyle(.roundedBorder)
-                .font(.system(size: 14, design: .monospaced))
-                .focused($focused)
-                .onSubmit { fetch() }
+            if store.privacy.hidesTitles {
+                Text("作品编号已隐藏，关闭标题隐藏后可关联作品。")
+                    .foregroundStyle(.secondary)
+            } else {
+                TextField("RJ294126", text: $text)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 14, design: .monospaced))
+                    .focused($focused)
+                    .onSubmit { fetch() }
+            }
 
             if let errorMessage {
-                Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
+                Label(store.privacy.text(errorMessage), systemImage: "exclamationmark.triangle.fill")
                     .font(.caption)
                     .foregroundStyle(.orange)
             } else {
@@ -54,7 +59,7 @@ struct ManualRJSheet: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
-                .disabled(text.trimmingCharacters(in: .whitespaces).isEmpty)
+                .disabled(store.privacy.hidesTitles || text.trimmingCharacters(in: .whitespaces).isEmpty)
             }
         }
         .padding(20)

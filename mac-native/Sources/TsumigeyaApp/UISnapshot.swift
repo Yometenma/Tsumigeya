@@ -211,6 +211,30 @@ enum UISnapshot {
                     .environmentObject(previewStore),
                 size: CGSize(width: 1100, height: 760), name: "12-library-light",
                 dir: directory, appearance: NSAppearance(named: .aqua))
+            previewStore.setSetting(.privacyMode, .bool(true))
+            previewStore.setSetting(.privacyHideTitles, .bool(false))
+            failures += captureWindow(
+                RootView(selection: previewStore.games.first?.id, loadsOnAppear: false)
+                    .environmentObject(previewStore),
+                size: CGSize(width: 1100, height: 760), name: "15-privacy-covers",
+                dir: directory, appearance: appearance)
+            previewStore.setSetting(.privacyHideTitles, .bool(true))
+            failures += captureWindow(
+                RootView(selection: previewStore.games.first?.id, loadsOnAppear: false)
+                    .environmentObject(previewStore),
+                size: CGSize(width: 1100, height: 760), name: "16-privacy-titles",
+                dir: directory, appearance: appearance)
+            previewStore.setSetting(.listView, .bool(false))
+            failures += captureWindow(
+                RootView(selection: nil, loadsOnAppear: false).environmentObject(previewStore),
+                size: CGSize(width: 1100, height: 760), name: "17-privacy-grid",
+                dir: directory, appearance: appearance)
+            if let game = previewStore.games.first {
+                failures += captureWindow(
+                    GameEditView(game: game).environmentObject(previewStore),
+                    size: CGSize(width: 900, height: 650), name: "18-privacy-edit",
+                    dir: directory, appearance: appearance)
+            }
             for group in SettingsGroups.groups where group.id != .appearance {
                 failures += captureWindow(
                     SettingsPage(initialGroup: group.id).environmentObject(store),

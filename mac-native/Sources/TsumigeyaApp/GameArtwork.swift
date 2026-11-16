@@ -10,8 +10,8 @@ struct GameArtwork: View {
         GeometryReader { geometry in
             ZStack {
                 placeholder
-                if let cover = store.meta(for: game.id)?.work.coverUrl,
-                   let url = URL(string: cover) {
+                // 隐私模式移除图片子树；晚到的下载结果不能重新显示原图。
+                if let url = store.artworkURL(for: game) {
                     AsyncImage(url: url) { phase in
                         if case .success(let image) = phase {
                             image.resizable().scaledToFit()
@@ -22,7 +22,7 @@ struct GameArtwork: View {
             .frame(width: geometry.size.width, height: geometry.size.height)
             .clipped()
         }
-        .accessibilityLabel("\(game.gameTitle)的封面")
+        .accessibilityLabel(store.privacy.isEnabled ? "封面已隐藏" : "\(store.displayTitle(for: game))的封面")
     }
 
     private var placeholder: some View {
@@ -30,7 +30,7 @@ struct GameArtwork: View {
             LinearGradient(
                 colors: [.indigo.opacity(0.22), .purple.opacity(0.08)],
                 startPoint: .topLeading, endPoint: .bottomTrailing)
-            Image(systemName: "gamecontroller")
+            Image(systemName: store.privacy.isEnabled ? "eye.slash" : "gamecontroller")
                 .font(.system(size: 28, weight: .light))
                 .foregroundStyle(.secondary.opacity(0.5))
         }

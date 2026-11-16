@@ -179,12 +179,21 @@ struct SettingRow: View {
                     set: { store.setSetting(.deletionConfirmation, .bool($0)) }
                 ))
 
-            case .showAdultCovers:
-                Toggle("显示 R18 封面", isOn: Binding(
-                    get: { store.settingBool(.showAdultCovers) },
-                    set: { store.setSetting(.showAdultCovers, .bool($0)) }
+            case .privacyMode:
+                Toggle("隐私模式", isOn: Binding(
+                    get: { store.privacy.isEnabled },
+                    set: { store.setSetting(.privacyMode, .bool($0)) }
                 ))
-                Text("关掉会把 R18 作品的封面模糊处理。")
+                Text("隐藏全部作品封面，不依赖成人分级。可按 ⇧⌘P 快速切换。")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+
+            case .privacyHideTitles:
+                Toggle("隐私模式下同时隐藏标题", isOn: Binding(
+                    get: { store.settingBool(.privacyHideTitles) },
+                    set: { store.setSetting(.privacyHideTitles, .bool($0)) }
+                ))
+                Text("用游戏编号代替标题，并隐藏作品详情、游戏路径和搜索文字；不会修改原始数据。自定义分类名和系统窗口不在隐藏范围内。")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
 
@@ -282,11 +291,8 @@ struct SettingRow: View {
 
     private var pendingNote: Note? {
         switch key {
-        case .appearance, .listView, .deletionConfirmation:
-            // 这三个**真的能用**，不需要任何说明
+        case .appearance, .listView, .deletionConfirmation, .privacyMode, .privacyHideTitles:
             return nil
-        case .showAdultCovers:
-            return .notImplemented("封面隐私过滤尚未实现，当前封面不会模糊处理")
         case .saveSyncMode:
             // ⚠️ **P6 做完后 manual 模式真的能用** → caveat 而不是 notImplemented。
             //    「不接任何云」是用户**需要知道的事实**（D83：半成品云比没有更糟，

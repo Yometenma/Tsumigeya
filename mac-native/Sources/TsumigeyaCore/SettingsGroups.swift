@@ -24,7 +24,8 @@ public enum SettingsGroups {
         case deletionConfirmation
         case nonInstalledAutodetect
         case checkModuleUpdatesOnStartup
-        case showAdultCovers
+        case privacyMode
+        case privacyHideTitles
         case preferredLanguage
         case fallbackLanguage
         case languageSwitchPrompt
@@ -119,7 +120,7 @@ public enum SettingsGroups {
     public static let groups: [Group] = [
         Group(id: .appearance, keys: [.appearance, .listView], defaultOpen: true),
         Group(id: .library,
-              keys: [.deletionConfirmation, .showAdultCovers, .saveSyncMode],
+              keys: [.deletionConfirmation, .privacyMode, .privacyHideTitles, .saveSyncMode],
               defaultOpen: true),
         Group(id: .language,
               keys: [.language, .preferredLanguage, .fallbackLanguage, .languageSwitchPrompt],
@@ -192,7 +193,8 @@ public enum SettingsDefaults {
         .deletionConfirmation: true,
         .nonInstalledAutodetect: true,
         .checkModuleUpdatesOnStartup: true,
-        .showAdultCovers: true,
+        .privacyMode: false,
+        .privacyHideTitles: false,
     ]
 
     /// 「缺省当开」的开关（**它们不在 `booleans` 里**）。
@@ -215,6 +217,8 @@ public enum SettingsDefaults {
         if let value = settings[key.rawValue] {
             if case .bool(let b) = value { return b }
         }
+        // 旧版曾保存此选项但未生效；保守地隐藏全部封面，不推测成人分级。
+        if key == .privacyMode, settings["showAdultCovers"] == .bool(false) { return true }
         if defaultOn.contains(key) { return true }
         return booleans[key] ?? false
     }

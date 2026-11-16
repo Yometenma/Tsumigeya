@@ -92,6 +92,12 @@ struct RootView: View {
 
             Spacer(minLength: 12)
 
+            Button { store.togglePrivacyMode() } label: {
+                Label(store.privacy.isEnabled ? "隐私已开启" : "隐私模式",
+                      systemImage: store.privacy.isEnabled ? "eye.slash.fill" : "eye")
+            }
+            .help("切换隐私模式（⇧⌘P）")
+
             if page == .library {
                 Button { store.openAddGame() } label: {
                     Label("添加游戏", systemImage: "plus")
@@ -276,6 +282,7 @@ struct RootView: View {
 ///    在自定义顶栏里用会因为「没有原生容器」而位置错乱（本鱼实测过）。
 ///    自绘一个小的更好控制，而且样式与 mac 一致（圆角 + 放大镜 + 清除按钮）。
 struct SearchField: View {
+    @EnvironmentObject private var store: AppStore
     @Binding var text: String
     @FocusState private var isFocused: Bool
 
@@ -290,10 +297,16 @@ struct SearchField: View {
             .keyboardShortcut("f", modifiers: .command)
             .accessibilityLabel("搜索游戏")
             .help("搜索游戏（⌘F）")
-            TextField("搜索游戏名、路径或引擎", text: $text)
-                .focused($isFocused)
-                .textFieldStyle(.plain)
-                .font(.system(size: 13))
+            Group {
+                if store.privacy.hidesTitles {
+                    SecureField("搜索内容已隐藏", text: $text)
+                } else {
+                    TextField("搜索游戏名、路径或引擎", text: $text)
+                }
+            }
+            .focused($isFocused)
+            .textFieldStyle(.plain)
+            .font(.system(size: 13))
             if !text.isEmpty {
                 Button {
                     text = ""
@@ -428,6 +441,7 @@ struct GameCardTile: View {
     let isSelected: Bool
     let onSelect: () -> Void
 
+    @EnvironmentObject private var store: AppStore
     @State private var isHovering = false
 
     var body: some View {
@@ -447,7 +461,7 @@ struct GameCardTile: View {
                     }
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(game.gameTitle)
+                    Text(store.displayTitle(for: game))
                         .font(.system(size: 12, weight: .medium))
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
@@ -472,7 +486,7 @@ struct GameCardTile: View {
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .onHover { isHovering = $0 }
         .animation(.easeOut(duration: 0.12), value: isHovering)
-        .help(game.gamePath)
+        .help(store.privacy.text(game.gamePath, replacement: "游戏路径已隐藏"))
     }
 
 
@@ -481,6 +495,7 @@ struct GameCardTile: View {
 // MARK: - 列表行
 
 struct GameListRow: View {
+    @EnvironmentObject private var store: AppStore
     let game: GameRecord
     let isRunning: Bool
 
@@ -490,7 +505,7 @@ struct GameListRow: View {
                 .frame(width: 44, height: 36)
                 .clipShape(RoundedRectangle(cornerRadius: 6))
             VStack(alignment: .leading, spacing: 4) {
-                Text(game.gameTitle)
+                Text(store.displayTitle(for: game))
                     .font(.system(size: 13, weight: .medium))
                     .lineLimit(2)
                 Text(EngineRegistry.find(folder: game.gameEngine)?.name ?? game.gameEngine)
@@ -505,7 +520,7 @@ struct GameListRow: View {
             }
         }
         .padding(.vertical, 6)
-        .help(game.gamePath)
+        .help(store.privacy.text(game.gamePath, replacement: "游戏路径已隐藏"))
     }
 
 
@@ -592,7 +607,7 @@ private struct AppPresentations: ViewModifier {
         )) {
             Button("好", role: .cancel) { store.operationError = nil }
         } message: {
-            Text(store.operationError ?? "")
+            Text(store.privacy.text(store.operationError ?? "", replacement: "操作未完成。详细信息已隐藏，可关闭标题隐藏后查看。"))
         }
         // 删除游戏确认
         .alert("从游戏库移除？", isPresented: Binding(
@@ -609,7 +624,7 @@ private struct AppPresentations: ViewModifier {
                 store.cancelPendingDelete()
             }
         } message: { game in
-            Text("「\(game.gameTitle)」会从游戏库移除。\n\n"
+            Text("「\(store.displayTitle(for: game))」会从游戏库移除。\n\n"
                  + "**游戏文件不会被删除**，只是不再显示在列表里。"
                  + "游玩记录和分类归属也会一起清掉。")
         }

@@ -75,7 +75,7 @@ struct GameDetailView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 10))
 
             VStack(alignment: .leading, spacing: 10) {
-                Text(game.gameTitle)
+                Text(store.displayTitle(for: game))
                     .font(.system(size: 23, weight: .bold))
                     .lineLimit(3)
                     .textSelection(.enabled)
@@ -91,7 +91,7 @@ struct GameDetailView: View {
                             .foregroundStyle(.green)
                     }
                 }
-                Text(folderHint)
+                Text(store.privacy.text(folderHint, replacement: "游戏目录已隐藏"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -136,7 +136,9 @@ struct GameDetailView: View {
                 //
                 //    实测搜 `Karryn` 返回正片 + 3 个 DLC。
                 //    自动选第一条 = 可能拿错的封面，而用户不会意识到。
-                searchResults(hits)
+                DLsiteSearchResults(hits: hits, onSelect: { rj in
+                    store.selectSearchHit(gameId: game.id, rj: rj)
+                }, onCancel: { store.clearSearch(gameId: game.id) })
             } else if let error = store.searchError[game.id] {
                 Label(error, systemImage: "magnifyingglass")
                     .font(.caption)
@@ -165,64 +167,6 @@ struct GameDetailView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-    }
-
-    /// 搜索结果列表（让用户点选）。
-    ///
-    /// ⚠️ **列出 RJ + 标题 + 社团**，让用户能辨认哪个是正片哪个是 DLC。
-    ///    `Karryn` 的 4 条里后 3 条标题都带 `DLC` —— 一眼能看出来。
-    private func searchResults(_ hits: [DLsiteSearch.Hit]) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text("搜到 \(hits.count) 个结果，选一个：")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Button("取消") {
-                    store.clearSearch(gameId: game.id)
-                }
-                .controlSize(.small)
-            }
-            .padding(.bottom, 6)
-
-            ForEach(Array(hits.enumerated()), id: \.element.rj) { idx, hit in
-                if idx > 0 { Divider().padding(.leading, 8) }
-                Button {
-                    store.selectSearchHit(gameId: game.id, rj: hit.rj)
-                } label: {
-                    HStack(alignment: .top, spacing: 8) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(hit.title)
-                                .font(.system(size: 11))
-                                .lineLimit(2)
-                                .multilineTextAlignment(.leading)
-                            HStack(spacing: 8) {
-                                Text(hit.rj)
-                                    .font(.system(size: 10, design: .monospaced))
-                                    .foregroundStyle(.tertiary)
-                                if let circle = hit.circle {
-                                    Text(circle)
-                                        .font(.system(size: 10))
-                                        .foregroundStyle(.tertiary)
-                                        .lineLimit(1)
-                                }
-                            }
-                        }
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 9))
-                            .foregroundStyle(.tertiary)
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 6)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(6)
-        .background(Color(nsColor: .controlBackgroundColor),
-                    in: RoundedRectangle(cornerRadius: 7))
     }
 
     /// 没有元数据时的提示（走决策链）。
@@ -332,27 +276,44 @@ struct GameDetailView: View {
     private func bodyContent(for section: DetailTab) -> some View {
         switch section {
         case .overview:
-            dlsiteSection
+            if store.privacy.hidesTitles {
+                privacyNotice
+            } else {
+                dlsiteSection
+            }
         case .saves:
             SaveSection(game: game)
         case .runtime:
-            VStack(alignment: .leading, spacing: 24) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("运行环境").font(.headline)
-                        Text("此游戏使用 \(engineDisplayName)。启动异常时，可检查运行时和下方的启动参数。")
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer(minLength: 12)
-                    if let onManageEngines {
-                        Button("管理运行时", action: onManageEngines)
-                    }
-                }
-                Divider()
-                infoRows
-                engineArgsSection
+            if store.privacy.hidesTitles {
+                privacyNotice
+            } else {
+                runtimeContent
             }
+        }
+    }
+
+    private var privacyNotice: some View {
+        Label("作品详情已隐藏，关闭标题隐藏后可查看和核对搜索结果。", systemImage: "eye.slash")
+            .foregroundStyle(.secondary)
+    }
+
+    private var runtimeContent: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            HStack {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("运行环境").font(.headline)
+                    Text("此游戏使用 \(engineDisplayName)。启动异常时，可检查运行时和下方的启动参数。")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 12)
+                if let onManageEngines {
+                    Button("管理运行时", action: onManageEngines)
+                }
+            }
+            Divider()
+            infoRows
+            engineArgsSection
         }
     }
 
@@ -402,7 +363,7 @@ struct GameDetailView: View {
                 .help("更多游戏操作")
             }
             if let failure = store.lastLaunchFailure[game.id] {
-                Label(failure, systemImage: "exclamationmark.triangle.fill")
+                Label(store.privacy.text(failure, replacement: "启动未完成，详细信息已隐藏。"), systemImage: "exclamationmark.triangle.fill")
                     .font(.callout)
                     .foregroundStyle(.orange)
                     .textSelection(.enabled)

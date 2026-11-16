@@ -45,12 +45,18 @@ struct SaveSection: View {
                 Text("存档")
                     .font(.system(size: 13, weight: .semibold))
                 Spacer()
-                actionButtons
+                actionButtons.disabled(store.privacy.hidesTitles)
             }
 
-            content
+            if store.privacy.hidesTitles {
+                Text("存档详情已隐藏，关闭标题隐藏后可查看和导入导出。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                content
+            }
 
-            if let message {
+            if let message, !store.privacy.hidesTitles {
                 Label(message.text, systemImage: message.isError
                         ? "exclamationmark.triangle.fill"
                         : "checkmark.circle.fill")

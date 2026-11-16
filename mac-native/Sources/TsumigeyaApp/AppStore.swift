@@ -543,6 +543,19 @@ final class AppStore: ObservableObject {
         SettingsDefaults.string(key, from: settings)
     }
 
+    var privacy: LibraryPrivacy { LibraryPrivacy(settings: settings) }
+
+    func displayTitle(for game: GameRecord) -> String { privacy.title(for: game) }
+
+    func artworkURL(for game: GameRecord) -> URL? {
+        guard !privacy.isEnabled else { return nil }
+        return privacy.coverURL(meta(for: game.id)?.work.coverUrl)
+    }
+
+    func togglePrivacyMode() {
+        setSetting(.privacyMode, .bool(!privacy.isEnabled))
+    }
+
     /// 写一个设置（**立刻落盘**）。
     ///
     /// ⚠️ 立刻落盘而不是「点保存才写」：设置项是**离散的开关**，
