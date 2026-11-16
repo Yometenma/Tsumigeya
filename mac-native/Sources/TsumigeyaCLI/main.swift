@@ -155,7 +155,7 @@ func roundtripGames() -> Int {
     }
 
     // 写到**临时目录**，绝不动用户的真实文件。
-    // ⚠️ 这条是纪律：验证永远不碰真实数据（AGENTS.md「收尾纪律」同款取向）。
+    // 验证只写临时副本，避免改动用户的真实游戏库。
     let tmpDir = FileManager.default.temporaryDirectory
         .appendingPathComponent("tsmg-roundtrip-\(UUID().uuidString)")
     try? FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)

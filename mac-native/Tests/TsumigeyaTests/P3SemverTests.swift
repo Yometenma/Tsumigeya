@@ -575,7 +575,7 @@ struct DownloaderTests {
         #expect(Downloader.suggestedFileName(from: "https://x/a.zip?token=abc") == "a.zip")
     }
 
-    /// ⚠️ **这条守的是「装配点存在」**（AGENTS.md 的「判据写了、测了、但没人调用」）。
+    /// 验证生产装配点，避免下载和解压各自有测试却没有接入完整安装链路。
     ///
     /// `Downloader` 与 `Extract` 各自有测试、都全绿，但如果没人把它们拼成
     /// `InstallEnvironment`，生产代码里就永远只有测试在用它们 —— 功能等于没写。

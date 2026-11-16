@@ -40,7 +40,7 @@ Unity、RPG Developer Bakin、WOLF RPG Editor 仅识别，不代为启动。Tyra
 - 存档：详情页导出为 ZIP，在新机器导入；导入前自动备份，游戏运行时不能导入导出。
 - 下载失败：检查系统网络与代理。启动失败：先检查运行时、RTP 和引擎兼容性，不要仅凭黑屏判断原因。
 
-## 开发
+## 开发与贡献
 
 只在 macOS 上构建，需要 Swift 6.2+ 及匹配的 macOS SDK：
 
@@ -48,10 +48,10 @@ Unity、RPG Developer Bakin、WOLF RPG Editor 仅识别，不代为启动。Tyra
 cd mac-native
 swift build
 swift test
-./scripts/package-macos.sh
+bash scripts/package-macos.sh
 ```
 
-- [开发约束与 CLI](AGENTS.md)
+- [贡献指南：开发环境、CLI 与修改约定](CONTRIBUTING.md)
 - [UI 验收](docs/UI验收方法.md)
 - [打包与分发](docs/打包与分发.md)
 

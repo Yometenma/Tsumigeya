@@ -62,8 +62,7 @@ import Foundation
 ///
 /// ⚠️ 与 manifest 的键名**不是一个词**：这个枚举的 `rawValue` 是 `x64` / `arm64`
 /// （与 `currentArch()` 和 `BinaryPaths` 的拼法一致），而 manifest 用 `x86_64`。
-/// 映射只在 `manifestKey` 这一处 —— 别在调用点各写一遍（AGENTS.md 的 D56 精神：
-/// 路径/键名的拼法只能有一个来源）。
+/// 映射集中在 `manifestKey`，避免多个调用点对路径和键名的拼法各自作出假设。
 public enum Arch: String, Sendable, CaseIterable {
     case arm64
     /// Intel。注意 `rawValue` 是 `x64`（不是 `x86_64`），见上面的注释。
@@ -617,7 +616,7 @@ extension InstallEnvironment {
 
     /// 用真实网络 + 真实 tar 装好的环境（`EngineInstaller.install/update` 的生产入口）。
     ///
-    /// ⚠️ **为什么要专门留这一个装配点**（AGENTS.md「判据写了、测了、但没人调用」那一条）：
+    /// 下载与解压需要在生产入口接成完整链路，不能只分别通过测试：
     /// `Downloader` 与 `Extract` 各自都有测试、都全绿，但如果没人把两者拼成
     /// `InstallEnvironment`，生产代码里就永远只有测试在用它们 —— 功能等于没写。
     /// 把它集中在这里，还有一个好处：`activate` 的**两处边界**一眼可见 ——
