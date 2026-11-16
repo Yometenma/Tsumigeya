@@ -305,7 +305,7 @@ struct SearchField: View {
                 if store.privacy.hidesTitles {
                     SecureField("搜索内容已隐藏", text: $text)
                 } else {
-                    TextField("搜索游戏名、路径或引擎", text: $text)
+                    TextField("搜索名称、社团、标签或路径", text: $text)
                 }
             }
             .focused($isFocused)
@@ -597,10 +597,7 @@ private struct AppPresentations: ViewModifier {
             CreateCategorySheet()
                 .environmentObject(store)
         }
-        // 手动输入 RJ 号（P7）
-        //
-        // ⚠️ 为什么需要：用户的真实游戏**全部检测不到 RJ**，
-        //    没有手动入口的话 P7 完全无法使用。
+        // 查找弹窗独立于当前筛选；关闭时取消任务，防止晚到结果被误确认。
         .sheet(item: Binding(
             get: { store.manualRJFor.map(GameSheetTarget.init(id:)) },
             set: { if $0 == nil { store.closeManualRJ() } }

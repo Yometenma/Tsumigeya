@@ -37,6 +37,17 @@ func main() {
     case "search-probe":
         let path = args.count > 1 ? args[args.index(args.startIndex, offsetBy: 1)] : "/tmp/srch.html"
         exit(runSearchProbe(htmlPath: path) == 0 ? 0 : 1)
+    case "dlsite-search":
+        let keyword = args.dropFirst().first ?? "Karryn"
+        let category = args.dropFirst(2).first
+        let sem = DispatchSemaphore(value: 0)
+        let box = ExitCodeBox()
+        Task {
+            box.value = Int32(await runDlsiteSearch(keyword: keyword, category: category))
+            sem.signal()
+        }
+        sem.wait()
+        exit(box.value)
     case "dlsite-fetch":
         // dlsite-fetch <RJ> [category]：真实抓取（验限速与缓存）
         let rj = args.count > 1 ? args[args.index(args.startIndex, offsetBy: 1)] : "RJ294126"

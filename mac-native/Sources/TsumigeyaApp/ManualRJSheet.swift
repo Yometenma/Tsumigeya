@@ -1,16 +1,3 @@
-// 手动输入 RJ 号的弹窗。
-//
-// ⚠️ 为什么需要它（本鱼实测发现的关键缺口）：
-//
-//   用户的 5 个真实游戏**全部检测不到 RJ**：
-//     · 目录名不带 RJ
-//     · KARRYN'S PRISON / 苍蓝星 连 readme 都没有
-//     · Unholy maiden 的 readme 里也没有 RJ 号
-//
-//   → 没有手动入口的话，P7 对这个用户完全没用。
-//
-// ⚠️ 而**不能自动去搜**（D24）：搜索绝不自动选第一条
-//   （实测首条常不是目标作品），自动选错了就是拿错的封面。
 import SwiftUI
 import TsumigeyaCore
 
@@ -18,64 +5,135 @@ struct ManualRJSheet: View {
     @EnvironmentObject private var store: AppStore
     let gameId: String
     @State private var text = ""
-    @State private var errorMessage: String?
+    @State private var category = ""
+    @State private var inputError: String?
     @FocusState private var focused: Bool
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("输入 RJ 号")
-                .font(.title3.weight(.semibold))
-
-            if store.privacy.hidesTitles {
-                Text("作品编号已隐藏，关闭标题隐藏后可关联作品。")
-                    .foregroundStyle(.secondary)
-            } else {
-                TextField("RJ294126", text: $text)
-                    .textFieldStyle(.roundedBorder)
-                    .font(.system(size: 14, design: .monospaced))
-                    .focused($focused)
-                    .onSubmit { fetch() }
-            }
-
-            if let errorMessage {
-                Label(store.privacy.text(errorMessage), systemImage: "exclamationmark.triangle.fill")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-            } else {
-                Text("从 DLsite 的作品页地址里能找到（如 product_id/RJ294126.html）。")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-
-            HStack {
-                Spacer()
-                Button("取消") {
-                    store.closeManualRJ()
-                }
-                .keyboardShortcut(.cancelAction)
-
-                Button("获取") {
-                    fetch()
-                }
-                .buttonStyle(.borderedProminent)
-                .keyboardShortcut(.defaultAction)
-                .disabled(store.privacy.hidesTitles || text.trimmingCharacters(in: .whitespaces).isEmpty)
-            }
-        }
-        .padding(20)
-        .frame(width: 380)
-        .onAppear { focused = true }
+    private var busy: Bool {
+        store.fetchingMeta.contains(gameId) || store.searchingGameIDs.contains(gameId)
     }
 
-    private func fetch() {
-        errorMessage = nil
-        // ⚠️ 判据来自 `RJNumber.normalize`（纯函数，有单测），不在这里重写。
-        //    用户可能输 `294126` / `rj294126` / `RJ-294126` —— 都接受。
-        guard let rj = RJNumber.normalize(text) else {
-            errorMessage = "不是有效的 RJ 号（应该是 6~8 位数字，可带 RJ 前缀）"
-            return
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Text("查找并关联作品").font(.title2.weight(.semibold))
+                Spacer()
+                Button("关闭") { store.closeManualRJ() }.keyboardShortcut(.cancelAction)
+            }
+            if store.privacy.hidesTitles {
+                Text("作品信息已隐藏，关闭标题隐藏后可查找和关联作品。")
+                    .foregroundStyle(.secondary)
+            } else if let preview = store.metaPreviews[gameId] {
+                previewContent(preview)
+            } else {
+                searchContent
+            }
         }
-        store.closeManualRJ()
-        store.fetchMeta(gameId: gameId, rj: rj)
+        .padding(24)
+        .frame(width: 700, height: 640)
+        .onAppear {
+            if let game = store.game(id: gameId) {
+                text = store.lastKeyword[gameId] ?? store.meta(for: gameId)?.work.rj
+                    ?? store.detectRJ(for: game).first ?? DlsiteLookup.searchKeyword(from: game.gameTitle)
+                if text.isEmpty { text = DlsiteLookup.fallbackKeyword(fromPath: game.gamePath) }
+            }
+            focused = true
+        }
+    }
+
+    private var searchContent: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("输入作品名、RJ 编号或 DLsite 作品链接；搜索不会修改游戏名称。")
+                .font(.callout).foregroundStyle(.secondary)
+            HStack {
+                TextField("作品名 / RJ 编号 / 作品链接", text: $text)
+                    .textFieldStyle(.roundedBorder).focused($focused)
+                    .onSubmit { lookup() }.disabled(busy)
+                Button("查找") { lookup() }.buttonStyle(.borderedProminent)
+                    .disabled(busy || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+            Picker("查找范围", selection: $category) {
+                Text("自动（成人向与一般向）").tag("")
+                Text("成人向同人").tag("maniax")
+                Text("一般向").tag("home")
+            }.pickerStyle(.menu).disabled(busy)
+            if busy {
+                HStack {
+                    ProgressView().controlSize(.small)
+                    Text(store.fetchingMeta.contains(gameId) ? "正在获取作品详情…" : "正在搜索；必要时尝试清理后的标题…")
+                        .font(.callout).foregroundStyle(.secondary)
+                    Spacer()
+                    Button("取消任务") { store.cancelLookup(gameId: gameId) }
+                }
+            }
+            if let error = inputError ?? store.metaError[gameId] ?? store.searchError[gameId] {
+                Label(error, systemImage: "exclamationmark.triangle")
+                    .font(.callout).foregroundStyle(.orange).textSelection(.enabled)
+                if !busy { Button("重试当前查找") { lookup() } }
+            }
+            if let keywords = store.searchKeywordsTried[gameId], !keywords.isEmpty {
+                Text("已搜索：\(keywords.joined(separator: " → "))").font(.caption).foregroundStyle(.secondary)
+            }
+            ForEach(store.searchWarnings[gameId] ?? [], id: \.self) { warning in
+                Label(warning, systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(.orange)
+            }
+            ScrollView {
+                if let hits = store.searchHits[gameId], !hits.isEmpty {
+                    DLsiteSearchResults(hits: hits, onSelect: { rj in
+                        store.selectSearchHit(gameId: gameId, rj: rj)
+                    }, onCancel: { store.clearSearch(gameId: gameId) })
+                    .disabled(busy)
+                } else if !busy && store.searchError[gameId] == nil {
+                    ContentUnavailableView("查找你的作品", systemImage: "magnifyingglass",
+                                           description: Text("中文译名找不到时，可尝试日文原名、英文名或粘贴作品链接。"))
+                }
+            }
+            Text("更换关联前会先预览并确认；取消或获取失败不会改动原有信息。")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    private func previewContent(_ work: DlsiteWork) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    WorkRemoteImage(address: work.coverUrl).frame(height: 170)
+                    DLsiteWorkInfo(work: work)
+                }
+            }
+            if let existing = store.meta(for: gameId), existing.work.rj != work.rj {
+                Label("将更换已关联的作品，旧作品的手改信息不会混入新作品；游戏名称、分类和存档不变。",
+                      systemImage: "arrow.triangle.2.circlepath")
+                    .font(.caption).foregroundStyle(.orange)
+            } else {
+                Text("确认后保存作品信息；游戏库名称不变，同一作品的手动修改会保留。")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            if let error = store.metaError[gameId] {
+                Text(error).font(.caption).foregroundStyle(.orange)
+            }
+            HStack {
+                Button("返回查找") { store.discardMetaPreview(gameId: gameId) }
+                Spacer()
+                Button("确认关联此作品") {
+                    if store.applyMetaPreview(gameId: gameId) { store.closeManualRJ() }
+                }.buttonStyle(.borderedProminent)
+            }
+        }
+    }
+
+    private func lookup() {
+        guard !busy, !store.privacy.hidesTitles else { return }
+        inputError = nil
+        store.discardMetaPreview(gameId: gameId)
+        let input = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let reference = DlsiteLookup.workReference(input) {
+            store.fetchMeta(gameId: gameId, rj: reference.rj,
+                            category: reference.category ?? (category.isEmpty ? nil : category), preview: true)
+        } else if input.contains("://") || input.range(of: #"(?i)^rj[-_\s]*\d"#, options: .regularExpression) != nil {
+            inputError = "请输入有效的 RJ 编号、DLsite 作品链接，或改用作品名搜索。"
+        } else if !input.isEmpty {
+            store.searchMeta(gameId: gameId, keyword: input, category: category.isEmpty ? nil : category)
+        }
     }
 }

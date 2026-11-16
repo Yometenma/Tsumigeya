@@ -46,6 +46,7 @@ struct GameEditView: View {
     @State private var engine: String = ""
     @State private var gameArgs: [String: JSONValue] = [:]
     @State private var metaDraft: GameDlsiteMeta?
+    @State private var metaListText: [String: String] = [:]
     @State private var argsByEngine: [String: [String: JSONValue]] = [:]
 
     // 基线不能直接读 game：第一步保存会发布新的 game，第二步仍可能失败。
@@ -289,6 +290,18 @@ struct GameEditView: View {
                 .strokeBorder(Color.secondary.opacity(0.25)))
         }
 
+        DisclosureGroup("更多作品信息") {
+            metaTextField("发售日期", field: "releaseDate", keyPath: \.releaseDate)
+            metaTextField("系列", field: "series", keyPath: \.series)
+            metaListField("题材标签", field: "tags", keyPath: \.tags)
+            metaListField("语言代码", field: "languages", keyPath: \.languages)
+            metaListField("制作", field: "creators", keyPath: \.creators)
+            metaListField("配音", field: "voiceActors", keyPath: \.voiceActors)
+            metaTextField("原版系统", field: "supportedSystems", keyPath: \.supportedSystems)
+            Text("多项内容用顿号或逗号分隔；语言代码如 JPN、ENG、CHI_HANS。手动修改后刷新会保留。")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+
         // RJ（只读 —— 不可编辑，D25）
         HStack(spacing: 10) {
             Text("RJ")
@@ -299,14 +312,51 @@ struct GameEditView: View {
                 .textSelection(.enabled)
             Spacer()
             if !meta.editedFields.isEmpty {
-                Text("已手改：\(meta.editedFields.joined(separator: "、"))")
+                Text("已手改：\(meta.editedFields.map(metadataFieldName).joined(separator: "、"))")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
         }
-        Text("改 RJ 等于换一部作品 —— 请用「添加游戏」重新识别。")
+        Text("需要更换作品时，请在详情页选择「更换关联」，无需重新添加游戏。")
             .font(.caption2)
             .foregroundStyle(.secondary)
+    }
+
+    private func metadataFieldName(_ field: String) -> String {
+        ["title": "标题", "titleSub": "副标题", "circle": "社团", "description": "简介",
+         "coverUrl": "封面", "workType": "作品类型", "ageRating": "年龄分级", "releaseDate": "发售日期",
+         "series": "系列", "tags": "标签", "languages": "语言", "creators": "制作", "voiceActors": "配音",
+         "supportedSystems": "原版系统"][field] ?? "其他字段"
+    }
+
+    private func metaTextField(_ title: String, field: String, keyPath: WritableKeyPath<DlsiteWork, String?>) -> some View {
+        HStack {
+            Text(title).foregroundStyle(.secondary).frame(width: 70, alignment: .leading)
+            TextField("", text: Binding(
+                get: { metaDraft?.work[keyPath: keyPath] ?? "" },
+                set: { editMetaField(field, keyPath: keyPath, value: $0) }
+            )).textFieldStyle(.roundedBorder)
+        }
+    }
+
+    private func metaListField(_ title: String, field: String, keyPath: WritableKeyPath<DlsiteWork, [String]>) -> some View {
+        HStack {
+            Text(title).foregroundStyle(.secondary).frame(width: 70, alignment: .leading)
+            TextField("", text: Binding(
+                get: { metaListText[field] ?? metaDraft?.work[keyPath: keyPath].joined(separator: "、") ?? "" },
+                set: { value in
+                    metaListText[field] = value
+                    guard var meta = metaDraft, let baseline = original?.meta else { return }
+                    let values = value.components(separatedBy: CharacterSet(charactersIn: "、,，"))
+                        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+                    meta.work[keyPath: keyPath] = values
+                    if values == baseline.work[keyPath: keyPath] && !baseline.editedFields.contains(field) {
+                        meta.editedFields.removeAll { $0 == field }
+                    } else if !meta.editedFields.contains(field) { meta.editedFields.append(field) }
+                    metaDraft = meta
+                }
+            )).textFieldStyle(.roundedBorder)
+        }
     }
 
     // MARK: - 引擎参数
@@ -423,6 +473,7 @@ struct GameEditView: View {
         engine = original.engine
         gameArgs = original.gameArgs
         metaDraft = original.meta
+        metaListText = [:]
         argsByEngine = [original.engine: original.gameArgs]
         saveError = nil
     }

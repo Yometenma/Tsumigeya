@@ -1,7 +1,7 @@
 // DLsite 页面解析（**纯字符串操作，零网络**）。
 //
 // 对应 Electron 版：`src/main/dlsite.ts` 的解析段（约 200 行）
-// 契约：D19（只解析 `var contents` JSON，**不抓 DOM**）/ D22（封面 host 白名单）
+// 契约：D19（优先页面结构化 JSON，不执行脚本）/ D22（封面 host 白名单）
 //       D23（搜索优先结构化锚点）/ D40（标签不建空字段）
 //
 // ===== 为什么要自己写 JSON 扫描而不是正则 =====
@@ -246,10 +246,19 @@ public enum DLsiteParser {
     ) -> DlsiteWork? {
         var work = DlsiteWork(rj: rj, fetchedAt: fetchedAt)
 
+        let legacy = extractContentsJSON(html)?.objectValue?["detail"]?.arrayValue?.first?.objectValue
+        let modern = DLsitePageData.nuxtProduct(html, rj: rj)
+        let linked = DLsitePageData.productJSONLD(html)
+        // 新旧结构都校验作品身份；推荐作品中的编号不能成为当前作品的身份凭据。
+        let identities = [modern?["product_id"]?.stringValue, linked?["sku"]?.stringValue,
+                          legacy?["id"]?.stringValue].compactMap { $0 }
+        for id in identities { guard RJNumber.normalize(id) == rj else { return nil } }
+        if identities.isEmpty {
+            guard let canonical = canonicalURL(html), DlsiteLookup.workReference(canonical)?.rj == rj else { return nil }
+        }
+
         // ① 先试 contents JSON（最可靠：结构化数据）
-        if let json = extractContentsJSON(html),
-           let detail = json.objectValue?["detail"]?.arrayValue,
-           let first = detail.first?.objectValue {
+        if let first = legacy {
 
             work.title = first["name"]?.stringValue
             work.workType = first["work_type"]?.stringValue
@@ -286,28 +295,74 @@ public enum DLsiteParser {
                 metaContent(html, property: "og:description"))
         }
 
-        if let json = extractContentsJSON(html),
-           let cat = json.objectValue?["detail"]?.arrayValue?
-            .first?.objectValue?["category"]?.stringValue {
+        if let cat = legacy?["category"]?.stringValue {
             work.ageRating = (cat == "maniax" || cat == "pro")
                 ? "r18" : "general"
         }
 
-        // ④ **RJ 必须对得上**（防止抓到别的作品的页面）
-        //
-        // ⚠️ 这条很重要：如果页面里的 id 与请求的 rj 不同，
-        //    说明 DLsite 重定向了（作品下架/改名）→ **返回 nil 而不是错的元数据**。
-        if let json = extractContentsJSON(html),
-           let pageId = json.objectValue?["detail"]?.arrayValue?
-            .first?.objectValue?["id"]?.stringValue {
-            guard normalizeRJ(pageId) == rj else {
-                return nil
+        if let data = modern {
+            work.title = data["work_name"]?.stringValue ?? work.title
+            work.circle = data["maker"]?.objectValue?["maker_name"]?.stringValue ?? work.circle
+            work.workType = data["work_type"]?.objectValue?["work_type_value"]?.stringValue ?? work.workType
+            work.coverUrl = normalizeCoverUrl(data["image_main"]?.objectValue?["original_url"]?.stringValue) ?? work.coverUrl
+            work.description = DLsitePageData.fullIntroduction(data["introductions"])
+                ?? cleanupDescription(data["description"]?.stringValue) ?? work.description
+            work.category = DlsiteLookup.workReference(data["url"]?.stringValue ?? "")?.category
+            if let age = data["age_category"]?.intValue { work.ageRating = age == 3 ? "r18" : (age == 2 ? "r15" : "general") }
+            work.tags = (data["genres"]?.arrayValue ?? []).compactMap { $0.objectValue?["genre_name"]?.stringValue }
+            work.languages = (data["work_languages"]?.arrayValue ?? []).compactMap(\.stringValue)
+            work.series = data["title"]?.objectValue?["title_name"]?.stringValue
+            work.supportedSystems = data["machine_list"]?.objectValue?["pc"]?.stringValue
+            work.sampleImageURLs = (data["image_samples"]?.arrayValue ?? []).compactMap {
+                normalizeCoverUrl($0.objectValue?["original_url"]?.stringValue)
+            }
+            for group in data["creators"]?.arrayValue ?? [] {
+                let names = (group.objectValue?["creators"]?.arrayValue ?? []).compactMap { $0.objectValue?["name"]?.stringValue }
+                if group.objectValue?["role"]?.stringValue == "voice_by" { work.voiceActors += names }
+                else { work.creators += names }
+            }
+            if let epoch = data["release_date"]?.intValue {
+                let formatter = DateFormatter()
+                formatter.locale = Locale(identifier: "en_US_POSIX")
+                formatter.timeZone = TimeZone(identifier: "Asia/Tokyo")
+                formatter.dateFormat = "yyyy-MM-dd"
+                work.releaseDate = formatter.string(from: Date(timeIntervalSince1970: Double(epoch)))
             }
         }
+        if let data = linked {
+            work.title = work.title ?? data["name"]?.stringValue
+            work.circle = work.circle ?? data["brand"]?.objectValue?["name"]?.stringValue
+            work.description = work.description ?? cleanupDescription(data["description"]?.stringValue)
+            let images = data["image"]?.arrayValue?.compactMap(\.stringValue)
+                ?? [data["image"]?.stringValue].compactMap { $0 }
+            work.coverUrl = work.coverUrl ?? images.first.flatMap(normalizeCoverUrl)
+            if work.sampleImageURLs.isEmpty { work.sampleImageURLs = images.dropFirst().compactMap(normalizeCoverUrl) }
+            work.category = work.category ?? DlsiteLookup.workReference(data["offers"]?.objectValue?["url"]?.stringValue ?? "")?.category
+        }
+        if let legacy {
+            work.releaseDate = work.releaseDate ?? legacy["regist_date"]?.stringValue
+            work.series = work.series ?? legacy["series_name"]?.stringValue
+            work.category = work.category ?? legacy["category"]?.stringValue
+            if work.languages.isEmpty, let language = legacy["lang_options"]?.stringValue { work.languages = [language] }
+        }
+        work.tags = DLsitePageData.unique(work.tags)
+        work.creators = DLsitePageData.unique(work.creators)
+        work.voiceActors = DLsitePageData.unique(work.voiceActors)
+        work.sampleImageURLs = DLsitePageData.unique(work.sampleImageURLs)
 
         // 至少要有一个字段才算抓到
         let hasContent = work.title != nil || work.coverUrl != nil
         return hasContent ? work : nil
+    }
+
+    static func canonicalURL(_ html: String) -> String? {
+        guard let regex = try? NSRegularExpression(pattern: #"<link\b[^>]*>"#, options: .caseInsensitive) else { return nil }
+        let ns = html as NSString
+        for match in regex.matches(in: html, range: NSRange(location: 0, length: ns.length)) {
+            let tag = ns.substring(with: match.range)
+            if attribute(in: tag, name: "rel")?.lowercased() == "canonical" { return attribute(in: tag, name: "href") }
+        }
+        return nil
     }
 
     /// RJ 规范化（内部用，等同于 `RJNumber.normalize`）。

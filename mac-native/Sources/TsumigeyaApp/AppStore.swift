@@ -21,6 +21,9 @@ import TsumigeyaCore
 
 @MainActor
 final class AppStore: ObservableObject {
+    init(dlsiteService: DLsiteService? = nil) {
+        self.dlsiteService = dlsiteService
+    }
 
     // MARK: - 已发布状态
 
@@ -53,6 +56,8 @@ final class AppStore: ObservableObject {
     @Published var engineErrors: [String: String] = [:]
     @Published var stoppingGames: Set<String> = []
     var installTokens: [String: UUID] = [:]
+    private var metaTasks: [String: Task<Void, Never>] = [:]
+    private var searchTasks: [String: Task<Void, Never>] = [:]
     private var metaTokens: [String: UUID] = [:]
     private var searchTokens: [String: UUID] = [:]
 
@@ -111,11 +116,14 @@ final class AppStore: ObservableObject {
     ///
     /// ⚠️ 判据**不要**写在 View 里（Electron 版踩过：画错不报错，只能靠单测钉）。
     var filteredGames: [GameRecord] {
+        let metadata = searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? [:] : GameMetaStore.loadAll(dataDir: dataDir)
         var result = LibraryFilter.apply(
             games: games,
             searchText: searchText,
             onlyUnbound: false,
-            hasBinding: { !($0.gameArgs?.isEmpty ?? true) }
+            hasBinding: { !($0.gameArgs?.isEmpty ?? true) },
+            metadata: { self.gameMeta[$0.id]?.work ?? metadata[$0.id]?.work }
         )
         // ⚠️ **分类筛选**（P5 补上）。
         //
@@ -488,6 +496,9 @@ final class AppStore: ObservableObject {
             return
         }
         // 网络请求可能在编号复用之后才返回，必须使旧请求的 token 失效。
+        cancelLookup(gameId: id)
+        metaPreviews.removeValue(forKey: id)
+        metaNotice.removeValue(forKey: id)
         metaTokens.removeValue(forKey: id)
         searchTokens.removeValue(forKey: id)
         fetchingMeta.remove(id)
@@ -925,6 +936,7 @@ final class AppStore: ObservableObject {
             metaTokens.removeValue(forKey: expected.id)
             fetchingMeta.remove(expected.id)
             clearSearch(gameId: expected.id)
+            metaPreviews.removeValue(forKey: expected.id)
             lastLaunchFailure.removeValue(forKey: expected.id)
             return true
         } catch { lastAddGameError = "\(error)"; return false }
@@ -981,16 +993,20 @@ final class AppStore: ObservableObject {
     ///   - refresh: 强制重抓（忽略缓存）
     ///
     /// ⚠️ **异步**：网络请求不能阻塞主线程。
-    func fetchMeta(gameId: String, rj: String, refresh: Bool = false) {
+    func fetchMeta(gameId: String, rj: String, refresh: Bool = false, category: String? = nil, preview: Bool = false) {
+        guard game(id: gameId) != nil, !privacy.hidesTitles else { return }
         guard !fetchingMeta.contains(gameId) else { return }
         fetchingMeta.insert(gameId)
+        if preview { searchError.removeValue(forKey: gameId) }
         metaError.removeValue(forKey: gameId)
+        metaNotice.removeValue(forKey: gameId)
 
         let token = UUID()
         metaTokens[gameId] = token
-        Task { @MainActor in
+        metaTasks[gameId] = Task { @MainActor in
             defer {
                 if metaTokens[gameId] == token {
+                    metaTasks.removeValue(forKey: gameId)
                     fetchingMeta.remove(gameId)
                     metaTokens.removeValue(forKey: gameId)
                 }
@@ -1002,26 +1018,32 @@ final class AppStore: ObservableObject {
             }
             guard let service = dlsiteService else { return }
 
-            let result = await service.fetchWork(rj: rj, refresh: refresh)
+            let result = await service.fetchResolved(rj: rj, category: category, refresh: refresh)
             guard metaTokens[gameId] == token, game(id: gameId) != nil else { return }
 
             switch result {
             case .success(let work):
+                if preview {
+                    metaPreviews[gameId] = work
+                    return
+                }
                 // ⚠️ **合并时保护用户改过的字段**（D26）
                 let existing = gameMeta[gameId]
                     ?? GameMetaStore.load(dataDir: dataDir, gameId: gameId)
-                let edited = Set(existing?.editedFields ?? [])
+                let fields = existing?.work.rj == work.rj ? (existing?.editedFields ?? []) : []
+                let edited = Set(fields)
                 let merged = EditedFields.merge(
                     old: existing?.work, incoming: work, edited: edited)
 
                 let meta = GameDlsiteMeta(
-                    work: merged, editedFields: existing?.editedFields ?? [])
+                    work: merged, editedFields: fields)
                 if let err = GameMetaStore.save(
                     dataDir: dataDir, gameId: gameId, meta: meta) {
                     metaError[gameId] = "保存元数据失败：\(err)"
                     return
                 }
                 gameMeta[gameId] = meta
+                metaNotice[gameId] = "作品信息已更新；手动修改的字段已保留。"
             case .failure(let error):
                 // ⚠️ 结构化错误 → 直接显示它的 message（每种错误说不同的话）
                 metaError[gameId] = error.message
@@ -1065,10 +1087,14 @@ final class AppStore: ObservableObject {
     // MARK: - DLsite 搜索（P7）
 
     /// 搜索进行中（gameId → 是否在搜）。
-    @Published private(set) var searchingFor: String?
+    @Published private(set) var searchingGameIDs: Set<String> = []
+    @Published private(set) var metaPreviews: [String: DlsiteWork] = [:]
+    @Published private(set) var metaNotice: [String: String] = [:]
     /// 搜索结果（gameId → 候选列表）。
     @Published private(set) var searchHits: [String: [DLsiteSearch.Hit]] = [:]
     /// 搜索错误（gameId → 说明）。
+    @Published private(set) var searchWarnings: [String: [String]] = [:]
+    @Published private(set) var searchKeywordsTried: [String: [String]] = [:]
     @Published private(set) var searchError: [String: String] = [:]
     /// 上次搜索用的关键词（用于界面显示「搜了什么」）。
     @Published private(set) var lastKeyword: [String: String] = [:]
@@ -1076,29 +1102,40 @@ final class AppStore: ObservableObject {
     /// 按名字搜索（用户要求：「不能（找到 RJ）就按名字来」）。
     ///
     /// ⚠️ **只返回候选，绝不自动选**（D24 —— 实测搜 Karryn 返回正片 + 3 个 DLC）。
-    func searchMeta(gameId: String, keyword: String) {
-        guard searchingFor == nil else { return }
-        searchingFor = gameId
+    func searchMeta(gameId: String, keyword: String, category: String? = nil) {
+        guard game(id: gameId) != nil, !privacy.hidesTitles, !searchingGameIDs.contains(gameId) else { return }
+        searchingGameIDs.insert(gameId)
         searchError.removeValue(forKey: gameId)
         searchHits.removeValue(forKey: gameId)
+        searchWarnings.removeValue(forKey: gameId)
+        searchKeywordsTried.removeValue(forKey: gameId)
         lastKeyword[gameId] = keyword
         let token = UUID()
         searchTokens[gameId] = token
 
-        Task { @MainActor in
-            defer { searchingFor = nil }
+        searchTasks[gameId] = Task { @MainActor in
+            defer {
+                if searchTokens[gameId] == token {
+                    searchingGameIDs.remove(gameId)
+                    searchTokens.removeValue(forKey: gameId)
+                    searchTasks.removeValue(forKey: gameId)
+                }
+            }
 
             if dlsiteService == nil {
                 dlsiteService = DLsiteService(dataDir: dataDir)
             }
             guard let service = dlsiteService else { return }
 
-            let result = await service.search(keyword: keyword)
+            let result = await service.searchReport(keyword: keyword, category: category)
             guard searchTokens[gameId] == token, game(id: gameId) != nil else { return }
 
             switch result {
-            case .success(let hits):
+            case .success(let report):
+                let hits = report.hits
                 searchHits[gameId] = hits
+                searchWarnings[gameId] = report.warnings
+                searchKeywordsTried[gameId] = report.keywordsTried
                 if hits.isEmpty {
                     searchError[gameId] = "没搜到「\(keyword)」。试试更短的词，或者手动输入 RJ。"
                 }
@@ -1108,27 +1145,24 @@ final class AppStore: ObservableObject {
         }
     }
 
-    /// 用户从候选里点选一个（**这时候才确定是哪个作品**）。
+    /// 候选只进入预览，确认成功落盘后才改变游戏关联。
     func selectSearchHit(gameId: String, rj: String) {
-        searchHits.removeValue(forKey: gameId)
         searchError.removeValue(forKey: gameId)
-        fetchMeta(gameId: gameId, rj: rj)
+        let category = searchHits[gameId]?.first(where: { $0.rj == rj })?.category
+        fetchMeta(gameId: gameId, rj: rj, category: category, preview: true)
     }
 
     func clearSearch(gameId: String) {
+        cancelLookup(gameId: gameId)
         searchTokens.removeValue(forKey: gameId)
         searchHits.removeValue(forKey: gameId)
         searchError.removeValue(forKey: gameId)
         lastKeyword.removeValue(forKey: gameId)
+        searchWarnings.removeValue(forKey: gameId)
+        searchKeywordsTried.removeValue(forKey: gameId)
     }
 
-    /// 正在手动输入 RJ 的游戏 id（nil = 没在输）。
-    ///
-    /// ⚠️ **为什么必须有这条路**（本鱼实测发现）：
-    ///    用户的 5 个真实游戏**全部检测不到 RJ** ——
-    ///    目录名不带 RJ、有的连 readme 都没有、有 readme 的里面也没有 RJ 号。
-    ///
-    ///    → 没有手动入口的话，P7 对这个用户**完全没用**。
+    /// 查找目标独立于列表筛选，失败后保留候选和关键词。
     @Published var manualRJFor: String?
 
     func beginManualRJ(gameId: String) {
@@ -1136,7 +1170,36 @@ final class AppStore: ObservableObject {
     }
 
     func closeManualRJ() {
+        if let id = manualRJFor { discardMetaPreview(gameId: id) }
         manualRJFor = nil
+    }
+
+    func cancelLookup(gameId: String) {
+        metaTokens.removeValue(forKey: gameId)
+        searchTokens.removeValue(forKey: gameId)
+        metaTasks.removeValue(forKey: gameId)?.cancel()
+        searchTasks.removeValue(forKey: gameId)?.cancel()
+        fetchingMeta.remove(gameId)
+        searchingGameIDs.remove(gameId)
+    }
+
+    func discardMetaPreview(gameId: String) {
+        cancelLookup(gameId: gameId)
+        metaPreviews.removeValue(forKey: gameId)
+        metaError.removeValue(forKey: gameId)
+    }
+
+    @discardableResult
+    func applyMetaPreview(gameId: String) -> Bool {
+        guard game(id: gameId) != nil, !privacy.hidesTitles, let incoming = metaPreviews[gameId] else { return false }
+        let old = meta(for: gameId)
+        let edited = old?.work.rj == incoming.rj ? (old?.editedFields ?? []) : []
+        let merged = EditedFields.merge(old: old?.work, incoming: incoming, edited: Set(edited))
+        guard updateMeta(gameId: gameId, meta: GameDlsiteMeta(work: merged, editedFields: edited)) else { return false }
+        metaPreviews.removeValue(forKey: gameId)
+        clearSearch(gameId: gameId)
+        metaNotice[gameId] = "已关联作品信息。"
+        return true
     }
 
     /// 清掉一个游戏的元数据（删游戏时调）。

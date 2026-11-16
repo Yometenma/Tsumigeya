@@ -24,7 +24,8 @@ public enum LibraryFilter {
         games: [GameRecord],
         searchText: String,
         onlyUnbound: Bool,
-        hasBinding: (GameRecord) -> Bool
+        hasBinding: (GameRecord) -> Bool,
+        metadata: (GameRecord) -> DlsiteWork? = { _ in nil }
     ) -> [GameRecord] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         let lower = query.lowercased()
@@ -42,6 +43,11 @@ public enum LibraryFilter {
             if game.gamePath.localizedCaseInsensitiveContains(lower) { return true }
             // 引擎名也参与搜索（用户可能想找「mkxpz 的游戏」）
             if game.gameEngine.localizedCaseInsensitiveContains(lower) { return true }
+            if let work = metadata(game) {
+                let text = [work.title, work.circle, work.series, work.releaseDate, work.rj].compactMap { $0 }
+                    + work.tags + work.languages + work.creators + work.voiceActors
+                if text.contains(where: { $0.localizedCaseInsensitiveContains(lower) }) { return true }
+            }
             return false
         }
     }

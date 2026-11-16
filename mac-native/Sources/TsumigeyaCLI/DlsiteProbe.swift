@@ -27,7 +27,7 @@ func runDlsiteProbe(htmlPath: String) -> Int {
             }
         }
     } else {
-        print("❌ 解析失败")
+        print("未找到旧版 contents；继续检查新版结构化数据与 meta 兜底。")
     }
     print("")
 
@@ -52,6 +52,7 @@ func runDlsiteProbe(htmlPath: String) -> Int {
         print("   coverUrl    = \(work.coverUrl ?? "(无)")")
         print("   workType    = \(work.workType ?? "(无)")")
         print("   ageRating   = \(work.ageRating ?? "(无)")")
+        print("   发售日期 = \(work.releaseDate ?? "(无)")，标签数 = \(work.tags.count)，截图数 = \(work.sampleImageURLs.count)")
         let desc = work.description ?? "(无)"
         print("   description = \(desc.prefix(80))\(desc.count > 80 ? "..." : "")")
 

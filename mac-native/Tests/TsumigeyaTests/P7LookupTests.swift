@@ -50,8 +50,8 @@ struct DlsiteLookupPlanTests {
         }
     }
 
-    /// 标题为空 / 只有空白 → 手动。
-    @Test("标题空则手动")
+    /// 标题为空时用目录名兜底。
+    @Test("标题空则按目录名搜索")
     func emptyTitleManual() throws {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("empty-title-fixture")
@@ -59,7 +59,7 @@ struct DlsiteLookupPlanTests {
         defer { try? FileManager.default.removeItem(at: dir) }
 
         let step = DlsiteLookup.plan(gamePath: dir.path, gameTitle: "   ")
-        #expect(step == .manual)
+        #expect(step == .byKeyword("empty title fixture"))
     }
 }
 

@@ -123,10 +123,12 @@ public enum RJNumber {
     static func listReadmeFiles(
         dir: String, limit: Int, fm: FileManager
     ) -> [String] {
-        guard let names = try? fm.contentsOfDirectory(atPath: dir) else { return [] }
+        guard limit > 0, let names = try? fm.contentsOfDirectory(atPath: dir) else { return [] }
         var out: [String] = []
         for name in names.sorted() {
-            guard name.lowercased().hasPrefix("readme") else { continue }
+            let lower = name.lowercased()
+            let prefixes = ["readme", "read me", "read_me", "お読み", "はじめに", "说明", "説明", "讀我", "必读"]
+            guard prefixes.contains(where: { lower.hasPrefix($0) }) || lower.hasSuffix(".url") else { continue }
             let full = (dir as NSString).appendingPathComponent(name)
             var isDir: ObjCBool = false
             guard fm.fileExists(atPath: full, isDirectory: &isDir), !isDir.boolValue else {
@@ -146,7 +148,8 @@ public enum RJNumber {
         guard let handle = FileHandle(forReadingAtPath: file) else { return "" }
         defer { try? handle.close() }
         let data = handle.readData(ofLength: limit)
-        return String(data: data, encoding: .utf8) ?? ""
+        // RJ 是 ASCII；Latin-1 兜底只用于提取编号，不把乱码当作标题。
+        return String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1) ?? ""
     }
 }
 
@@ -175,11 +178,30 @@ public struct DlsiteWork: Sendable, Equatable {
     /// 抓取时刻（ISO 8601）。
     public var fetchedAt: String
 
+    public var category: String?
+    public var releaseDate: String?
+    public var series: String?
+    public var tags: [String]
+    public var languages: [String]
+    public var sampleImageURLs: [String]
+    public var creators: [String]
+    public var voiceActors: [String]
+    public var supportedSystems: String?
+
     public init(
         rj: String, title: String? = nil, titleSub: String? = nil,
         circle: String? = nil, coverUrl: String? = nil,
         workType: String? = nil, ageRating: String? = nil,
-        description: String? = nil, fetchedAt: String
+        description: String? = nil, fetchedAt: String,
+        category: String? = nil,
+        releaseDate: String? = nil,
+        series: String? = nil,
+        tags: [String] = [],
+        languages: [String] = [],
+        sampleImageURLs: [String] = [],
+        creators: [String] = [],
+        voiceActors: [String] = [],
+        supportedSystems: String? = nil
     ) {
         self.rj = rj
         self.title = title
@@ -190,6 +212,15 @@ public struct DlsiteWork: Sendable, Equatable {
         self.ageRating = ageRating
         self.description = description
         self.fetchedAt = fetchedAt
+        self.category = category
+        self.releaseDate = releaseDate
+        self.series = series
+        self.tags = tags
+        self.languages = languages
+        self.sampleImageURLs = sampleImageURLs
+        self.creators = creators
+        self.voiceActors = voiceActors
+        self.supportedSystems = supportedSystems
     }
 }
 
@@ -198,10 +229,11 @@ public enum EditedFields {
     /// 哪些字段被用户改过（存成 `[String]`）。
     ///
     /// ⚠️ **`rj` 不在可编辑列表里**（D25）：改 RJ 等于换一部作品，
-    ///    那应该重新添加游戏，而不是在编辑页手打。
+    ///    那应该在查找界面重新确认，而不是在编辑页手打。
     public static let editable = [
         "title", "titleSub", "circle", "coverUrl",
-        "workType", "ageRating", "description",
+        "workType", "ageRating", "description", "releaseDate", "series", "tags", "languages",
+        "creators", "voiceActors", "supportedSystems",
     ]
 
     /// 合并新旧元数据：**被用户改过的字段刷新时不覆盖**。
@@ -213,7 +245,7 @@ public enum EditedFields {
     public static func merge(
         old: DlsiteWork?, incoming: DlsiteWork, edited: Set<String>
     ) -> DlsiteWork {
-        guard let old else { return incoming }
+        guard let old, old.rj == incoming.rj else { return incoming }
 
         var result = incoming
         // 被编辑过的字段 → 沿用旧值
@@ -224,6 +256,13 @@ public enum EditedFields {
         if edited.contains("workType") { result.workType = old.workType }
         if edited.contains("ageRating") { result.ageRating = old.ageRating }
         if edited.contains("description") { result.description = old.description }
+        if edited.contains("releaseDate") { result.releaseDate = old.releaseDate }
+        if edited.contains("series") { result.series = old.series }
+        if edited.contains("tags") { result.tags = old.tags }
+        if edited.contains("languages") { result.languages = old.languages }
+        if edited.contains("creators") { result.creators = old.creators }
+        if edited.contains("voiceActors") { result.voiceActors = old.voiceActors }
+        if edited.contains("supportedSystems") { result.supportedSystems = old.supportedSystems }
 
         // ⚠️ **RJ 永远以 incoming 为准**（它不可编辑，是作品的唯一标识）
         result.rj = incoming.rj

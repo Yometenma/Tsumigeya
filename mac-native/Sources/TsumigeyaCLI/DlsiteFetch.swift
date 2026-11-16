@@ -31,6 +31,11 @@ func runDlsiteFetch(rj: String, category: String) async -> Int {
         print("   coverUrl  = \(work.coverUrl ?? "(无)")")
         print("   workType  = \(work.workType ?? "(无)")")
         print("   ageRating = \(work.ageRating ?? "(无)")")
+        print("   发售日期 = \(work.releaseDate ?? "(无)")")
+        print("   系列 = \(work.series ?? "(无)")")
+        print("   语言 = \(work.languages.joined(separator: "、"))")
+        print("   标签数 = \(work.tags.count)，截图数 = \(work.sampleImageURLs.count)")
+        print("   完整介绍字数 = \(work.description?.count ?? 0)")
         let desc = work.description ?? "(无)"
         print("   desc      = \(desc.prefix(60))...")
     case .failure(let error):
@@ -38,21 +43,15 @@ func runDlsiteFetch(rj: String, category: String) async -> Int {
         return 1
     }
 
-    // ② 立刻再来一次 → 应该被限速挡住
+    // 调度器自动等待，不要求用户在限速后再次操作。
     print("")
-    print("=== 立刻再请求（应该被限速）===")
-    let start2 = Date()
+    print("=== 连续请求（自动遵守至少 800ms 的发起间隔）===")
     let second = await service.fetchWork(rj: rj, category: category, refresh: true)
-    let elapsed2 = Date().timeIntervalSince(start2)
-    switch second {
-    case .success:
-        print("⚠️ 第二次成功了（限速没生效？）")
-    case .failure(.rateLimited(let ms)):
-        let fast = elapsed2 < 0.2
-        print("✅ 被限速挡住，还要等 \(ms)ms\(fast ? "，且立即返回（不阻塞）" : "")")
-    case .failure(let error):
-        print("❌ 意外的失败: \(error.message)")
+    guard case .success = second else {
+        if case .failure(let error) = second { print("❌ 连续请求失败：\(error.message)") }
+        return 1
     }
+    print("✅ 连续获取成功，无需手动重试")
 
     // ③ 等过限速后再请求一次 → 走缓存
     print("")

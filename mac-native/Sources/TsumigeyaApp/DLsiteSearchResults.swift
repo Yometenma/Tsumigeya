@@ -12,59 +12,34 @@ struct DLsiteSearchResults: View {
             Text("搜索结果已隐藏，关闭标题隐藏后可核对作品。")
                 .foregroundStyle(.secondary)
         } else {
-            results
-        }
-    }
-
-    private var results: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text("搜到 \(hits.count) 个结果，选一个：")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Button("取消", action: onCancel)
-                .controlSize(.small)
-            }
-            .padding(.bottom, 6)
-
-            ForEach(Array(hits.enumerated()), id: \.element.rj) { idx, hit in
-                if idx > 0 { Divider().padding(.leading, 8) }
-                Button {
-                    onSelect(hit.rj)
-                } label: {
-                    HStack(alignment: .top, spacing: 8) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(hit.title)
-                                .font(.system(size: 11))
-                                .lineLimit(2)
-                                .multilineTextAlignment(.leading)
-                            HStack(spacing: 8) {
-                                Text(hit.rj)
-                                    .font(.system(size: 10, design: .monospaced))
-                                    .foregroundStyle(.tertiary)
-                                if let circle = hit.circle {
-                                    Text(circle)
-                                        .font(.system(size: 10))
-                                        .foregroundStyle(.tertiary)
-                                        .lineLimit(1)
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("找到 \(hits.count) 个候选，请核对作品和版本")
+                        .font(.subheadline).foregroundStyle(.secondary)
+                    Spacer()
+                    Button("清除结果", action: onCancel).controlSize(.small)
+                }
+                ForEach(hits) { hit in
+                    HStack(alignment: .top, spacing: 12) {
+                        WorkRemoteImage(address: hit.coverUrl).frame(width: 96, height: 72)
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(hit.title).font(.callout.weight(.medium)).lineLimit(3)
+                                .fixedSize(horizontal: false, vertical: true)
+                            if let circle = hit.circle { Text(circle).font(.caption).foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true) }
+                            HStack {
+                                Text(hit.rj).font(.caption.monospaced()).foregroundStyle(.secondary)
+                                if let url = URL(string: DLsiteService.pageURL(category: hit.category, rj: hit.rj)) {
+                                    Link("作品页", destination: url).font(.caption)
                                 }
                             }
-                        }
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 9))
-                            .foregroundStyle(.tertiary)
+                        }.frame(maxWidth: .infinity, alignment: .leading).layoutPriority(1)
+                        Button("预览") { onSelect(hit.rj) }.controlSize(.small).fixedSize()
                     }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 6)
-                    .contentShape(Rectangle())
+                    .padding(10)
+                    .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 9))
                 }
-                .buttonStyle(.plain)
             }
         }
-        .padding(6)
-        .background(Color(nsColor: .controlBackgroundColor),
-                    in: RoundedRectangle(cornerRadius: 7))
     }
 }

@@ -57,9 +57,8 @@ public struct DLsiteURLTransport: DLsiteTransport {
             forHTTPHeaderField: "User-Agent")
         request.setValue("zh-CN,zh;q=0.9", forHTTPHeaderField: "Accept-Language")
 
-        // ⚠️ `setAdultCookie` 的等价物：DLsite 的 R18 页面需要 `adultchecked=1`，
-        //    否则会重定向到年龄确认页。用 URLSession 的 cookie 存储。
-        //    （Electron 版用 `session.cookies.set`，见 §4.2）
+        request.setValue("adultchecked=1", forHTTPHeaderField: "Cookie")
+
 
         let (data, response) = try await URLSession.shared.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
@@ -71,6 +70,9 @@ public struct DLsiteURLTransport: DLsiteTransport {
 // MARK: - 错误
 
 public enum DLsiteError: Error, Sendable, Equatable {
+    case storage(String)
+    case cancelled
+    case verificationRequired
     /// URL 构造失败（RJ 或分类不合法）。
     case invalidURL(String)
     /// 网络层失败（断网 / 代理没开 / 超时）。
@@ -93,10 +95,16 @@ public enum DLsiteError: Error, Sendable, Equatable {
     ///    · rjMismatch → 「作品可能下架或改名了」
     public var message: String {
         switch self {
+        case .storage(let detail): return "保存作品缓存失败，原件未覆盖：\(detail)"
+        case .cancelled: return "已取消获取，原有作品信息未更改。"
+        case .verificationRequired: return "站点返回了验证页面，并非没有该作品。请在浏览器中确认站点可访问后重试。"
         case .invalidURL(let url):
             return "RJ 号或分类不合法：\(url)"
         case .network(let detail):
             return "网络请求失败：\(detail)。检查网络连接，如果用代理请确认它开着。"
+        case .httpStatus(403): return "站点拒绝了请求（403）。请检查浏览器能否访问作品页及代理设置后重试。"
+        case .httpStatus(404): return "未找到该作品页（404）。请核对编号或尝试其他查找范围；作品也可能已下架。"
+        case .httpStatus(429): return "站点暂时限制了访问频率（429），请稍后重试。"
         case .httpStatus(let code):
             return "DLsite 返回了 HTTP \(code)。可能是站点临时故障，稍后再试。"
         case .parseFailed(let rj):
@@ -104,7 +112,7 @@ public enum DLsiteError: Error, Sendable, Equatable {
         case .rjMismatch(let requested, let got):
             return "请求的是 \(requested)，但页面里是 \(got)。作品可能已下架或改了 ID。"
         case .rateLimited(let ms):
-            return "请求太频繁，请等 \(ms / 1000) 秒后再试。"
+            return "请求太频繁，请等 \(max(1, (ms + 999) / 1000)) 秒后再试。"
         }
     }
 }
@@ -116,10 +124,12 @@ public struct CachedWork: Sendable, Codable {
     public let work: DlsiteWork
     /// 缓存写入时刻（Unix 秒）。
     public let cachedAt: TimeInterval
+    public let formatVersion: Int
 
     public init(work: DlsiteWork, cachedAt: TimeInterval) {
         self.work = work
         self.cachedAt = cachedAt
+        self.formatVersion = 2
     }
 }
 
@@ -128,9 +138,10 @@ extension CachedWork {
     ///
     /// ⚠️ 必须定义在 `CachedWork` 的 extension **内部**
     ///    （Swift 的手写 Codable 要求 `CodingKeys` 在同类型的声明或扩展里）。
-    enum CodingKeys: String, CodingKey {
+    enum CodingKeys: String, CodingKey, CaseIterable {
         case rj, title, titleSub, circle, coverUrl, workType, ageRating, description, fetchedAt
-        case cachedAt
+        case cachedAt, formatVersion
+        case category, releaseDate, series, tags, languages, sampleImageURLs, creators, voiceActors, supportedSystems
     }
 
     // ⚠️ 手写 Codable 而不是合成：加字段时不会静默改掉磁盘格式。
@@ -145,7 +156,17 @@ extension CachedWork {
         try c.encodeIfPresent(work.ageRating, forKey: .ageRating)
         try c.encodeIfPresent(work.description, forKey: .description)
         try c.encode(work.fetchedAt, forKey: .fetchedAt)
+        try c.encodeIfPresent(work.category, forKey: .category)
+        try c.encodeIfPresent(work.releaseDate, forKey: .releaseDate)
+        try c.encodeIfPresent(work.series, forKey: .series)
+        try c.encode(work.tags, forKey: .tags)
+        try c.encode(work.languages, forKey: .languages)
+        try c.encode(work.sampleImageURLs, forKey: .sampleImageURLs)
+        try c.encode(work.creators, forKey: .creators)
+        try c.encode(work.voiceActors, forKey: .voiceActors)
+        try c.encodeIfPresent(work.supportedSystems, forKey: .supportedSystems)
         try c.encode(cachedAt, forKey: .cachedAt)
+        try c.encode(formatVersion, forKey: .formatVersion)
     }
 
     public init(from decoder: Decoder) throws {
@@ -160,8 +181,18 @@ extension CachedWork {
             workType: try c.decodeIfPresent(String.self, forKey: .workType),
             ageRating: try c.decodeIfPresent(String.self, forKey: .ageRating),
             description: try c.decodeIfPresent(String.self, forKey: .description),
-            fetchedAt: try c.decode(String.self, forKey: .fetchedAt))
+            fetchedAt: try c.decode(String.self, forKey: .fetchedAt),
+            category: try c.decodeIfPresent(String.self, forKey: .category),
+            releaseDate: try c.decodeIfPresent(String.self, forKey: .releaseDate),
+            series: try c.decodeIfPresent(String.self, forKey: .series),
+            tags: try c.decodeIfPresent([String].self, forKey: .tags) ?? [],
+            languages: try c.decodeIfPresent([String].self, forKey: .languages) ?? [],
+            sampleImageURLs: try c.decodeIfPresent([String].self, forKey: .sampleImageURLs) ?? [],
+            creators: try c.decodeIfPresent([String].self, forKey: .creators) ?? [],
+            voiceActors: try c.decodeIfPresent([String].self, forKey: .voiceActors) ?? [],
+            supportedSystems: try c.decodeIfPresent(String.self, forKey: .supportedSystems))
         self.work = work
+        self.formatVersion = try c.decodeIfPresent(Int.self, forKey: .formatVersion) ?? 1
         // ⚠️ `cachedAt` 缺失时用 0 → 视为「过期」（重新抓）
         self.cachedAt = try c.decodeIfPresent(TimeInterval.self, forKey: .cachedAt) ?? 0
     }

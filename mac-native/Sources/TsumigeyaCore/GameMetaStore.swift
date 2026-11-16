@@ -33,6 +33,7 @@ public struct GameDlsiteMeta: Sendable, Equatable, Codable {
     enum CodingKeys: String, CodingKey {
         case rj, title, titleSub, circle, coverUrl, workType, ageRating
         case description, fetchedAt, editedFields
+        case category, releaseDate, series, tags, languages, sampleImageURLs, creators, voiceActors, supportedSystems
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -46,6 +47,15 @@ public struct GameDlsiteMeta: Sendable, Equatable, Codable {
         try c.encodeIfPresent(work.ageRating, forKey: .ageRating)
         try c.encodeIfPresent(work.description, forKey: .description)
         try c.encode(work.fetchedAt, forKey: .fetchedAt)
+        try c.encodeIfPresent(work.category, forKey: .category)
+        try c.encodeIfPresent(work.releaseDate, forKey: .releaseDate)
+        try c.encodeIfPresent(work.series, forKey: .series)
+        try c.encode(work.tags, forKey: .tags)
+        try c.encode(work.languages, forKey: .languages)
+        try c.encode(work.sampleImageURLs, forKey: .sampleImageURLs)
+        try c.encode(work.creators, forKey: .creators)
+        try c.encode(work.voiceActors, forKey: .voiceActors)
+        try c.encodeIfPresent(work.supportedSystems, forKey: .supportedSystems)
         try c.encode(editedFields, forKey: .editedFields)
     }
 
@@ -60,7 +70,16 @@ public struct GameDlsiteMeta: Sendable, Equatable, Codable {
             workType: try c.decodeIfPresent(String.self, forKey: .workType),
             ageRating: try c.decodeIfPresent(String.self, forKey: .ageRating),
             description: try c.decodeIfPresent(String.self, forKey: .description),
-            fetchedAt: try c.decode(String.self, forKey: .fetchedAt))
+            fetchedAt: try c.decode(String.self, forKey: .fetchedAt),
+            category: try c.decodeIfPresent(String.self, forKey: .category),
+            releaseDate: try c.decodeIfPresent(String.self, forKey: .releaseDate),
+            series: try c.decodeIfPresent(String.self, forKey: .series),
+            tags: try c.decodeIfPresent([String].self, forKey: .tags) ?? [],
+            languages: try c.decodeIfPresent([String].self, forKey: .languages) ?? [],
+            sampleImageURLs: try c.decodeIfPresent([String].self, forKey: .sampleImageURLs) ?? [],
+            creators: try c.decodeIfPresent([String].self, forKey: .creators) ?? [],
+            voiceActors: try c.decodeIfPresent([String].self, forKey: .voiceActors) ?? [],
+            supportedSystems: try c.decodeIfPresent(String.self, forKey: .supportedSystems))
         self.editedFields = try c.decodeIfPresent(
             [String].self, forKey: .editedFields) ?? []
     }
@@ -69,6 +88,15 @@ public struct GameDlsiteMeta: Sendable, Equatable, Codable {
 public enum GameMetaStore {
 
     static let fileName = "library-meta.json"
+
+    /// 本地搜索一次读完整旁挂文件，避免每个候选都重复读同一个文件。
+    public static func loadAll(dataDir: String) -> [String: GameDlsiteMeta] {
+        readRaw(dataDir: dataDir).compactMapValues { entry in
+            guard let dlsite = entry.objectValue?["dlsite"],
+                  let data = try? JSONEncoder().encode(dlsite) else { return nil }
+            return try? JSONDecoder().decode(GameDlsiteMeta.self, from: data)
+        }
+    }
 
     /// 读一部游戏的元数据。
     ///
@@ -116,7 +144,8 @@ public enum GameMetaStore {
         // 保留新旧版本扩展字段，同时允许本次清空已知的可选字段。
         var dlsite = entry["dlsite"]?.objectValue ?? [:]
         for key in ["rj", "title", "titleSub", "circle", "coverUrl", "workType",
-                    "ageRating", "description", "fetchedAt", "editedFields"] {
+                    "ageRating", "description", "fetchedAt", "editedFields",
+                    "category", "releaseDate", "series", "tags", "languages", "sampleImageURLs", "creators", "voiceActors", "supportedSystems"] {
             dlsite.removeValue(forKey: key)
         }
         dlsite.merge(json.objectValue ?? [:]) { _, new in new }

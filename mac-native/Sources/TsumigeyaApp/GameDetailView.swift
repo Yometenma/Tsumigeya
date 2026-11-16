@@ -109,12 +109,7 @@ struct GameDetailView: View {
 
     // MARK: - DLsite 元数据
 
-    /// DLsite 元数据区块（P7）。
-    ///
-    /// 三种状态：
-    ///   · 没有元数据 → 「获取作品信息」按钮（自动从路径检测 RJ）
-    ///   · 正在抓 → 进度
-    ///   · 有元数据 → 社团/作品类型/简介 + 刷新按钮
+    /// 更新和错误提示独立于已保存内容，失败时仍能阅读原信息。
     private var dlsiteSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
@@ -130,47 +125,26 @@ struct GameDetailView: View {
                 dlsiteActions
             }
 
-            if store.searchingFor == game.id {
-                HStack(spacing: 6) {
+            if store.fetchingMeta.contains(game.id) {
+                HStack {
                     ProgressView().controlSize(.small)
-                    Text("正在搜索「\(store.lastKeyword[game.id] ?? "")」…")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    Text("正在更新作品信息…").font(.caption).foregroundStyle(.secondary)
+                    Button("取消") { store.cancelLookup(gameId: game.id) }.controlSize(.small)
                 }
-            } else if let hits = store.searchHits[game.id], !hits.isEmpty {
-                // ⚠️ **搜索结果必须让用户点选**（D24：绝不自动选第一条）
-                //
-                //    实测搜 `Karryn` 返回正片 + 3 个 DLC。
-                //    自动选第一条 = 可能拿错的封面，而用户不会意识到。
-                DLsiteSearchResults(hits: hits, onSelect: { rj in
-                    store.selectSearchHit(gameId: game.id, rj: rj)
-                }, onCancel: { store.clearSearch(gameId: game.id) })
-            } else if let error = store.searchError[game.id] {
-                Label(error, systemImage: "magnifyingglass")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-                    .fixedSize(horizontal: false, vertical: true)
-            } else if store.fetchingMeta.contains(game.id) {
-                HStack(spacing: 6) {
-                    ProgressView().controlSize(.small)
-                    Text("正在从 DLsite 抓取…")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            } else if let error = store.metaError[game.id] {
-                // ⚠️ **错误必须是可读的**（`DLsiteError.message` 每种说不同的话）
+            }
+            if let error = store.metaError[game.id] {
                 Label(error, systemImage: "exclamationmark.triangle.fill")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-                    .fixedSize(horizontal: false, vertical: true)
-            } else if let meta = store.meta(for: game.id) {
-                dlsiteInfo(meta)
+                    .font(.caption).foregroundStyle(.orange)
+                Text("原有作品信息未更改，可重试刷新或重新查找作品。")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            if let notice = store.metaNotice[game.id] {
+                Label(notice, systemImage: "checkmark.circle").font(.caption).foregroundStyle(.secondary)
+            }
+            if let meta = store.meta(for: game.id) {
+                DLsiteWorkInfo(work: meta.work)
             } else {
-                // 还没有元数据
-                Text(noMetaHint)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                Text(noMetaHint).font(.callout).foregroundStyle(.secondary)
             }
         }
     }
@@ -182,7 +156,7 @@ struct GameDetailView: View {
     private var noMetaHint: String {
         switch lookupStep {
         case .byRJ(let rj):
-            return "检测到 RJ 号 \(rj)。点「获取作品信息」会从 DLsite 拉封面与简介。"
+            return "检测到 RJ 号 \(rj)。点「查找作品」可预览并关联作品信息。"
         case .byKeyword(let keyword):
             return "路径里没有 RJ 号，可以按名字搜索「\(keyword)」，"
                 + "从结果里选一个作品。"
@@ -200,73 +174,16 @@ struct GameDetailView: View {
 
     @ViewBuilder
     private var dlsiteActions: some View {
-        if store.fetchingMeta.contains(game.id) || store.searchingFor == game.id {
-            EmptyView()
-        } else if store.meta(for: game.id) != nil {
-            Button("刷新") {
-                if let rj = store.meta(for: game.id)?.work.rj {
-                    store.fetchMeta(gameId: game.id, rj: rj, refresh: true)
-                }
-            }
-            .controlSize(.small)
+        let busy = store.fetchingMeta.contains(game.id)
+        if let meta = store.meta(for: game.id) {
+            Button("刷新信息") {
+                store.fetchMeta(gameId: game.id, rj: meta.work.rj, refresh: true, category: meta.work.category)
+            }.controlSize(.small).disabled(busy)
+            Button("更换关联…") { store.beginManualRJ(gameId: game.id) }
+                .controlSize(.small).disabled(busy)
         } else {
-            switch lookupStep {
-            case .byRJ(let rj):
-                Button("获取作品信息") {
-                    store.fetchMeta(gameId: game.id, rj: rj)
-                }
-                .controlSize(.small)
-            case .byKeyword(let keyword):
-                Button(store.searchingFor == nil ? "按名字搜索" : "正在搜索其他游戏…") {
-                    store.searchMeta(gameId: game.id, keyword: keyword)
-                }
-                .controlSize(.small)
-                .disabled(store.searchingFor != nil)
-            case .manual:
-                EmptyView()
-            }
-            // ⚠️ **永远保留手动入口**（自动识别失败时的兜底）
-            Button("手动输入 RJ") {
-                store.beginManualRJ(gameId: game.id)
-            }
-            .controlSize(.small)
-        }
-    }
-
-    /// 有元数据时的信息行。
-    private func dlsiteInfo(_ meta: GameDlsiteMeta) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 14) {
-                if let circle = meta.work.circle, !circle.isEmpty {
-                    HStack(spacing: 4) {
-                        Text("社团").font(.caption2).foregroundStyle(.secondary)
-                        Text(circle).font(.caption2)
-                    }
-                }
-                if let workType = meta.work.workType, !workType.isEmpty {
-                    HStack(spacing: 4) {
-                        Text("类型").font(.caption2).foregroundStyle(.secondary)
-                        // ⚠️ 作品类型码是 DLsite 内部的（SOU / RPG / ADV），
-                        //    这里**原样显示**（翻译表留到有需要时）
-                        Text(workType).font(.caption2)
-                    }
-                }
-                if meta.editedFields.contains("title") {
-                    Text("标题已手改")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                }
-                Spacer()
-            }
-
-            if let desc = meta.work.description, !desc.isEmpty {
-                Text(desc)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .lineSpacing(5)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .textSelection(.enabled)
-            }
+            Button("查找作品…") { store.beginManualRJ(gameId: game.id) }
+                .controlSize(.small).disabled(busy)
         }
     }
 
@@ -359,7 +276,7 @@ struct GameDetailView: View {
                     Button("重新定位游戏目录…") { showsRelocation = true }
                         .disabled(store.privacy.hidesTitles || store.runningGames[game.id] != nil)
                     Button("在访达中显示") { store.revealInFinder(game: game) }
-                    Button("手动关联作品信息…") { store.beginManualRJ(gameId: game.id) }
+                    Button("查找并关联作品…") { store.beginManualRJ(gameId: game.id) }
                     Divider()
                     Button("从游戏库移除…", role: .destructive) { store.confirmDelete(game: game) }
                 } label: {

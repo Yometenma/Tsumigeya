@@ -66,55 +66,32 @@ struct DLsiteServiceTests {
             + "</head><body><script>var contents = " + json + "</script></body></html>"
     }
 
-    /// 限速：连续两次请求，第二次必须被 rateLimited 挡住。
-    @Test("限速")
+    @Test("限速自动等待后成功，不要求用户重试")
     func rateLimit() async throws {
         let dataDir = makeDataDir()
         defer { try? FileManager.default.removeItem(atPath: dataDir) }
-
         let fake = FakeTransport(body: validPage())
-        let service = DLsiteService(
-            dataDir: dataDir, transport: fake,
-            minIntervalMs: 800,
-            now: { 1000.0 })
-
-        let first = await service.fetchWork(rj: "RJ294126", refresh: true)
-        guard case .success = first else {
-            Issue.record("第一次应该成功")
-            return
-        }
-
-        let second = await service.fetchWork(rj: "RJ294127", refresh: true)
-        guard case .failure(.rateLimited(let ms)) = second else {
-            Issue.record("第二次应该被限速挡住")
-            return
-        }
-        #expect(ms > 0 && ms <= 800)
-
-        let count = await fake.requestCount
-        #expect(count == 1, "被限速时不该真的发请求")
+        let service = DLsiteService(dataDir: dataDir, transport: fake, minIntervalMs: 800)
+        _ = await service.fetchWork(rj: "RJ294126", refresh: true)
+        let start = ContinuousClock.now
+        let second = await service.fetchWork(rj: "RJ294126", refresh: true)
+        guard case .success = second else { Issue.record("等待后应成功"); return }
+        #expect(start.duration(to: .now) >= .milliseconds(780))
+        #expect(await fake.requestCount == 2)
     }
 
-    /// 限速返回结构化错误而不是内部 sleep。
-    @Test("限速不阻塞")
-    func rateLimitDoesNotBlock() async throws {
+    @Test("取消排队不发请求")
+    func rateLimitCancellation() async throws {
         let dataDir = makeDataDir()
         defer { try? FileManager.default.removeItem(atPath: dataDir) }
-
         let fake = FakeTransport(body: validPage())
-        let service = DLsiteService(
-            dataDir: dataDir, transport: fake, minIntervalMs: 800,
-            now: { 1000.0 })
-
+        let service = DLsiteService(dataDir: dataDir, transport: fake, minIntervalMs: 800)
         _ = await service.fetchWork(rj: "RJ294126", refresh: true)
-        let start = Date()
-        let result = await service.fetchWork(rj: "RJ294127", refresh: true)
-        let elapsed = Date().timeIntervalSince(start)
-        guard case .failure(.rateLimited) = result else {
-            Issue.record("应该返回 rateLimited")
-            return
-        }
-        #expect(elapsed < 0.5, "不该为了限速阻塞调用方")
+        let task = Task { await service.fetchWork(rj: "RJ294126", refresh: true) }
+        try await Task.sleep(for: .milliseconds(30))
+        task.cancel()
+        #expect(await task.value == .failure(.cancelled))
+        #expect(await fake.requestCount == 1)
     }
 
     /// 缓存命中时不打网络。

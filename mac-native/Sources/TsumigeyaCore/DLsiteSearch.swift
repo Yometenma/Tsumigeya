@@ -86,6 +86,7 @@ public enum DLsiteSearch {
     /// 一条搜索结果。
     public struct Hit: Sendable, Equatable, Identifiable {
         public var id: String { rj }
+        public let category: String
         /// 规范化大写（`RJ331590`）。
         public let rj: String
         /// 标题（已过滤噪音）。
@@ -99,8 +100,9 @@ public enum DLsiteSearch {
 
         public init(
             rj: String, title: String, circle: String?,
-            coverUrl: String?, order: Int
+            coverUrl: String?, order: Int, category: String = "maniax"
         ) {
+            self.category = category
             self.rj = rj
             self.title = title
             self.circle = circle
@@ -134,7 +136,7 @@ public enum DLsiteSearch {
             let start = anchor.range.location
             let end = index + 1 < anchors.count
                 ? anchors[index + 1].range.location
-                : html.count
+                : (html as NSString).length
             guard start < end else { continue }
 
             let chunk = substring(html, from: start, to: end)
@@ -144,7 +146,7 @@ public enum DLsiteSearch {
             seen.insert(rj)
 
             // ③ 标题：`work_name` 块的 `<a title="...">`
-            guard let title = extractWorkName(chunk), !title.isEmpty else { continue }
+            guard let title = extractWorkName(chunk), !title.isEmpty else { seen.remove(rj); continue }
             // ④ 社团：`maker_name` 块
             let circle = extractCircle(chunk)
             // ⑤ 封面：`img_main`（240x240 缩略图）

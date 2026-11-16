@@ -22,8 +22,7 @@ public actor DLsiteService {
     /// 时间源（测试可注入）。
     private let now: @Sendable () -> TimeInterval
 
-    /// 上次请求的时刻（限速用）。
-    private var lastRequestAt: TimeInterval = -.infinity
+    private var lastRequestStart: ContinuousClock.Instant?
 
     public init(
         dataDir: String,
@@ -61,21 +60,26 @@ public actor DLsiteService {
         return cached
     }
 
-    /// 写缓存。
-    func writeCache(_ cached: CachedWork) {
-        let path = cachePath(rj: cached.work.rj)
-        let dir = (path as NSString).deletingLastPathComponent
-        try? FileManager.default.createDirectory(
-            atPath: dir, withIntermediateDirectories: true)
-
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        guard let data = try? encoder.encode(cached) else { return }
-        try? data.write(to: URL(fileURLWithPath: path), options: .atomic)
+    /// 保留未知缓存字段；损坏原件和备份失败都停止写入。
+    @discardableResult
+    func writeCache(_ cached: CachedWork) -> String? {
+        let url = URL(fileURLWithPath: cachePath(rj: cached.work.rj))
+        do {
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            var raw: [String: JSONValue] = [:]
+            if FileManager.default.fileExists(atPath: url.path) {
+                raw = try JSONDecoder().decode([String: JSONValue].self, from: Data(contentsOf: url))
+            }
+            let encoded = try JSONDecoder().decode([String: JSONValue].self, from: JSONEncoder().encode(cached))
+            for key in CachedWork.CodingKeys.allCases { raw.removeValue(forKey: key.rawValue) }
+            raw.merge(encoded) { _, new in new }
+            return JSONStore.save(raw, to: url)
+        } catch { return error.localizedDescription }
     }
 
     /// 缓存是否还在有效期内。
     func isCacheFresh(_ cached: CachedWork) -> Bool {
+        guard cached.formatVersion >= 2 else { return false }
         let age = now() - cached.cachedAt
         // ⚠️ **未来时间戳当过期**（时钟回拨 / 用户改了系统时间）
         guard age >= 0 else { return false }
@@ -96,41 +100,38 @@ public actor DLsiteService {
         rj rawRJ: String, category: String = "maniax", refresh: Bool = false
     ) async -> Result<DlsiteWork, DLsiteError> {
 
+        guard ["maniax", "home", "pro"].contains(category) else { return .failure(.invalidURL(category)) }
         // ① 规范化 RJ
         guard let rj = RJNumber.normalize(rawRJ) else {
             return .failure(.invalidURL(rawRJ))
         }
 
         // ② 缓存命中（非 refresh 时）
-        if !refresh, let cached = readCache(rj: rj), isCacheFresh(cached) {
+        if !refresh, let cached = readCache(rj: rj), cached.work.rj == rj, isCacheFresh(cached) {
             return .success(cached.work)
         }
 
         // ③ 限速
-        if let waitMs = rateLimitWaitMs() {
-            // ⚠️ **返回 rateLimited 而不是 sleep 等待**：
-            //    让调用方（UI）知道「现在不能立刻抓」，
-            //    而不是让一个网络请求悄悄拖 800ms（那会让界面像卡住）。
-            return .failure(.rateLimited(retryAfterMs: waitMs))
-        }
+        do { try await waitForRequestSlot() }
+        catch { return .failure(.cancelled) }
 
-        // ④ 构造 URL 并请求
-        lastRequestAt = now()
         let url = Self.pageURL(category: category, rj: rj)
 
         let response: (status: Int, body: String)
         do {
             response = try await transport.fetch(url: url, timeout: timeoutSeconds)
         } catch {
-            return .failure(.network(error.localizedDescription))
+            return .failure(Task.isCancelled ? .cancelled : .network(error.localizedDescription))
         }
 
+        guard !Task.isCancelled else { return .failure(.cancelled) }
         guard response.status == 200 else {
             return .failure(.httpStatus(response.status))
         }
 
+        if Self.isVerificationPage(response.body) { return .failure(.verificationRequired) }
         // ⑤ 解析
-        guard let work = DLsiteParser.parseWork(
+        guard var work = DLsiteParser.parseWork(
             from: response.body, rj: rj, fetchedAt: ISO8601.now()) else {
             return .failure(.parseFailed(rj: rj))
         }
@@ -144,8 +145,11 @@ public actor DLsiteService {
             return .failure(.rjMismatch(requested: rj, got: work.rj))
         }
 
-        // ⑦ 写缓存
-        writeCache(CachedWork(work: work, cachedAt: now()))
+        work.category = work.category ?? category
+        // 缓存独立于游戏信息，但不能覆盖损坏原件或绕过备份失败。
+        if let error = writeCache(CachedWork(work: work, cachedAt: now())) {
+            return .failure(.storage(error))
+        }
         return .success(work)
     }
 
@@ -165,42 +169,108 @@ public actor DLsiteService {
             return .failure(.invalidURL(keyword))
         }
 
-        // 限速（与 fetchWork 共用同一个时钟 —— 搜索也算一次请求）
-        if let waitMs = rateLimitWaitMs() {
-            return .failure(.rateLimited(retryAfterMs: waitMs))
-        }
-
-        lastRequestAt = now()
+        do { try await waitForRequestSlot() }
+        catch { return .failure(.cancelled) }
         let response: (status: Int, body: String)
         do {
             response = try await transport.fetch(url: url, timeout: timeoutSeconds)
         } catch {
-            return .failure(.network(error.localizedDescription))
+            return .failure(Task.isCancelled ? .cancelled : .network(error.localizedDescription))
         }
 
         guard response.status == 200 else {
             return .failure(.httpStatus(response.status))
         }
 
+        if Self.isVerificationPage(response.body) { return .failure(.verificationRequired) }
         // ⚠️ **必须确认是结果页**：搜不到时 DLsite 返回普通页面，
         //    直接解析会得到空列表，而用户分不清「没有这个作品」与「解析失败」。
         guard DLsiteSearch.isResultPage(response.body) else {
             return .failure(.parseFailed(rj: "搜索：\(keyword)"))
         }
 
-        let hits = DLsiteSearch.parse(response.body)
+        let hits = DLsiteSearch.parse(response.body).map {
+            DLsiteSearch.Hit(rj: $0.rj, title: $0.title, circle: $0.circle,
+                             coverUrl: $0.coverUrl, order: $0.order, category: category)
+        }
         // ⚠️ 结果页成立但解析出 0 条 → 这是**真的没搜到**，不是错误
         //    （`Result.success([])` 与 `parseFailed` 是两件事）
         return .success(hits)
     }
 
-    /// 距离下次可请求还要等多久（毫秒）；nil = 可以立刻请求。
-    func rateLimitWaitMs() -> Int? {
-        guard minIntervalMs > 0 else { return nil }
-        let elapsed = (now() - lastRequestAt) * 1000
-        let remaining = Double(minIntervalMs) - elapsed
-        guard remaining > 0 else { return nil }
-        return Int(remaining)
+    /// 等待后重新检查实际发起时刻，防止 actor 重入或系统调度延迟让请求挤在一起。
+    private func waitForRequestSlot() async throws {
+        try Task.checkCancellation()
+        while let previous = lastRequestStart {
+            let remaining = previous.advanced(by: .milliseconds(minIntervalMs)) - .now
+            if remaining <= .zero { break }
+            try await Task.sleep(for: remaining)
+            try Task.checkCancellation()
+        }
+        lastRequestStart = .now
+    }
+
+    public func fetchResolved(rj: String, category: String? = nil, refresh: Bool = false) async -> Result<DlsiteWork, DLsiteError> {
+        let categories = category.map { [$0] } ?? ["maniax", "home", "pro"]
+        var last: DLsiteError = .parseFailed(rj: rj)
+        for category in categories {
+            let result = await fetchWork(rj: rj, category: category, refresh: refresh)
+            switch result {
+            case .success(var work):
+                work.category = work.category ?? category
+                return .success(work)
+            case .failure(let error):
+                last = error
+                switch error {
+                case .httpStatus(404), .parseFailed: continue
+                default: return .failure(error)
+                }
+            }
+        }
+        return .failure(last)
+    }
+
+    public struct SearchReport: Sendable, Equatable {
+        public let hits: [DLsiteSearch.Hit]
+        public let warnings: [String]
+        public let keywordsTried: [String]
+    }
+
+    public func searchAll(keyword: String, category: String? = nil) async -> Result<[DLsiteSearch.Hit], DLsiteError> {
+        await searchReport(keyword: keyword, category: category).map(\.hits)
+    }
+
+    /// 保持页面顺序，跨分类按编号去重；部分分类失败不能丢掉已找到的候选。
+    public func searchReport(keyword: String, category: String? = nil) async -> Result<SearchReport, DLsiteError> {
+        let categories = category.map { [$0] } ?? ["maniax", "home"]
+        var tried: [String] = []
+        for variant in DlsiteLookup.keywordVariants(keyword) {
+            tried.append(variant)
+            var hits: [DLsiteSearch.Hit] = []
+            var warnings: [String] = []
+            var firstError: DLsiteError?
+            var seen: Set<String> = []
+            for category in categories {
+                switch await search(keyword: variant, category: category) {
+                case .success(let found):
+                    hits += found.filter { seen.insert($0.rj).inserted }
+                case .failure(.cancelled): return .failure(.cancelled)
+                case .failure(let error):
+                    firstError = firstError ?? error
+                    let scope = category == "home" ? "一般向" : (category == "pro" ? "商业作品" : "成人向同人")
+                    warnings.append("\(scope)未完成：\(error.message)")
+                }
+            }
+            if !hits.isEmpty { return .success(SearchReport(hits: hits, warnings: warnings, keywordsTried: tried)) }
+            // 网络或验证错误不是空结果，不能触发名称回退而掩盖故障。
+            if let firstError { return .failure(firstError) }
+        }
+        return .success(SearchReport(hits: [], warnings: [], keywordsTried: tried))
+    }
+
+    private static func isVerificationPage(_ html: String) -> Bool {
+        let title = DLsiteSearch.extractTitle(html)?.lowercased() ?? ""
+        return title.contains("just a moment") || title.contains("captcha") || title.contains("年齢確認")
     }
 
     /// 页面 URL（**唯一有效的格式**）。

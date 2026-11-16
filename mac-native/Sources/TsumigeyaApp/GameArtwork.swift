@@ -5,6 +5,7 @@ import TsumigeyaCore
 struct GameArtwork: View {
     let game: GameRecord
     @EnvironmentObject private var store: AppStore
+    @State private var imageAttempt = 0
 
     var body: some View {
         GeometryReader { geometry in
@@ -13,10 +14,16 @@ struct GameArtwork: View {
                 // 隐私模式移除图片子树；晚到的下载结果不能重新显示原图。
                 if let url = store.artworkURL(for: game) {
                     AsyncImage(url: url) { phase in
-                        if case .success(let image) = phase {
-                            image.resizable().scaledToFit()
+                        switch phase {
+                        case .success(let image): image.resizable().scaledToFit()
+                        case .empty: ProgressView().controlSize(.small)
+                        case .failure:
+                            Button { imageAttempt += 1 } label: {
+                                Label("重试封面", systemImage: "arrow.clockwise").font(.caption)
+                            }.buttonStyle(.plain)
+                        @unknown default: EmptyView()
                         }
-                    }
+                    }.id("\(url.absoluteString)#\(imageAttempt)")
                 }
             }
             .frame(width: geometry.size.width, height: geometry.size.height)

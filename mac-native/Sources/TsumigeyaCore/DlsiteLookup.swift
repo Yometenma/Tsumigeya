@@ -28,6 +28,38 @@
 import Foundation
 
 public enum DlsiteLookup {
+    public struct WorkReference: Sendable, Equatable {
+        public let rj: String
+        public let category: String?
+    }
+
+    /// 链接只提取编号和站点分类，不请求用户输入的任意地址。
+    public static func workReference(_ input: String) -> WorkReference? {
+        let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let rj = RJNumber.normalize(text) { return WorkReference(rj: rj, category: nil) }
+        let candidate = text.contains("://") ? text : "https://\(text)"
+        guard let url = URL(string: candidate), ["https", "http"].contains(url.scheme?.lowercased() ?? ""),
+              ["dlsite.com", "www.dlsite.com"].contains(url.host?.lowercased() ?? ""),
+              let rj = RJNumber.candidates(in: url.path).first else { return nil }
+        let category = url.path.split(separator: "/").first.map(String.init)
+        guard let category, ["maniax", "home", "pro"].contains(category) else { return nil }
+        return WorkReference(rj: rj, category: category)
+    }
+
+    /// 只有确实无结果才使用保守回退；不把标题截成单个常见词。
+    public static func keywordVariants(_ input: String) -> [String] {
+        let original = searchKeyword(from: input)
+        var values = [original]
+        var cleaned = original.replacingOccurrences(
+            of: #"(?i)[\[【（(][^\]】）)]*(?:汉化|漢化|简体|繁体|中文|机翻|翻译|ver\.?|v\d)[^\]】）)]*[\]】）)]"#,
+            with: " ", options: .regularExpression)
+        cleaned = cleaned.replacingOccurrences(of: "_", with: " ")
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        values.append(cleaned)
+        return DLsitePageData.unique(values)
+    }
+
 
     /// 找到元数据的下一步。
     public enum Step: Sendable, Equatable {
@@ -57,7 +89,8 @@ public enum DlsiteLookup {
         }
 
         // ② 没有 RJ → 用清洗过的标题搜
-        let keyword = searchKeyword(from: gameTitle)
+        let keyword = gameTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? fallbackKeyword(fromPath: gamePath) : searchKeyword(from: gameTitle)
         if !keyword.isEmpty {
             return .byKeyword(keyword)
         }
@@ -132,7 +165,9 @@ public enum DlsiteLookup {
     /// ⚠️ 只在 `gameTitle` 为空时用。它比标题脏（带版本号 / 下划线），
     ///    但**总比搜不到好**。
     public static func fallbackKeyword(fromPath gamePath: String) -> String {
-        let dir = DetectPath.gameDirForFiles(gamePath)
+        var isDirectory: ObjCBool = false
+        let exists = FileManager.default.fileExists(atPath: gamePath, isDirectory: &isDirectory)
+        let dir = exists && isDirectory.boolValue ? gamePath : DetectPath.gameDirForFiles(gamePath)
         let name = (dir as NSString).lastPathComponent
         // 下划线 / 连字符 → 空格（`Unholy_maiden` → `Unholy maiden`）
         let cleaned = name
