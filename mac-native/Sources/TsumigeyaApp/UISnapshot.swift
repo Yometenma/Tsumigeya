@@ -235,6 +235,26 @@ enum UISnapshot {
                     size: CGSize(width: 900, height: 650), name: "18-privacy-edit",
                     dir: directory, appearance: appearance)
             }
+            let intakeCandidates = [
+                LibraryIntake.Candidate(folder: "/示例游戏/很长的目录名称与中文路径/魔女的故事 完整版", title: "魔女的故事 完整版", engine: "kirikiri"),
+                LibraryIntake.Candidate(folder: "/示例游戏/另一部游戏", title: "另一部游戏", engine: "unity")
+            ]
+            previewStore.setSetting(.privacyMode, .bool(false))
+            failures += captureWindow(
+                BatchImportView(previewCandidates: intakeCandidates).environmentObject(previewStore),
+                size: CGSize(width: 780, height: 590), name: "19-batch-import",
+                dir: directory, appearance: appearance)
+            if let game = previewStore.games.first {
+                failures += captureWindow(
+                    RelocateGameView(game: game).environmentObject(previewStore),
+                    size: CGSize(width: 600, height: 410), name: "20-relocate-game",
+                    dir: directory, appearance: appearance)
+            }
+            previewStore.setSetting(.privacyMode, .bool(true))
+            failures += captureWindow(
+                BatchImportView(previewCandidates: intakeCandidates).environmentObject(previewStore),
+                size: CGSize(width: 780, height: 590), name: "21-batch-privacy",
+                dir: directory, appearance: appearance)
             for group in SettingsGroups.groups where group.id != .appearance {
                 failures += captureWindow(
                     SettingsPage(initialGroup: group.id).environmentObject(store),

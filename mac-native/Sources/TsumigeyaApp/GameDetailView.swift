@@ -22,6 +22,7 @@ struct GameDetailView: View {
         }
     }
 
+    @State private var showsRelocation = false
     @State private var tab: DetailTab
 
     init(game: GameRecord, onEdit: (() -> Void)? = nil,
@@ -348,6 +349,8 @@ struct GameDetailView: View {
                     Button(action: onEdit) { Label("编辑游戏", systemImage: "slider.horizontal.3") }
                 }
                 Menu {
+                    Button("重新定位游戏目录…") { showsRelocation = true }
+                        .disabled(store.privacy.hidesTitles || store.runningGames[game.id] != nil)
                     Button("在访达中显示") { store.revealInFinder(game: game) }
                     Button("手动关联作品信息…") { store.beginManualRJ(gameId: game.id) }
                     Divider()
@@ -355,6 +358,9 @@ struct GameDetailView: View {
                 } label: {
                     Image(systemName: "ellipsis")
                         .frame(width: 20, height: 20)
+                }
+                .sheet(isPresented: $showsRelocation) {
+                    RelocateGameView(game: game).environmentObject(store)
                 }
                 .menuStyle(.borderlessButton)
                 .menuIndicator(.hidden)
@@ -377,6 +383,10 @@ struct GameDetailView: View {
     private var infoRows: some View {
         VStack(alignment: .leading, spacing: 10) {
             infoRow("路径", game.gamePath, mono: true)
+            if !store.gameFolderExists(game) {
+                Label("游戏目录不存在，请从更多菜单重新定位。", systemImage: "folder.badge.questionmark")
+                    .foregroundStyle(.orange)
+            }
             if let pid = store.runningGames[game.id] {
                 infoRow("进程", "运行中（pid \(pid)）")
             }

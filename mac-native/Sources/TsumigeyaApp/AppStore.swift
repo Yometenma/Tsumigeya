@@ -414,6 +414,10 @@ final class AppStore: ObservableObject {
         // ⚠️ `gamePath` 存的是**游戏目录下的入口占位**，不是目录本身 ——
         //    这与 Electron 版一致（它存的是 `…/Game.exe` 这种）。
         //    真正的启动路径由 `LaunchPlanner` 按引擎规则拼。
+        if let id = LibraryIntake.duplicateFolder(folder, in: map) {
+            lastAddGameError = "此目录已入库（游戏 \(id)）"
+            return false
+        }
         let entry = (folder as NSString).appendingPathComponent("Game.exe")
         let draft = GameRecord(
             id: "", gameTitle: title, gamePath: entry, gameEngine: engine,
@@ -772,6 +776,85 @@ final class AppStore: ObservableObject {
         let id = editRequest
         editRequest = nil
         return id
+    }
+
+    // MARK: - 批量入库与路径重新定位
+
+    @Published var isBatchAdding = false
+
+    func scanGames(folder: String) async throws -> LibraryIntake.Scan {
+        let worker = Task.detached(priority: .userInitiated) {
+            try LibraryIntake.scan(root: folder, cancelled: { Task.isCancelled })
+        }
+        return try await withTaskCancellationHandler {
+            try await worker.value
+        } onCancel: { worker.cancel() }
+    }
+
+    func intakeConflict(_ candidate: LibraryIntake.Candidate) -> String? {
+        if let id = LibraryIntake.duplicateFolder(candidate.folder, in: GameMap(games: Dictionary(
+            uniqueKeysWithValues: games.map { ($0.id, $0) }))) {
+            return "此目录已入库（游戏 \(id)）"
+        }
+        return nil
+    }
+
+    func inspectGameFolder(_ folder: String) throws -> LibraryIntake.Candidate {
+        guard let result = try LibraryIntake.inspectFolder(folder) else {
+            throw LibraryIntake.Failure("未识别出游戏引擎，请选择包含游戏资源的目录。")
+        }
+        return result
+    }
+
+    func gameFolderExists(_ game: GameRecord) -> Bool {
+        var isDirectory: ObjCBool = false
+        return FileManager.default.fileExists(atPath: DetectPath.gameDirForFiles(game.gamePath),
+                                              isDirectory: &isDirectory) && isDirectory.boolValue
+    }
+
+    private func intakeMap() throws -> GameMap {
+        guard loadError == nil else { throw LibraryIntake.Failure("游戏库加载失败，请先处理读取错误。") }
+        let url = URL(fileURLWithPath: dataDir).appendingPathComponent("games.json")
+        switch JSONStore.load(GameMap.self, from: url, quarantineCorrupt: false) {
+        case .loaded(let map): return map
+        case .missing: return GameMap()
+        case .corrupt(let failure): throw LibraryIntake.Failure("游戏库损坏，未写入：\(failure.reason)")
+        }
+    }
+
+    private func saveIntake(_ map: GameMap) throws {
+        let url = URL(fileURLWithPath: dataDir).appendingPathComponent("games.json")
+        if let error = JSONStore.save(map, to: url) {
+            throw LibraryIntake.Failure("保存游戏库失败，未完成操作：\(error)")
+        }
+        games = map.ordered
+    }
+
+    func addBatch(_ candidates: [LibraryIntake.Candidate]) -> Bool {
+        lastAddGameError = nil
+        guard !privacy.hidesTitles else { lastAddGameError = "请先关闭标题隐藏。"; return false }
+        do {
+            try saveIntake(LibraryIntake.adding(candidates, to: intakeMap()))
+            return true
+        } catch { lastAddGameError = "\(error)"; return false }
+    }
+
+    func relocateGame(_ expected: GameRecord, folder: String) -> Bool {
+        lastAddGameError = nil
+        refreshRunning()
+        guard !privacy.hidesTitles else { lastAddGameError = "请先关闭标题隐藏。"; return false }
+        guard runningGames[expected.id] == nil else {
+            lastAddGameError = "游戏运行中，不能更改路径。"; return false
+        }
+        do {
+            try saveIntake(LibraryIntake.relocating(expected, to: folder, in: intakeMap()))
+            // 旧目录触发的网络请求不得在路径改变后回写。
+            metaTokens.removeValue(forKey: expected.id)
+            fetchingMeta.remove(expected.id)
+            clearSearch(gameId: expected.id)
+            lastLaunchFailure.removeValue(forKey: expected.id)
+            return true
+        } catch { lastAddGameError = "\(error)"; return false }
     }
 
     // MARK: - DLsite 元数据（P7）

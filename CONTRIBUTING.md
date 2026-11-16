@@ -58,6 +58,8 @@ swift run Tsumigeya
 | `dlsite-fetch <RJ> [category]` / `dlsite-probe <html>` | 真实网络抓取与本地页面解析 |
 | `search-probe <html>` / `rj-probe <路径…>` | 搜索结果解析与 RJ 编号提取 |
 | `meta-probe [目录]` / `zip-probe [目录]` | 元数据读写与 ZIP 格式检查 |
+| `scan-games <目录>` | 受限批量扫描，只预览，不写入；不可读或达到范围上限时非零退出 |
+| `relocate-probe <编号> <新目录>` | 按真实游戏记录校验定位并预览，不写入；实际保存需在应用确认 |
 
 真实游戏验收前，确认目标游戏没有正在运行；验收结束后只清理本次启动的测试进程，不要按引擎名称批量结束进程。验证读写时使用临时副本，不把测试结果写回用户的游戏库或存档。
 

@@ -7,6 +7,13 @@ func main() {
     let cmd = args.first ?? "selftest"
 
     switch cmd {
+    case "scan-games":
+        guard let path = args.dropFirst().first else { print("用法：scan-games <目录>"); exit(2) }
+        exit(runLibraryScan(path: path) == 0 ? 0 : 1)
+    case "relocate-probe":
+        let rest = Array(args.dropFirst())
+        guard rest.count == 2 else { print("用法：relocate-probe <编号> <新目录>"); exit(2) }
+        exit(runRelocationProbe(id: rest[0], folder: rest[1]) == 0 ? 0 : 1)
     case "data-dir":
         printDataDir()
     case "list-games":

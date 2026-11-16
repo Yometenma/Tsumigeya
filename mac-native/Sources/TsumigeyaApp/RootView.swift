@@ -104,6 +104,10 @@ struct RootView: View {
                 }
                 .keyboardShortcut("o", modifiers: .command)
                 .help("添加游戏（⌘O）")
+                Button { store.isBatchAdding = true } label: {
+                    Label("批量入库", systemImage: "folder.badge.plus")
+                }
+                .disabled(store.privacy.hidesTitles)
             }
         }
         .padding(.horizontal, 20)
@@ -584,6 +588,9 @@ private struct AppPresentations: ViewModifier {
         .sheet(isPresented: $store.isAddingGame) {
             AddGameWizard()
                 .environmentObject(store)
+        }
+        .sheet(isPresented: $store.isBatchAdding) {
+            BatchImportView().environmentObject(store)
         }
         // 新建分类（输入名字的小弹窗）
         .sheet(isPresented: $store.isCreatingCategory) {
