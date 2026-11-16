@@ -228,15 +228,55 @@ struct SaveSection: View {
     // MARK: - 存档目录
 
     private var saveDirectoryControls: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack(spacing: 6) {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .top, spacing: 6) {
                 Image(systemName: overridePath == nil ? "wand.and.stars" : "folder.badge.gearshape")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
-                Text(overridePath == nil ? "自动探测存档目录" : "使用手动指定目录")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Spacer()
+                    .padding(.top, 2)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(overridePath == nil ? "自动探测存档目录" : "使用手动指定目录")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    if let directory = listing?.dir {
+                        Text(displayPath(directory))
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .help(directory)
+                    } else if let overridePath {
+                        Text(displayPath(overridePath))
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundStyle(.orange)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .help(overridePath)
+                    } else {
+                        Text("尚未确定目录")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+                Spacer(minLength: 4)
+                if let directory = listing?.dir {
+                    Button {
+                        revealDirectory(directory)
+                    } label: {
+                        Label("在访达中显示", systemImage: "folder")
+                    }
+                    .controlSize(.small)
+                    .help("在访达中打开这个存档目录")
+
+                    Button {
+                        copyDirectoryPath(directory)
+                    } label: {
+                        Image(systemName: "doc.on.doc")
+                    }
+                    .controlSize(.small)
+                    .help("复制存档目录路径")
+                    .accessibilityLabel("复制存档目录路径")
+                }
                 Button(overridePath == nil ? "选择存档目录…" : "更改目录…") {
                     chooseSaveDirectory()
                 }
@@ -244,12 +284,7 @@ struct SaveSection: View {
                 .disabled(isRunning || isWorking)
                 .help(isRunning ? "游戏正在运行，不能更改存档目录" : "只记录目录位置，不会移动存档文件")
             }
-            if let overridePath {
-                Text(overridePath)
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(2)
-                    .truncationMode(.middle)
+            if overridePath != nil {
                 Button("恢复自动探测") {
                     clearSaveDirectoryOverride()
                 }
@@ -262,6 +297,19 @@ struct SaveSection: View {
                     in: RoundedRectangle(cornerRadius: 7))
     }
 
+    private func displayPath(_ path: String) -> String {
+        (path as NSString).abbreviatingWithTildeInPath
+    }
+
+    private func revealDirectory(_ path: String) {
+        NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: path)
+    }
+
+    private func copyDirectoryPath(_ path: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(path, forType: .string)
+        message = ("已复制存档目录路径。", false)
+    }
     private func chooseSaveDirectory() {
         guard !isRunning else {
             message = ("游戏运行中，不能更改存档目录。", true)
