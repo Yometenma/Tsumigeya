@@ -1,58 +1,131 @@
-# Tsumigeya
+<p align="center">
+  <img src="assets/icon-source.jpg" width="320" alt="Tsumigeya，像素风剑与爱心标识">
+</p>
 
-macOS 上的中文 DLsite 游戏启动器，使用 SwiftUI 构建。添加游戏后，按文件结构识别引擎、安装运行时并启动；提供分类、搜索、DLsite 元数据和存档导入导出。
+<h1 align="center">Tsumigeya</h1>
 
-<img src=".github/screenshots/library.png" width="720" alt="游戏库">
+<p align="center"><strong>在 Mac 上整理、运行你的 DLsite 游戏。</strong></p>
 
-## 安装与使用
+<p align="center">
+  <a href="https://github.com/Yometenma/Tsumigeya/releases/latest">下载最新版</a> ·
+  <a href="#游戏兼容性">游戏兼容性</a> ·
+  <a href="docs/常见问题.md">常见问题</a> ·
+  <a href="CONTRIBUTING.md">参与贡献</a>
+</p>
 
-要求 **macOS 26+、Apple Silicon**。从 [Releases](https://github.com/Yometenma/Tsumigeya/releases) 下载 DMG，将应用拖入「应用程序」。
+<p align="center">macOS 26+ · Apple Silicon · SwiftUI · 简体中文</p>
 
-应用仅做 ad-hoc 签名，**未公证**。若首次打开被系统拦截，仅在确认下载来源可信后移除隔离标记：
+---
+
+Tsumigeya 是一款面向 DLsite 同人游戏的原生 macOS 启动器。把已经下载、解压的游戏加入游戏库，识别引擎、安装对应运行时，再从同一个地方启动和管理。作品信息、分类和存档备份也放在一起，不必在文件夹之间来回寻找。
+
+**它不是通用的 Windows 模拟器，也不提供游戏购买或下载。** 能否运行取决于游戏引擎、脚本、插件和运行时的兼容性；识别成功不代表每部作品都能正常运行。
+
+<p align="center">
+  <img src=".github/screenshots/library.png" width="960" alt="当前原生界面的游戏库：顶部导航、分类筛选、游戏列表和分组详情">
+</p>
+
+<p align="center"><sub>原生界面预览（离屏渲染）；作品与分类为示例数据，封面为默认占位图。</sub></p>
+
+## 能做什么
+
+- **把游戏整理成自己的书架**：列表和卡片两种视图，支持搜索、自定义分类，一部作品可归入多个分类。
+- **少处理一些运行环境**：按文件结构识别引擎，集中安装和管理运行时，查看启动状态与引擎参数。退出启动器后，游戏仍可继续运行。
+- **补齐作品信息**：通过 RJ 编号或作品名查找 DLsite 信息，展示封面、标题、社团和简介。搜索结果由你选择；手动改过的字段在刷新时保留。
+- **备份游戏进度**：对已实现存档定位的引擎，导出存档目录为 ZIP，并从备份恢复。导入前校验文件并备份原文件；游戏运行时禁用导入和导出。
+
+## 下载与安装
+
+**需要 macOS 26 或更新版本，以及 Apple Silicon 芯片。当前不提供 Intel 安装包。**
+
+1. 前往 **[最新版本](https://github.com/Yometenma/Tsumigeya/releases/latest)**，在附件中下载 `Tsumigeya-<版本号>.dmg`。
+2. 打开 DMG，将 `Tsumigeya.app` 拖入「应用程序」。更新旧版前，请先退出应用。
+3. 打开 Tsumigeya，按下方步骤添加游戏。
+
+每个版本的变更和验证范围见 [发布记录](https://github.com/Yometenma/Tsumigeya/releases)。发布附件中的 `SHA256SUMS.txt` 可用于检查下载是否完整。
+
+### 首次打开被 macOS 拦截？
+
+当前安装包仅做 **ad-hoc 签名，未经过 Apple 公证**，也没有 Developer ID 分发签名。macOS 可能阻止首次打开。
+
+仅在确认安装包来自本仓库且信任来源后，可在终端对已安装应用执行：
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/Tsumigeya.app
 ```
 
-1. 点「添加游戏」，选择游戏目录内的文件，确认引擎。
-2. 到「运行时」页安装缺失依赖，再回游戏库启动。
-3. 在详情页编辑作品信息、管理存档。DLsite 搜索结果需手动选择；手改字段刷新时保留。
+然后重新打开应用。这个操作只移除该应用的下载隔离标记，**不要关闭系统整体安全保护**。更详细的说明见 [常见问题](docs/常见问题.md#first-launch)。
 
-## 引擎支持
+## 添加你的第一部游戏
 
-| 游戏引擎 | 运行时 | 验证范围 |
+1. **先解压游戏**。保留完整目录，不要只把 `.exe` 文件单独移出来。
+2. **添加到游戏库**。点击「添加游戏」或按 `⌘O`，选择游戏目录内的任意文件（如 `.exe` 或 `.app`），确认识别出的引擎和目录。
+3. **准备运行时**。如果提示依赖缺失，前往「运行时」页面安装对应模块，再回游戏库启动。
+4. **补充作品信息**。需要时输入 RJ 编号，或按作品名搜索 DLsite 并手动选择匹配结果。
+
+游戏详情按「概览」「存档」「运行信息」分组。启动失败时，先查看运行时状态、游戏路径和引擎参数；存档的导出与导入在「存档」页操作。
+
+## 游戏兼容性
+
+下表区分**项目中已有真实启动记录**和**尚未验证的启动路径**。已有实测也只代表测试过的样本，不是对同一引擎全部作品的保证。
+
+| 游戏引擎 | 使用的运行时 | 当前验证范围 |
 |---|---|---|
-| RPG Maker MV / MZ | NW.js | 已实测启动 |
-| RPG Maker XP / VX / VX Ace | mkxp-z | 已实测启动 |
-| RPG Maker 2000 / 2003 | EasyRPG | 已实测启动 |
-| Ren'Py | Ren'Py SDK | 已实测启动 |
-| TyranoScript | NW.js | 未实测启动 |
-| 吉里吉里 | krkrsdl2 | 未保证商业游戏兼容性 |
-| NScripter | ONScripter | 未实测启动 |
-| Siglus | siglus_rs | 未实测启动 |
-| Godot | Godot 编辑器 | 未实测启动 |
+| RPG Maker MV / MZ | NW.js | 有真实游戏启动记录 |
+| RPG Maker XP / VX / VX Ace | mkxp-z | 有真实游戏启动记录 |
+| RPG Maker 2000 / 2003 | EasyRPG | 有真实游戏启动记录 |
+| Ren'Py | Ren'Py SDK | 有真实游戏启动记录 |
+| TyranoScript | NW.js | 已接入，尚未实测游戏启动 |
+| 吉里吉里 / KAG | krkrsdl2 | 实验性，不保证商业游戏兼容性 |
+| NScripter | ONScripter | 已接入，尚未实测游戏启动 |
+| Siglus | siglus_rs | 已接入，尚未实测游戏启动 |
+| Godot | Godot 编辑器 | 已接入，尚未实测游戏启动 |
 
-Unity、RPG Developer Bakin、WOLF RPG Editor 仅识别，不代为启动。TyranoScript、吉里吉里的存档位置尚未实现。
+**Unity、RPG Developer Bakin、WOLF RPG Editor 目前只识别，不代为启动。** 项目没有集成 Wine 或 CrossOver 作为通用 Windows 兼容层。
 
-## 数据与排障
+另外请留意：
 
-- 数据目录：`~/Library/Application Support/Tsumigeya/`，包含游戏库、设置、元数据及运行时。迁移时退出应用后复制该目录；游戏本体与存档另行迁移。
-- 存档：详情页导出为 ZIP，在新机器导入；导入前自动备份，游戏运行时不能导入导出。
-- 下载失败：检查系统网络与代理。启动失败：先检查运行时、RTP 和引擎兼容性，不要仅凭黑屏判断原因。
+- TyranoScript 和吉里吉里的存档位置尚未实现；“位置未知”和“目录为空”是不同状态。
+- 存档只提供本地手动导入、导出，**没有云同步**。
+- 界面目前仅提供简体中文，封面隐私过滤尚未实现。
 
-## 开发与贡献
+如果遇到特定作品的兼容性问题，欢迎 [提交兼容性反馈](https://github.com/Yometenma/Tsumigeya/issues/new?template=compatibility.yml)，附上引擎、游戏版本和复现步骤即可；请勿上传商业游戏本体或私人存档。
 
-只在 macOS 上构建，需要 Swift 6.2+ 及匹配的 macOS SDK：
+## 数据放在哪里
+
+游戏库、分类、设置、作品信息缓存及运行时保存在：
+
+```text
+~/Library/Application Support/Tsumigeya/
+```
+
+**真实游戏存档不一定在这个目录中。** 存档位置取决于游戏和引擎，请在详情的「存档」页查看。迁移前先退出启动器和相关游戏，分别备份应用数据、游戏目录及存档；只复制应用数据目录不能替代存档备份。
+
+更多安装、备份、网络和启动问题见 **[常见问题](docs/常见问题.md)**。
+
+## 参与开发
+
+欢迎提交问题、文档改进、兼容性记录和代码。较大功能或架构调整，建议先开 Issue 讨论。
+
+使用 Swift 6.2+ 及匹配的 macOS SDK，在仓库根目录执行：
 
 ```bash
 cd mac-native
 swift build
 swift test
-bash scripts/package-macos.sh
 ```
 
-- [贡献指南：开发环境、CLI 与修改约定](CONTRIBUTING.md)
-- [UI 验收](docs/UI验收方法.md)
-- [打包与分发](docs/打包与分发.md)
+运行应用前，建议按 [贡献指南](CONTRIBUTING.md#搭建开发环境) 设置独立开发数据目录，避免调试改写日常游戏库。
 
-GPL-3.0，见 [LICENSE](LICENSE)。旧 Electron 实现在 Git 历史中。
+- [贡献指南](CONTRIBUTING.md)：环境配置、目录结构、CLI、数据安全和提交检查。
+- [UI 验收方法](docs/UI验收方法.md)：快照、真实窗口和交互验证的区别。
+- [打包与分发](docs/打包与分发.md)：DMG 打包、签名及发布前检查。
+- [报告问题或提出建议](https://github.com/Yometenma/Tsumigeya/issues/new/choose)。
+
+## 许可与致谢
+
+Tsumigeya 以 [GPL-3.0](LICENSE) 发布。游戏本体、素材和第三方运行时不因使用本项目而改变其原有许可。
+
+感谢 NW.js、mkxp-z、EasyRPG、Ren'Py 及其他运行时项目提供的基础，也感谢贡献兼容性反馈、测试和改进的使用者。
+
+Tsumigeya 是独立开源项目，与 DLsite 无隶属关系。当前维护的是 SwiftUI 原生版本；旧 Electron 实现可在 Git 历史中查看。

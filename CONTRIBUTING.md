@@ -1,6 +1,8 @@
 # 参与贡献
 
-欢迎通过 Issue 或 Pull Request 帮助改进 Tsumigeya。修复问题、补充真实游戏的兼容性记录、完善测试和文档都很有帮助。
+欢迎通过 Issue 或 Pull Request 帮助改进 Tsumigeya。修复问题、补充真实游戏的兼容性记录、完善测试和文档都很有帮助。较大的功能或架构调整，请先开 Issue 讨论。
+
+提交问题前可先查看 [常见问题](docs/常见问题.md)，再选择 [问题反馈、游戏兼容性或功能建议](https://github.com/Yometenma/Tsumigeya/issues/new/choose) 模板。
 
 报告问题时，请提供应用版本、macOS 版本、芯片架构、游戏引擎、复现步骤，以及预期和实际结果。日志和截图请先去除个人信息；不要上传商业游戏本体、付费素材或私人存档。
 

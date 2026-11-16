@@ -1,0 +1,46 @@
+name: 问题反馈
+description: 报告启动器的错误、界面问题或数据异常。
+title: "[问题] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈！特定游戏能否运行的问题请使用「游戏兼容性」模板。
+        提交前请搜索已有 Issue。日志和截图请隐藏个人信息；不要上传游戏本体、付费素材或私人存档。
+  - type: input
+    id: app_version
+    attributes:
+      label: Tsumigeya 版本
+      placeholder: 例如 v2.1.1；自行编译请填写提交编号
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: macOS 版本与芯片
+      placeholder: 例如 macOS 26.x，Apple M 系列（填写具体型号）
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 从打开应用开始，说明执行了哪些操作。
+      placeholder: |
+        1. 打开……
+        2. 点击……
+        3. 出现……
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: 预期与实际结果
+      description: 你希望发生什么？实际发生了什么？是否每次都能复现？
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 错误信息、日志或截图
+      description: 可选。请保留原始报错文字，并先隐藏个人路径、账号和敏感封面。

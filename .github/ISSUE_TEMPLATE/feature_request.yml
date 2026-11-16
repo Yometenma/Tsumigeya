@@ -1,0 +1,26 @@
+name: 功能建议
+description: 提出改进使用体验或支持范围的建议。
+title: "[建议] "
+body:
+  - type: markdown
+    attributes:
+      value: 请先搜索已有 Issue。较大的功能和架构调整，欢迎先在这里讨论。
+  - type: textarea
+    id: problem
+    attributes:
+      label: 想解决什么问题？
+      description: 描述实际使用场景，以及现在有什么不便。
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 希望如何改进？
+      description: 说明期望行为；如果有可接受的替代方案，也可以一起写下。
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: 参考或补充
+      description: 可选。可以附草图、公开文档或相关 Issue；请隐藏个人信息。

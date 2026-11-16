@@ -1,0 +1,61 @@
+name: 游戏兼容性
+description: 记录某个游戏的运行结果，或反馈引擎识别、启动及存档问题。
+title: "[兼容性] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        成功和失败的运行记录都很有帮助。请区分“已识别”“能启动”和“实际游玩正常”。
+        不要上传游戏本体、付费素材、私人存档或绕过访问限制的文件。
+  - type: input
+    id: work
+    attributes:
+      label: 作品名称或 RJ 编号
+      description: 可以附公开作品页面，不需要上传游戏。
+    validations:
+      required: true
+  - type: input
+    id: game_version
+    attributes:
+      label: 游戏版本、补丁与插件
+      description: 若使用汉化或其他补丁，请说明版本；不确定请写“不确定”。
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Tsumigeya 版本、macOS 版本与芯片
+    validations:
+      required: true
+  - type: input
+    id: engine
+    attributes:
+      label: 识别出的引擎与运行时版本
+      description: 在「运行时」或游戏的「运行信息」中查看；未识别时请说明。
+    validations:
+      required: true
+  - type: dropdown
+    id: status
+    attributes:
+      label: 运行结果
+      options:
+        - 无法识别或识别错误
+        - 运行时安装失败
+        - 无法启动或启动即退出
+        - 能启动但游戏内有问题
+        - 已实际游玩，暂未发现问题
+        - 存档定位、导入或导出有问题
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: 复现步骤与验证范围
+      description: 说明停在哪一步、具体报错、已尝试的处理；成功记录请说明验证到了什么程度，不必提供私人存档。
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 补充信息
+      description: 可选。附脱敏后的错误信息或截图；请勿公开个人路径和敏感封面。
