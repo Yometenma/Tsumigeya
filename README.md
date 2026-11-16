@@ -39,7 +39,7 @@ Tsumigeya 是一款面向 DLsite 同人游戏的原生 macOS 启动器。把已�
 2. 打开 DMG，将 `Tsumigeya.app` 拖入「应用程序」。更新旧版前，请先退出应用。
 3. 打开 Tsumigeya，按下方步骤添加游戏。
 
-每个版本的变更和验证范围见 [发布记录](https://github.com/Yometenma/Tsumigeya/releases)。发布附件中的 `SHA256SUMS.txt` 可用于检查下载是否完整。
+版本更新、安装要求与已知限制见 [发布记录](https://github.com/Yometenma/Tsumigeya/releases)。发布附件中的 `SHA256SUMS.txt` 可用于检查下载是否完整。
 
 ### 首次打开被 macOS 拦截？
 
