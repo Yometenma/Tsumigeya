@@ -32,6 +32,12 @@ mkdir -p "$APP_DIR/Contents/Resources"
 
 cp "$BIN_PATH" "$APP_DIR/Contents/MacOS/$APP_NAME"
 chmod +x "$APP_DIR/Contents/MacOS/$APP_NAME"
+RESOURCE_BUNDLE="$(dirname "$BIN_PATH")/Tsumigeya_TsumigeyaCore.bundle"
+if [ ! -d "$RESOURCE_BUNDLE" ]; then
+  echo "❌ 缺少翻译与作弊脚本资源：$RESOURCE_BUNDLE" >&2
+  exit 1
+fi
+cp -R "$RESOURCE_BUNDLE" "$APP_DIR/Contents/Resources/"
 
 ICNS=""
 for candidate in "../assets/icon.icns" "../../assets/icon.icns"; do

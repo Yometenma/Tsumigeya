@@ -11,12 +11,13 @@ struct GameDetailView: View {
     var onManageEngines: (() -> Void)? = nil
 
     enum DetailTab: String, CaseIterable, Identifiable {
-        case overview, saves, runtime
+        case overview, saves, assistance, runtime
         var id: String { rawValue }
         var title: String {
             switch self {
             case .overview: return "概览"
             case .saves: return "存档"
+            case .assistance: return "翻译与作弊"
             case .runtime: return "运行信息"
             }
         }
@@ -46,7 +47,7 @@ struct GameDetailView: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
-            .frame(maxWidth: 320)
+            .frame(maxWidth: 480)
             .padding(.horizontal, 24)
             .padding(.bottom, 16)
 
@@ -206,6 +207,9 @@ struct GameDetailView: View {
             }
         case .saves:
             SaveSection(game: game)
+        case .assistance:
+            // 只有打开辅助页才读取接口凭据，浏览其他页面不应触发钥匙串授权。
+            if tab == .assistance { GameAssistanceView(game: game) }
         case .runtime:
             if store.privacy.hidesTitles {
                 privacyNotice

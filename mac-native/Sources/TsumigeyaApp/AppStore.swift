@@ -21,6 +21,10 @@ import TsumigeyaCore
 
 @MainActor
 final class AppStore: ObservableObject {
+    var assistanceSessions: [String: AssistanceSession] = [:]
+    var translateAssistanceText: @Sendable (TranslationService, String) async throws -> String = { service, source in
+        try await service.translate(source)
+    }
     init(dlsiteService: DLsiteService? = nil) {
         self.dlsiteService = dlsiteService
     }
@@ -145,6 +149,8 @@ final class AppStore: ObservableObject {
     // MARK: - 加载
 
     func load(dataDirectory: String? = nil) async {
+        assistanceSessions.values.forEach { $0.invalidate() }
+        assistanceSessions.removeAll()
         isLoading = true
         loadError = nil
 
@@ -473,6 +479,7 @@ final class AppStore: ObservableObject {
             return
         }
         guard map.games[id] != nil else { return }
+        assistanceSessions[id]?.pause()
         if let error = GameMetaStore.removeGameData(dataDir: dataDir, gameId: id) {
             operationError = "清理游戏关联数据失败：\(error)"
             return
@@ -506,6 +513,7 @@ final class AppStore: ObservableObject {
         metaError.removeValue(forKey: id)
         clearSearch(gameId: id)
         assignments.removeValue(forKey: id)
+        assistanceSessions.removeValue(forKey: id)?.invalidate()
         games = updated.ordered
         lastLaunchFailure.removeValue(forKey: id)
     }
@@ -594,7 +602,7 @@ final class AppStore: ObservableObject {
             return
         }
         settings = updated
-        if privacy.hidesTitles { cancelBatchMeta() }
+        if privacy.hidesTitles { cancelBatchMeta(); assistanceSessions.values.forEach { $0.pause() } }
         applySettingSideEffect(key, value)
     }
 

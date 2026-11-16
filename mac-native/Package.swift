@@ -14,7 +14,8 @@ let package = Package(
     targets: [
         .target(
             name: "TsumigeyaCore",
-            path: "Sources/TsumigeyaCore"
+            path: "Sources/TsumigeyaCore",
+            resources: [.copy("Resources/Assist")]
         ),
         .executableTarget(
             name: "TsumigeyaCLI",
@@ -30,6 +31,7 @@ let package = Package(
             name: "TsumigeyaTests",
             dependencies: ["TsumigeyaCore", "TsumigeyaApp"],
             path: "Tests/TsumigeyaTests",
+            exclude: ["Assist/runtime.test.cjs"],
             // 真实页面样本必须打包，测试通过 Bundle.module 读取。
             resources: [.process("Fixtures")]
         ),
