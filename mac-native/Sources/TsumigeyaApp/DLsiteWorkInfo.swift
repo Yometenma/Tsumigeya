@@ -13,7 +13,9 @@ struct WorkRemoteImage: View {
                 AsyncImage(url: url) { phase in
                     switch phase {
                     case .empty: ProgressView().controlSize(.small)
-                    case .success(let image): image.resizable().scaledToFit()
+                    case .success(let image):
+                        image.resizable().scaledToFit()
+                            .accessibilityLabel("作品图片已加载")
                     case .failure:
                         Button { attempt += 1 } label: {
                             Label("重试图片", systemImage: "arrow.clockwise")

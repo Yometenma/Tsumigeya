@@ -15,7 +15,9 @@ struct GameArtwork: View {
                 if let url = store.artworkURL(for: game) {
                     AsyncImage(url: url) { phase in
                         switch phase {
-                        case .success(let image): image.resizable().scaledToFit()
+                        case .success(let image):
+                            image.resizable().scaledToFit()
+                                .accessibilityLabel("作品封面已加载")
                         case .empty: ProgressView().controlSize(.small)
                         case .failure:
                             Button { imageAttempt += 1 } label: {

@@ -104,8 +104,10 @@ struct RootView: View {
                 }
                 .keyboardShortcut("o", modifiers: .command)
                 .help("添加游戏（⌘O）")
-                Button { store.isBatchAdding = true } label: {
-                    Label("批量入库", systemImage: "folder.badge.plus")
+                Menu("批量操作") {
+                    Button("批量补全作品信息") { store.isBatchMetaPresented = true }
+                        .disabled(store.games.isEmpty)
+                    Button("批量入库") { store.isBatchAdding = true }
                 }
                 .disabled(store.privacy.hidesTitles)
             }
@@ -592,6 +594,12 @@ private struct AppPresentations: ViewModifier {
         .sheet(isPresented: $store.isBatchAdding) {
             BatchImportView().environmentObject(store)
         }
+        .sheet(isPresented: Binding(
+            get: { store.isBatchMetaPresented },
+            set: { if !$0 { store.closeBatchMeta() } }
+        )) {
+            BatchMetadataView().environmentObject(store)
+        }
         // 新建分类（输入名字的小弹窗）
         .sheet(isPresented: $store.isCreatingCategory) {
             CreateCategorySheet()
@@ -599,7 +607,7 @@ private struct AppPresentations: ViewModifier {
         }
         // 查找弹窗独立于当前筛选；关闭时取消任务，防止晚到结果被误确认。
         .sheet(item: Binding(
-            get: { store.manualRJFor.map(GameSheetTarget.init(id:)) },
+            get: { store.isBatchMetaPresented ? nil : store.manualRJFor.map(GameSheetTarget.init(id:)) },
             set: { if $0 == nil { store.closeManualRJ() } }
         )) { target in
             ManualRJSheet(gameId: target.id)

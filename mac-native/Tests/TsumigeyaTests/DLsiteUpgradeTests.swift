@@ -50,6 +50,16 @@ struct DLsiteUpgradeTests {
         #expect((work.description?.count ?? 0) > 300)
     }
 
+    @Test("错误分区路径返回全年龄详情时优先作品自身分区")
+    func intrinsicCategory() throws {
+        let url = try #require(Bundle.module.url(forResource: "dlsite-modern-RJ118525", withExtension: "html"))
+        let html = try String(contentsOf: url, encoding: .utf8)
+            .replacingOccurrences(of: "/home/", with: "/maniax/")
+        let work = try #require(DLsiteParser.parseWork(from: html, rj: "RJ118525", fetchedAt: "test"))
+        #expect(work.category == "home")
+        #expect(work.ageRating == "general")
+    }
+
     @Test("JSON-LD 可独立兜底，错误作品和泛站点 meta 不被认作成功")
     func linkedData() throws {
         let html = """

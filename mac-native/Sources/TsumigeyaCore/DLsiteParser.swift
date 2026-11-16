@@ -307,7 +307,10 @@ public enum DLsiteParser {
             work.coverUrl = normalizeCoverUrl(data["image_main"]?.objectValue?["original_url"]?.stringValue) ?? work.coverUrl
             work.description = DLsitePageData.fullIntroduction(data["introductions"])
                 ?? cleanupDescription(data["description"]?.stringValue) ?? work.description
-            work.category = DlsiteLookup.workReference(data["url"]?.stringValue ?? "")?.category
+            // 页面可在错误分区路径返回 200；产品 site_id 才是作品自身分区。
+            let siteID = data["site_id"]?.stringValue
+            work.category = siteID.flatMap { ["maniax", "home", "pro"].contains($0) ? $0 : nil }
+                ?? DlsiteLookup.workReference(data["url"]?.stringValue ?? "")?.category
             if let age = data["age_category"]?.intValue { work.ageRating = age == 3 ? "r18" : (age == 2 ? "r15" : "general") }
             work.tags = (data["genres"]?.arrayValue ?? []).compactMap { $0.objectValue?["genre_name"]?.stringValue }
             work.languages = (data["work_languages"]?.arrayValue ?? []).compactMap(\.stringValue)
