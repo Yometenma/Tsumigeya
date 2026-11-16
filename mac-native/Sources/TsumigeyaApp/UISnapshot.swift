@@ -93,6 +93,14 @@ enum UISnapshot {
             name: "03-engines",
             dir: directory, appearance: appearance)
 
+        store.searchText = "__tsumigeya_no_matching_game__"
+        failures += captureWindow(
+            RootViewRepresentable(store: store, selectFirst: false),
+            size: CGSize(width: 1280, height: 800),
+            name: "07-library-no-results",
+            dir: directory, appearance: appearance)
+        store.searchText = ""
+
         // 渲染**有封面**的那个游戏（P7）：优先挑有 DLsite 元数据的。
         let detailGame = store.games.first { game in
             store.meta(for: game.id)?.work.coverUrl != nil
@@ -274,15 +282,15 @@ enum UISnapshot {
     ///
     ///    现在的判据更严：`0.02`（约 5 个灰阶值），并且**要求至少 3 个明显不同的点**
     ///    （单个边缘像素不够，要有实质内容）。
-    private static func checkBlank(_ rep: NSBitmapImageRep) -> Bool {
+    static func checkBlank(_ rep: NSBitmapImageRep) -> Bool {
         let w = rep.pixelsWide, h = rep.pixelsHigh
         guard w > 4, h > 4 else { return true }
 
         var first: NSColor?
         var distinct = 0
-        // 采一个更密的网格（12×12 = 144 点）—— 太稀会漏掉小内容
-        for yi in stride(from: h / 8, to: h, by: max(1, h / 12)) {
-            for xi in stride(from: w / 8, to: w, by: max(1, w / 12)) {
+        // 空状态只有中央几行文字，12×12 网格会完全错过；覆盖全图的密集网格避免假阴性。
+        for yi in stride(from: 0, to: h, by: max(1, h / 64)) {
+            for xi in stride(from: 0, to: w, by: max(1, w / 64)) {
                 guard let color = rep.colorAt(x: xi, y: yi) else { continue }
                 let rgb = color.usingColorSpace(.deviceRGB) ?? color
                 if let f = first {
@@ -302,69 +310,15 @@ enum UISnapshot {
 
 // MARK: - 渲染用的包装视图
 
-/// 让 `RootView` 能指定「选中第一个游戏」的状态。
-///
-/// ⚠️ 与 v2 布局（顶部分段控件 + 一层 HSplitView）对齐。
-///    不能直接复用 `RootView`：它的 `@State selection` 私有，渲染时无法从外部指定。
+/// 快照直接使用生产视图，避免另写一套界面而漏验真实布局。
 struct RootViewRepresentable: View {
     let store: AppStore
     var selectFirst: Bool = true
 
     var body: some View {
-        VStack(spacing: 0) {
-            // 模拟顶部工具条（渲染出来便于检查分段控件样子）
-            HStack(spacing: 12) {
-                Picker("", selection: .constant(RootView.AppPage.library)) {
-                    Text("游戏库").tag(RootView.AppPage.library)
-                    Text("引擎").tag(RootView.AppPage.engines)
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .frame(width: 180)
-                Spacer()
-                SearchField(text: .constant(""))
-                    .frame(width: 240)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-            Divider()
-
-            HSplitView {
-                List(selection: .constant(selectFirst ? store.games.first?.id : nil)) {
-                    ForEach(store.groups, id: \.id) { group in
-                        Section {
-                            ForEach(group.games, id: \.id) { game in
-                                GameListRow(
-                                    game: game,
-                                    isRunning: store.runningGames[game.id] != nil
-                                )
-                                .tag(game.id)
-                            }
-                        } header: {
-                            HStack(spacing: 6) {
-                                Text(group.title)
-                                Text("\(group.games.count)")
-                                    .font(.caption2)
-                                    .foregroundStyle(.tertiary)
-                            }
-                        }
-                    }
-                }
-                .listStyle(.sidebar)
-                .frame(minWidth: 190, idealWidth: 230, maxWidth: 320)
-
-                Group {
-                    if let id = store.games.first?.id, selectFirst, let game = store.game(id: id) {
-                        GameDetailView(game: game).environmentObject(store)
-                    } else {
-                        WelcomeView().environmentObject(store)
-                    }
-                }
-                .frame(minWidth: 400, maxWidth: .infinity, maxHeight: .infinity)
-            }
-        }
-        .environmentObject(store)
-        .frame(width: 1280, height: 800)
+        RootView(selection: selectFirst ? store.games.first?.id : nil, loadsOnAppear: false)
+            .environmentObject(store)
+            .frame(width: 1280, height: 800)
     }
 }
 

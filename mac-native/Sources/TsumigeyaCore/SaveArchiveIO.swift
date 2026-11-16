@@ -109,8 +109,8 @@ public enum SaveArchiveIO {
 
         var files: [(name: String, data: [UInt8], modified: Date?)] = []
         for name in entries.sorted() {
-            // ⚠️ 跳过点开头的系统噪音（D86）
-            if SaveExportPolicy.isNoiseFile(name) { continue }
+            // 跳过系统噪音和导入保留名称，避免把回退备份重新当成存档导入。
+            if !SaveManifestParser.isSafeFileName(name) { continue }
             let full = (saveDir as NSString).appendingPathComponent(name)
             var isDir: ObjCBool = false
             guard fileManager.fileExists(atPath: full, isDirectory: &isDir),
@@ -249,12 +249,28 @@ public enum SaveArchiveIO {
         for entry in verified {
             let target = (saveDir as NSString).appendingPathComponent(entry.name)
             let backup = target + SaveArchive.backupSuffix
-            // ⚠️ 已有备份 → 跳过（见文件头：覆盖会毁掉回退意义）
-            if fileManager.fileExists(atPath: backup) { continue }
-            if fileManager.fileExists(atPath: target) {
-                if (try? fileManager.copyItem(atPath: target, toPath: backup)) != nil {
+            do {
+                // 目录或符号链接不能充当回退备份，也不能成为写入目标。
+                if fileManager.fileExists(atPath: target) {
+                    let attributes = try fileManager.attributesOfItem(atPath: target)
+                    guard attributes[.type] as? FileAttributeType == .typeRegular else {
+                        return .failure(.writeFailed("存档目标不是普通文件：\(entry.name)"))
+                    }
+                }
+                if fileManager.fileExists(atPath: backup) {
+                    let attributes = try fileManager.attributesOfItem(atPath: backup)
+                    guard attributes[.type] as? FileAttributeType == .typeRegular else {
+                        return .failure(.writeFailed("备份不是普通文件：\(entry.name)\(SaveArchive.backupSuffix)"))
+                    }
+                    continue
+                }
+                if fileManager.fileExists(atPath: target) {
+                    try fileManager.copyItem(atPath: target, toPath: backup)
                     backups.append((backup as NSString).lastPathComponent)
                 }
+            } catch {
+                // 必须等所有备份成功后才进入写入阶段；不能吞掉复制错误。
+                return .failure(.writeFailed("备份失败（\(entry.name)）：\(error.localizedDescription)"))
             }
         }
 

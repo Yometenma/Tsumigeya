@@ -35,6 +35,12 @@ struct RootView: View {
     @EnvironmentObject private var store: AppStore
     @State private var selection: String?
     @State private var page: AppPage = .library
+    private let loadsOnAppear: Bool
+
+    init(selection: String? = nil, loadsOnAppear: Bool = true) {
+        _selection = State(initialValue: selection)
+        self.loadsOnAppear = loadsOnAppear
+    }
 
     enum AppPage: String, CaseIterable, Identifiable {
         case library, engines, settings
@@ -56,9 +62,19 @@ struct RootView: View {
                 categoryBar
             }
             Divider()
+            if let warning = store.dataDirWarning {
+                Label("原数据目录不可用，当前使用：\(warning.switchedTo)", systemImage: "exclamationmark.triangle")
+                    .font(.callout)
+                    .foregroundStyle(.orange)
+                    .textSelection(.enabled)
+                    .padding(10)
+            }
             content
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(nsColor: .windowBackgroundColor))
         .task {
+            guard loadsOnAppear else { return }
             await store.load()
             store.refreshInstalledEngines()
             store.refreshEngineEntries()
@@ -92,6 +108,17 @@ struct RootView: View {
         )) { target in
             ManualRJSheet(gameId: target.id)
                 .environmentObject(store)
+        }
+        .alert("操作未完成", isPresented: Binding(
+            get: { store.operationError != nil },
+            set: { if !$0 { store.operationError = nil } }
+        )) {
+            Button("好", role: .cancel) { store.operationError = nil }
+        } message: {
+            Text(store.operationError ?? "")
+        }
+        .onChange(of: store.filteredGames.map(\.id)) { _, ids in
+            if let selection, !ids.contains(selection) { self.selection = nil }
         }
         // 删除游戏确认
         .alert("从游戏库移除？", isPresented: Binding(
@@ -175,42 +202,45 @@ struct RootView: View {
     /// ⚠️ **必须有「新建分类」入口**（用户 2026-11-06 报的第 3 个问题：
     ///    「没有地方创建分类」）。本鱼第一版只做了筛选，忘了新建。
     private var categoryBar: some View {
-        HStack(spacing: 7) {
-            categoryChip(title: "全部", isActive: store.activeCategory == nil) {
-                store.activeCategory = nil
-            }
-
-            ForEach(Categories.ordered(store.categories), id: \.id) { pair in
-                categoryChip(
-                    title: pair.def.name,
-                    isActive: store.activeCategory == pair.id
-                ) {
-                    store.activeCategory = (store.activeCategory == pair.id) ? nil : pair.id
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 7) {
+                categoryChip(title: "全部", isActive: store.activeCategory == nil) {
+                    store.activeCategory = nil
                 }
-                .contextMenu {
-                    Button("删除分类「\(pair.def.name)」", role: .destructive) {
-                        store.confirmDeleteCategory(id: pair.id, name: pair.def.name)
+
+                ForEach(Categories.ordered(store.categories), id: \.id) { pair in
+                    categoryChip(
+                        title: pair.def.name,
+                        isActive: store.activeCategory == pair.id
+                    ) {
+                        store.activeCategory = (store.activeCategory == pair.id) ? nil : pair.id
+                    }
+                    .contextMenu {
+                        Button("删除分类「\(pair.def.name)」", role: .destructive) {
+                            store.confirmDeleteCategory(id: pair.id, name: pair.def.name)
+                        }
                     }
                 }
-            }
 
-            // 新建分类
-            Button {
-                store.beginCreateCategory()
-            } label: {
-                Label("新建分类", systemImage: "plus")
-                    .font(.system(size: 11))
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
-            .background(Color.secondary.opacity(0.08), in: Capsule())
+                // 新建分类
+                Button {
+                    store.beginCreateCategory()
+                } label: {
+                    Label("新建分类", systemImage: "plus")
+                        .font(.system(size: 11))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(Color.secondary.opacity(0.08), in: Capsule())
 
-            Spacer()
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 7)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 7)
+        .frame(height: 40)
     }
 
     private func categoryChip(
@@ -235,23 +265,42 @@ struct RootView: View {
     private var content: some View {
         switch page {
         case .library:
-            // ⚠️ **一层 HSplitView**：左边游戏列表、右边详情。
-            //    这是 mac 的「侧边栏 + 内容」惯例（Finder / Mail 都是这样）。
-            HSplitView {
-                GameListView(selection: $selection)
-                    .frame(minWidth: 190, idealWidth: 230, maxWidth: 320)
-
-                Group {
-                    if let id = selection, let game = store.game(id: id) {
-                        // ⚠️ **详情页与编辑页用同一个容器切换**（不是两个独立窗口）：
-                        //    编辑是「对这个游戏的临时操作」，不该占一个窗口位。
-                        //    用 `@State` 记忆「当前是详情还是编辑」。
-                        GamePane(game: game)
-                    } else {
-                        WelcomeView()
+            if store.isLoading {
+                ProgressView("正在加载游戏库…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let error = store.loadError {
+                ContentUnavailableView {
+                    Label("游戏库读取失败", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(error).textSelection(.enabled)
+                } actions: {
+                    Button("重新加载") { Task { await store.load() } }
+                    Button("打开数据目录") {
+                        NSWorkspace.shared.open(URL(fileURLWithPath: store.dataDir))
                     }
                 }
-                .frame(minWidth: 400, maxWidth: .infinity, maxHeight: .infinity)
+            } else if !store.games.isEmpty && store.filteredGames.isEmpty {
+                LibraryNoResultsView()
+            } else {
+                // ⚠️ **一层 HSplitView**：左边游戏列表、右边详情。
+                //    这是 mac 的「侧边栏 + 内容」惯例（Finder / Mail 都是这样）。
+                HSplitView {
+                    GameListView(selection: $selection)
+                        .frame(minWidth: 190, idealWidth: 230, maxWidth: 320)
+
+                    Group {
+                        if let id = selection, let game = store.game(id: id) {
+                            // ⚠️ **详情页与编辑页用同一个容器切换**（不是两个独立窗口）：
+                            //    编辑是「对这个游戏的临时操作」，不该占一个窗口位。
+                            //    用 `@State` 记忆「当前是详情还是编辑」。
+                            GamePane(game: game)
+                                .id(game.id)
+                        } else {
+                            WelcomeView()
+                        }
+                    }
+                    .frame(minWidth: 400, maxWidth: .infinity, maxHeight: .infinity)
+                }
             }
         case .engines:
             EnginesPage()
@@ -303,7 +352,9 @@ struct GameListView: View {
     @Binding var selection: String?
 
     var body: some View {
-        if store.settingBool(.listView) {
+        if !store.games.isEmpty && store.filteredGames.isEmpty {
+            LibraryNoResultsView()
+        } else if store.settingBool(.listView) {
             listBody
         } else {
             cardBody
@@ -373,6 +424,26 @@ struct GameListView: View {
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
         }
+    }
+}
+
+struct LibraryNoResultsView: View {
+    @EnvironmentObject private var store: AppStore
+
+    var body: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 36))
+                .foregroundStyle(.secondary)
+            Text("没有匹配的游戏").font(.title2)
+            Text("试试其他关键词，或清除筛选。")
+                .foregroundStyle(.secondary)
+            Button("清除筛选") {
+                store.searchText = ""
+                store.activeCategory = nil
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
@@ -522,12 +593,11 @@ struct GamePane: View {
                 GameDetailView(game: game, onEdit: { isEditing = true })
             }
         }
-        .id(game.id)
         // ⚠️ **响应右键菜单的「编辑」请求**。
         //
         //    列表行右键「编辑」时，`GamePane` 的 `isEditing` 是它自己的 `@State`，
         //    store 拿不到 → 用「请求 + 消费」的桥接（store.requestEdit / consumeEditRequest）。
-        .onChange(of: store.editRequest) { _, newValue in
+        .onChange(of: store.editRequest, initial: true) { _, newValue in
             guard let newValue, newValue == game.id else { return }
             isEditing = true
             _ = store.consumeEditRequest()

@@ -98,6 +98,13 @@ struct EngineRow: View {
                 warningView(warning)
             }
 
+            if let error = store.engineErrors[entry.id] {
+                Label(error, systemImage: "exclamationmark.triangle")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .textSelection(.enabled)
+            }
+
             // 进度（安装中）
             if let progress = store.engineProgress[entry.id] {
                 progressView(progress)

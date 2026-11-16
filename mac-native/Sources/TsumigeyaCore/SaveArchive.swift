@@ -241,9 +241,12 @@ public enum SaveManifestParser {
         guard let filesRaw = obj["files"]?.arrayValue else { return nil }
 
         var files: [SaveManifest.FileEntry] = []
+        var names = Set<String>()
         for entry in filesRaw {
             guard let item = entry.objectValue else { return nil }
-            guard let name = item["name"]?.stringValue, !name.isEmpty else { return nil }
+            guard let name = item["name"]?.stringValue, isSafeFileName(name) else { return nil }
+            // macOS 常用大小写不敏感文件系统，大小写别名也会覆盖同一个目标。
+            guard names.insert(name.lowercased()).inserted else { return nil }
             guard let sha = item["sha256"]?.stringValue, isSha256Hex(sha) else { return nil }
             files.append(SaveManifest.FileEntry(name: name, sha256: sha))
         }
@@ -251,6 +254,19 @@ public enum SaveManifestParser {
         return SaveManifest(
             gameTitle: title, engine: engine, layout: layout,
             exportedAt: exportedAt, files: files)
+    }
+
+    /// 导出格式是 saves/ 下的平铺文件；清单不能借路径或保留名称覆盖目录外文件、备份或清单。
+    static func isSafeFileName(_ name: String) -> Bool {
+        let lower = name.lowercased()
+        return !name.isEmpty
+            && !name.hasPrefix(".")
+            && !name.contains("/")
+            && !name.contains("\\")
+            && !name.contains(":")
+            && !name.unicodeScalars.contains(where: { $0.value == 0 })
+            && lower != SaveArchive.manifestPath.lowercased()
+            && !lower.hasSuffix(SaveArchive.backupSuffix)
     }
 
     /// sha256 文本的形状（小写十六进制 64 位）。

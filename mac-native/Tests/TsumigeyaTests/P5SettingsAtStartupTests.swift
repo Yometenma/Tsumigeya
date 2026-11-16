@@ -66,7 +66,7 @@ struct SettingsLoadedAtStartupTests {
     func loadReadsSettings() throws {
         let src = try #require(source("Sources/TsumigeyaApp/AppStore.swift"),
                                "读不到 AppStore.swift")
-        let body = try #require(functionBody(src, signature: "func load() async"),
+        let body = try #require(functionBody(src, signature: "func load(dataDirectory:"),
                                 "找不到 func load() async")
         #expect(body.contains("loadSettings()"),
                 "AppStore.load() 没有调用 loadSettings() —— 启动时读不到用户的设置")
@@ -77,7 +77,7 @@ struct SettingsLoadedAtStartupTests {
     func loadAppliesAppearance() throws {
         let src = try #require(source("Sources/TsumigeyaApp/AppStore.swift"),
                                "读不到 AppStore.swift")
-        let body = try #require(functionBody(src, signature: "func load() async"),
+        let body = try #require(functionBody(src, signature: "func load(dataDirectory:"),
                                 "找不到 func load() async")
         #expect(body.contains("applyAppearance()"),
                 "AppStore.load() 没有调用 applyAppearance() —— 主题在重启后不生效")

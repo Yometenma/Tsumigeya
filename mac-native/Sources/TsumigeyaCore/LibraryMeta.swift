@@ -16,7 +16,7 @@
 // ② **损坏文件绝不静默覆盖**（D31 的精神）
 //
 //    dlsite 缓存坏了可以重建（它只是缓存）；但这份文件是**用户自己建的分类**，
-//    静默覆盖等于删掉他的组织体系。读到坏内容时改名保留，让用户有机会拿回来。
+//    静默覆盖等于删掉他的组织体系。写入前严格读盘，坏原件留在原处并拒绝保存。
 //
 // ⚠️ 本文件只管「读/写」，分类的增删改判据在 `Categories.swift`（纯函数、有单测）。
 import Foundation
@@ -59,8 +59,7 @@ public enum LibraryMetaStore {
         }
 
         guard let raw = try? JSONDecoder().decode([String: JSONValue].self, from: data) else {
-            // 坏文件 → 改名保留（**绝不静默覆盖**，见文件头 ②）
-            // 具体处置在 `JSONStore.load` 里；这里只返回空，让调用方能继续跑
+            // 只读展示可降级为空；写入路径会重新严格读盘并拒绝覆盖坏原件。
             return (LibraryMeta(), [:])
         }
 
@@ -99,15 +98,25 @@ public enum LibraryMetaStore {
         raw: [String: JSONValue],
         fileManager: FileManager = .default
     ) -> String? {
-        var updated = raw
+        GameMetaStore.mutationLock.lock()
+        defer { GameMetaStore.mutationLock.unlock() }
+        var updated: [String: JSONValue]
+        do {
+            updated = try GameMetaStore.readRawForUpdate(
+                dataDir: dataDir, fileManager: fileManager)
+        } catch { return error.localizedDescription }
+        // 磁盘上的元数据可能在分类面板打开后刷新过，不能写回旧快照。
+        let url = URL(fileURLWithPath: dataDir).appendingPathComponent(fileName)
+        if !fileManager.fileExists(atPath: url.path) { updated = raw }
+        let oldCategories = updated["categories"]?.objectValue ?? [:]
 
         // 分类定义
         var catObj: [String: JSONValue] = [:]
         for (id, def) in meta.categories {
-            catObj[id] = .object([
-                "name": .string(def.name),
-                "order": .int(def.order),
-            ])
+            var fields = oldCategories[id]?.objectValue ?? [:]
+            fields["name"] = .string(def.name)
+            fields["order"] = .int(def.order)
+            catObj[id] = .object(fields)
         }
         updated["categories"] = catObj.isEmpty ? .null : .object(catObj)
 
@@ -118,7 +127,6 @@ public enum LibraryMetaStore {
         }
         updated["assignments"] = assignObj.isEmpty ? .null : .object(assignObj)
 
-        let url = URL(fileURLWithPath: dataDir).appendingPathComponent(fileName)
         return JSONStore.save(JSONValue.object(updated), to: url, fileManager: fileManager)
     }
 }

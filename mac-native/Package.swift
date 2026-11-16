@@ -46,7 +46,7 @@ let package = Package(
         ),
         .testTarget(
             name: "TsumigeyaTests",
-            dependencies: ["TsumigeyaCore"],
+            dependencies: ["TsumigeyaCore", "TsumigeyaApp"],
             path: "Tests/TsumigeyaTests",
             // ⚠️ **Fixtures 必须声明为资源**（P7 加的）。
             //

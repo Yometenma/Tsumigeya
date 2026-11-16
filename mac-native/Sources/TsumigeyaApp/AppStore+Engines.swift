@@ -1,0 +1,151 @@
+import Foundation
+import TsumigeyaCore
+
+@MainActor
+extension AppStore {
+    /// 刷新引擎状态表。
+    func refreshEngineEntries() {
+        engineEntries = EngineStatus.scan(dataDir: dataDir)
+        installedEngines = Set(engineEntries.filter(\.installed).map(\.id))
+    }
+
+    /// 安装一个引擎。
+    ///
+    /// - Parameters:
+    ///   - folder: 引擎 folder
+    ///   - force: `true` = 已装也重装（覆盖）
+    ///
+    /// ⚠️ **拒绝覆盖已装的**（非 force），与 CLI 同一个保护：
+    ///    用户机器上已有 1.1GB 运行时，误覆盖等于删掉他装好的东西。
+    func installEngine(_ folder: String, force: Bool) {
+        guard let definition = EngineRegistry.find(folder: folder) else { return }
+
+        // 已经在装 → 忽略重复点击
+        if installTasks[folder] != nil { return }
+
+        // 已装且非 force → 拒绝
+        let root = BinaryPaths.moduleDir(dataDir, folder)
+        refreshEngineEntries()
+        if !force && installedEngines.contains(folder) {
+            engineErrors[folder] = "「\(definition.name)」已经装了。要重装请点「重装」。"
+            return
+        }
+        engineErrors.removeValue(forKey: folder)
+        let token = UUID()
+        installTokens[folder] = token
+
+        let deps = EngineDependencies.dependencies(for: folder)
+        engineProgress[folder] = .step(label: "准备中")
+
+        let task = Task { [weak self] in
+            guard let self else { return }
+            await self.runInstall(folder: folder, root: root, deps: deps, token: token)
+        }
+        installTasks[folder] = task
+    }
+
+    /// 真正的安装执行。
+    ///
+    /// ⚠️ **整个流程在 `Task` 里跑**（不是阻塞主线程）：
+    ///    RTP 有 244MB，阻塞主线程会把 UI 冻住 —— 用户会以为卡死然后强杀。
+    private func runInstall(
+        folder: String, root: String, deps: [(name: String, spec: DependencySpec)], token: UUID
+    ) async {
+        defer {
+            if installTokens[folder] == token {
+                engineProgress.removeValue(forKey: folder)
+                installTasks.removeValue(forKey: folder)
+                installTokens.removeValue(forKey: folder)
+                refreshEngineEntries()
+            }
+        }
+        let downloader = Downloader()
+        let env = InstallEnvironment(
+            download: { url, destination, progress in
+                try await downloader.download(url, to: destination) { p in
+                    progress?(p.receivedBytes, p.totalBytes)
+                }
+                let attrs = try? FileManager.default.attributesOfItem(atPath: destination)
+                return (attrs?[.size] as? Int64) ?? 0
+            },
+            extract: { archive, destination in
+                try Task.checkCancellation()
+                try Extract.extractArchive(archive: archive, to: destination)
+                try Task.checkCancellation()
+            }
+        )
+
+        do {
+            // 先写 manifest（D62：全新安装时本地还没有）
+            try FileManager.default.createDirectory(
+                atPath: root, withIntermediateDirectories: true)
+            let manifestJSON = JSONValue.object(
+                EngineDependencies.buildManifest(for: EngineRegistry.find(folder: folder)!))
+            let data = try JSONStore.defaultEncoder.encode(manifestJSON)
+            let path = (root as NSString).appendingPathComponent("manifest.json")
+            try data.write(to: URL(fileURLWithPath: path), options: .atomic)
+            try Task.checkCancellation()
+
+            _ = try await EngineInstaller.install(
+                root: root,
+                dependencies: deps,
+                env: env,
+                arch: Arch.current().rawValue,
+                onProgress: { [weak self] event in
+                    // ⚠️ 进度回调在**后台线程** → 必须切回 MainActor 才能改 @Published
+                    Task { @MainActor in
+                        guard let self, self.installTokens[folder] == token,
+                              self.installTasks[folder]?.isCancelled == false else { return }
+                        switch event {
+                        case .step(let key, let label, _):
+                            let human = Self.humanLabel(forKey: key, label: label)
+                            self.engineProgress[folder] = .step(label: human)
+                        case .download(let name, let received, let total):
+                            self.engineProgress[folder] = .downloading(
+                                name: name, received: received, total: total)
+                        }
+                    }
+                })
+
+        } catch {
+            if !Task.isCancelled {
+                let message = (error as? InstallError)?.message ?? error.localizedDescription
+                engineErrors[folder] = "安装失败：\(message)"
+            }
+        }
+    }
+
+    /// 把进度事件的 i18n key 翻成人话。
+    ///
+    /// ⚠️ core 里给的是 key（`progress.download`），因为 core 不该管文案
+    ///    （规矩：文案一律进 locales）。这里做最后一步翻译。
+    private static func humanLabel(forKey key: String, label: String) -> String {
+        switch key {
+        case "progress.prepare": return "准备 \(label)"
+        case "progress.download": return "正在下载 \(label)"
+        case "progress.extracting": return "正在解压 \(label)"
+        case "progress.done": return "\(label) 完成"
+        default: return label
+        }
+    }
+
+    /// 取消安装。
+    ///
+    /// ⚠️ 语义是「丢弃这次任务」而不是「优雅回滚」——
+    ///    已下载的部分会成为**半截目录**。好在 `EngineStatus.scan` 的判据是
+    ///    「二进制能不能找到」而不是「目录存不存在」，所以半截目录会显示成「未装」，
+    ///    用户可以重装覆盖。**不做自动清理**（删了可能删到用户别的文件）。
+    func cancelEngineInstall(_ folder: String) {
+        guard let task = installTasks[folder] else { return }
+        task.cancel()
+        engineProgress[folder] = .step(label: "正在取消…")
+    }
+
+    /// 卸载引擎（删掉整个模块目录）。
+    func uninstallEngine(_ folder: String) {
+        let root = BinaryPaths.moduleDir(dataDir, folder)
+        EngineInstaller.uninstall(root: root)
+        refreshEngineEntries()
+    }
+
+}

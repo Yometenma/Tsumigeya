@@ -316,10 +316,11 @@ struct GameDetailView: View {
                 }
                 .controlSize(.small)
             case .byKeyword(let keyword):
-                Button("按名字搜索") {
+                Button(store.searchingFor == nil ? "按名字搜索" : "正在搜索其他游戏…") {
                     store.searchMeta(gameId: game.id, keyword: keyword)
                 }
                 .controlSize(.small)
+                .disabled(store.searchingFor != nil)
             case .manual:
                 Button("手动输入 RJ") {
                     store.beginManualRJ(gameId: game.id)
@@ -468,7 +469,7 @@ struct GameDetailView: View {
                 HStack(spacing: 7) {
                     Image(systemName: isRunning ? "stop.fill" : "play.fill")
                         .font(.system(size: 13, weight: .semibold))
-                    Text(isRunning ? "停止" : "启动")
+                    Text(store.stoppingGames.contains(game.id) ? "正在停止…" : (isRunning ? "停止" : "启动"))
                         .font(.system(size: 14, weight: .semibold))
                 }
                 .frame(minWidth: 96)
@@ -478,6 +479,7 @@ struct GameDetailView: View {
             .controlSize(.large)
             // 运行中 → 红色（停止是「危险/打断」动作）；否则 → 引擎主色
             .tint(isRunning ? .red : .accentColor)
+            .disabled(store.stoppingGames.contains(game.id))
             .keyboardShortcut(.defaultAction)
 
             if let failure = store.lastLaunchFailure[game.id] {

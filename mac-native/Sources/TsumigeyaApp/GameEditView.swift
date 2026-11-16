@@ -16,12 +16,8 @@
 //    是跨游戏的共享数据）。攒着等保存会让「取消编辑」时它已经被改了 ——
 //    那比「改完不生效」更糟。
 //
-// ===== DLsite 元数据留给 P7 =====
-//
-// 游戏身份（封面 / 标题 / RJ / 搜索）需要 DLsite 集成。
-// P5 只做**本地信息**（路径 / 引擎 / 参数 / 分类）。
-// 那时编辑页会多一个「游戏信息」区块 —— 现在先不留空壳
-// （留一个灰掉的区块比没有更让人困惑）。
+// 本地信息和作品信息分两次写入，各自成功后更新对应基线。
+// 第二次写入失败时保留作品信息草稿，用户可以重试保存。
 import SwiftUI
 import TsumigeyaCore
 
@@ -49,15 +45,28 @@ struct GameEditView: View {
     @State private var title: String = ""
     @State private var engine: String = ""
     @State private var gameArgs: [String: JSONValue] = [:]
+    @State private var metaDraft: GameDlsiteMeta?
+    @State private var argsByEngine: [String: [String: JSONValue]] = [:]
 
-    // ===== 状态 =====
+    // 基线不能直接读 game：第一步保存会发布新的 game，第二步仍可能失败。
+    private struct Snapshot: Equatable {
+        var title: String
+        var engine: String
+        var gameArgs: [String: JSONValue]
+        var meta: GameDlsiteMeta?
+    }
+
+    @State private var original: Snapshot?
+    @State private var loadedGameID: String?
     @State private var saveError: String?
 
+    private var current: Snapshot {
+        Snapshot(title: title, engine: engine, gameArgs: gameArgs, meta: metaDraft)
+    }
+
     private var isDirty: Bool {
-        if title != game.gameTitle { return true }
-        if engine != game.gameEngine { return true }
-        if gameArgs != (game.gameArgs ?? [:]) { return true }
-        return false
+        guard let original else { return false }
+        return current != original
     }
 
     var body: some View {
@@ -77,10 +86,10 @@ struct GameEditView: View {
             .background(.bar)
         }
         .onAppear {
-            title = game.gameTitle
-            engine = game.gameEngine
-            gameArgs = game.gameArgs ?? [:]
-            saveError = nil
+            loadIfNeeded()
+        }
+        .onChange(of: game.id) { _, _ in
+            loadIfNeeded()
         }
     }
 
@@ -121,10 +130,7 @@ struct GameEditView: View {
             }
 
             Button("还原") {
-                title = game.gameTitle
-                engine = game.gameEngine
-                gameArgs = game.gameArgs ?? [:]
-                saveError = nil
+                restore()
             }
             .disabled(!isDirty)
 
@@ -160,7 +166,10 @@ struct GameEditView: View {
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .frame(width: 44, alignment: .leading)
-                Picker("", selection: $engine) {
+                Picker("", selection: Binding(
+                    get: { engine },
+                    set: { switchEngine(to: $0) }
+                )) {
                     ForEach(EngineRegistry.all, id: \.folder) { e in
                         Text(e.launchable ? e.name : "\(e.name)（仅识别）")
                             .tag(e.folder)
@@ -201,7 +210,7 @@ struct GameEditView: View {
     private var metaSection: some View {
         Section {
             if metaOpen {
-                if let meta = store.meta(for: game.id) {
+                if let meta = metaDraft {
                     metaEditFields(meta)
                 } else {
                     Label("还没有作品信息。先到详情页抓取 DLsite 元数据，回来才能改。",
@@ -232,7 +241,7 @@ struct GameEditView: View {
                 .frame(width: 44, alignment: .leading)
             TextField("", text: Binding(
                 get: { meta.work.title ?? "" },
-                set: { store.editMetaField(gameId: game.id, field: "title", value: $0) }
+                set: { editMetaField("title", keyPath: \.title, value: $0) }
             ))
             .textFieldStyle(.roundedBorder)
         }
@@ -244,7 +253,7 @@ struct GameEditView: View {
                 .frame(width: 44, alignment: .leading)
             TextField("", text: Binding(
                 get: { meta.work.circle ?? "" },
-                set: { store.editMetaField(gameId: game.id, field: "circle", value: $0) }
+                set: { editMetaField("circle", keyPath: \.circle, value: $0) }
             ))
             .textFieldStyle(.roundedBorder)
         }
@@ -255,7 +264,7 @@ struct GameEditView: View {
                 .font(.callout).foregroundStyle(.secondary)
             TextEditor(text: Binding(
                 get: { meta.work.description ?? "" },
-                set: { store.editMetaField(gameId: game.id, field: "description", value: $0) }
+                set: { editMetaField("description", keyPath: \.description, value: $0) }
             ))
             .font(.system(size: 12))
             .frame(height: 90)
@@ -292,13 +301,13 @@ struct GameEditView: View {
         Section {
             // ⚠️ 按 `argsOpen` 显隐（同 `localSection` 的注释：只改图标不改内容 = 假折叠）
             if argsOpen {
-            if let manifest = store.manifest(for: game.gameEngine),
+            if let manifest = store.manifest(for: engine),
                !manifest.gameArgs.isEmpty {
                 ForEach(manifest.orderedGameArgs, id: \.name) { pair in
                     EngineArgRow(
                         name: pair.name,
                         def: pair.def,
-                        engine: game.gameEngine,
+                        engine: engine,
                         value: Binding(
                             get: { EngineArgs.value(for: pair.name, in: gameArgs, schema: pair.def) },
                             set: { newValue in
@@ -308,10 +317,10 @@ struct GameEditView: View {
                                     gameArgs.removeValue(forKey: pair.name)
                                 }
                             }),
-                        availableVersions: store.availableVersions(for: pair.def, engine: game.gameEngine)
+                        availableVersions: store.availableVersions(for: pair.def, engine: engine)
                     )
                 }
-            } else if store.manifest(for: game.gameEngine) == nil {
+            } else if store.manifest(for: engine) == nil {
                 // ⚠️ **引擎没装时要明确说**，不是显示空白。
                 //    用户会以为「这个引擎没有参数」，而实际是「还没装所以读不到 schema」。
                 Label("这个引擎还没装，读不到参数定义。去「引擎」页装好后再回来。",
@@ -382,16 +391,77 @@ struct GameEditView: View {
         .buttonStyle(.plain)
     }
 
-    // MARK: - 保存
+    // MARK: - 草稿与保存
+
+    private func loadIfNeeded() {
+        // onAppear 可能再次触发，不能把保存失败后仍在编辑的草稿覆盖掉。
+        guard loadedGameID != game.id else { return }
+        original = Snapshot(
+            title: game.gameTitle, engine: game.gameEngine,
+            gameArgs: game.gameArgs ?? [:], meta: store.meta(for: game.id))
+        loadedGameID = game.id
+        restore()
+    }
+
+    private func restore() {
+        guard let original else { return }
+        title = original.title
+        engine = original.engine
+        gameArgs = original.gameArgs
+        metaDraft = original.meta
+        argsByEngine = [original.engine: original.gameArgs]
+        saveError = nil
+    }
+
+    private func switchEngine(to newEngine: String) {
+        guard newEngine != engine else { return }
+        argsByEngine[engine] = gameArgs
+        engine = newEngine
+        // 参数键可能同名但语义不同，首次切换不能继承旧引擎的覆盖值。
+        gameArgs = argsByEngine[newEngine] ?? [:]
+    }
+
+    private func editMetaField(
+        _ field: String, keyPath: WritableKeyPath<DlsiteWork, String?>, value: String
+    ) {
+        guard var meta = metaDraft, let originalMeta = original?.meta else { return }
+        let originalValue = originalMeta.work[keyPath: keyPath]
+        // 撤销输入到原值时，同时撤销本次新增的手改标记；保留原有标记。
+        if value == (originalValue ?? "") {
+            meta.work[keyPath: keyPath] = originalValue
+            if !originalMeta.editedFields.contains(field) {
+                meta.editedFields.removeAll { $0 == field }
+            }
+        } else {
+            meta.work[keyPath: keyPath] = value
+            if !meta.editedFields.contains(field) {
+                meta.editedFields.append(field)
+            }
+        }
+        metaDraft = meta
+    }
 
     private func save() {
         saveError = nil
-        let ok = store.updateGame(
+        guard store.updateGame(
             id: game.id, title: title, engine: engine, gameArgs: gameArgs)
-        if ok {
-        } else {
+        else {
             saveError = store.lastAddGameError ?? "保存失败"
+            return
         }
+
+        // 本地记录已落盘；若作品信息随后失败，还原也必须反映实际已保存的本地值。
+        original?.title = title
+        original?.engine = engine
+        original?.gameArgs = gameArgs
+        if let meta = metaDraft, meta != original?.meta {
+            guard store.updateMeta(gameId: game.id, meta: meta) else {
+                saveError = "本地信息已保存；\(store.lastAddGameError ?? "保存作品信息失败")"
+                return
+            }
+        }
+        original = current
+        argsByEngine[engine] = gameArgs
     }
 }
 

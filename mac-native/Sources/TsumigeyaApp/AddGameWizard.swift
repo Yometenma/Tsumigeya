@@ -182,6 +182,7 @@ struct AddGameWizard: View {
                         .foregroundStyle(.secondary)
                         .frame(width: 44, alignment: .leading)
                     Picker("", selection: $selectedEngine) {
+                        Text("请选择引擎").tag("")
                         ForEach(EngineRegistry.all, id: \.folder) { e in
                             Text(e.launchable ? e.name : "\(e.name)（仅识别）")
                                 .tag(e.folder)
@@ -309,9 +310,7 @@ struct AddGameWizard: View {
         pickedPath = url.path
         outcome = GameImport.inspect(selectedPath: pickedPath)
         // 识别出来了就预填（但**仍然让用户确认**）
-        if let engine = outcome?.engine {
-            selectedEngine = engine.folder
-        }
+        selectedEngine = outcome?.engine?.folder ?? ""
         // 用目录名预填游戏名（用户可以改）
         gameTitle = (outcome?.resolvedFolder as NSString?)?.lastPathComponent ?? ""
     }

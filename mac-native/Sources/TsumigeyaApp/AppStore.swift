@@ -49,6 +49,13 @@ final class AppStore: ObservableObject {
     @Published private(set) var categories: CategoryDefs = [:]
     @Published private(set) var assignments: CategoryAssignments = [:]
 
+    @Published var operationError: String?
+    @Published var engineErrors: [String: String] = [:]
+    @Published var stoppingGames: Set<String> = []
+    var installTokens: [String: UUID] = [:]
+    private var metaTokens: [String: UUID] = [:]
+    private var searchTokens: [String: UUID] = [:]
+
     // MARK: - 派生
 
     /// 一个分组（分类名 + 该组游戏）。
@@ -71,14 +78,12 @@ final class AppStore: ObservableObject {
         let ordered = Categories.ordered(categories)
 
         var result: [Group] = []
-        var claimed: Set<String> = []
 
         for (catId, def) in ordered {
             let inCat = filtered.filter { game in
                 (assignments[game.id] ?? []).contains(catId)
             }
             if inCat.isEmpty { continue }
-            claimed.formUnion(inCat.map(\.id))
             result.append(Group(id: catId, title: def.name, games: inCat))
         }
 
@@ -131,31 +136,30 @@ final class AppStore: ObservableObject {
 
     // MARK: - 加载
 
-    func load() async {
+    func load(dataDirectory: String? = nil) async {
         isLoading = true
         loadError = nil
 
         let resolution = DataDir.resolve()
-        dataDir = resolution.path
-        dataDirWarning = resolution.warning
+        dataDir = dataDirectory ?? resolution.path
+        dataDirWarning = dataDirectory == nil ? resolution.warning : nil
 
         // ---- games.json ----
-        let url = URL(fileURLWithPath: resolution.path).appendingPathComponent("games.json")
-        switch JSONStore.load(GameMap.self, from: url) {
+        let url = URL(fileURLWithPath: dataDir).appendingPathComponent("games.json")
+        switch JSONStore.load(GameMap.self, from: url, quarantineCorrupt: false) {
         case .missing:
             // **正常状态**：首次运行还没有 games.json（不是错误）
             games = []
         case .corrupt(let failure):
             // **故障**：文件存在但读不出。必须告诉用户
-            loadError = "游戏库文件损坏：\(failure.reason)"
-                + (failure.backupPath.map { "\n原件已改名保留：\($0)" } ?? "")
+            loadError = "无法读取游戏库：\(failure.reason)\n原件保留在：\(url.path)"
             games = []
         case .loaded(let map):
             games = map.ordered
         }
 
         // ---- 分类（library-meta.json）----
-        let meta = LibraryMetaStore.load(dataDir: resolution.path)
+        let meta = LibraryMetaStore.load(dataDir: dataDir)
         categories = meta.meta.categories
         assignments = meta.meta.assignments
 
@@ -191,6 +195,8 @@ final class AppStore: ObservableObject {
     ///   ② 修正 nwjs 版本号（不带 v → 带 v）
     ///   ③ 构造启动计划 → spawn
     func launch(game: GameRecord) {
+        refreshRunning()
+        guard runningGames[game.id] == nil, !stoppingGames.contains(game.id) else { return }
         lastLaunchFailure.removeValue(forKey: game.id)
 
         // ① 补缺省值 + 展开占位符（**顺序不能反**，见 GameArgs 的注释）
@@ -230,14 +236,21 @@ final class AppStore: ObservableObject {
         }
     }
 
-    /// 停止一个游戏。
+    /// 等待进程退出会耗时数秒，不能占住界面线程。
     func stop(game: GameRecord) {
-        guard let pid = runningGames[game.id] else { return }
-        let processes = RunningProcesses()
-        if processes.terminate(pid: pid) {
-            runningGames.removeValue(forKey: game.id)
-        } else {
-            lastLaunchFailure[game.id] = "停止失败：进程 \(pid) 没退出"
+        guard let pid = runningGames[game.id], !stoppingGames.contains(game.id) else { return }
+        stoppingGames.insert(game.id)
+        Task {
+            let stopped = await Task.detached {
+                RunningProcesses().terminate(pid: pid)
+            }.value
+            stoppingGames.remove(game.id)
+            guard runningGames[game.id] == pid else { return }
+            if stopped {
+                runningGames.removeValue(forKey: game.id)
+            } else {
+                lastLaunchFailure[game.id] = "停止失败：进程 \(pid) 没退出"
+            }
         }
     }
 
@@ -334,7 +347,7 @@ final class AppStore: ObservableObject {
     /// 上次添加失败的原因（向导里显示）。
     @Published private(set) var lastAddGameError: String?
     /// 引擎安装状态（folder → 已装）。懒加载 + 缓存。
-    @Published private(set) var installedEngines: Set<String> = []
+    @Published var installedEngines: Set<String> = []
 
     /// 打开 / 关闭添加向导。
     func openAddGame() {
@@ -384,10 +397,16 @@ final class AppStore: ObservableObject {
         // 读当前 games.json（**不能用内存里的 games** —— 可能已被外部改动）
         let url = URL(fileURLWithPath: dataDir).appendingPathComponent("games.json")
         var map: GameMap
-        if case .loaded(let loaded) = JSONStore.load(GameMap.self, from: url) {
-            map = loaded
-        } else {
-            map = GameMap()
+        guard loadError == nil else {
+            lastAddGameError = "游戏库加载失败，请先处理读取错误再添加游戏。"
+            return false
+        }
+        switch JSONStore.load(GameMap.self, from: url, quarantineCorrupt: false) {
+        case .loaded(let loaded): map = loaded
+        case .missing: map = GameMap()
+        case .corrupt(let failure):
+            lastAddGameError = "无法读取游戏库，未写入任何游戏：\(failure.reason)"
+            return false
         }
 
         // 组装 draft
@@ -412,49 +431,67 @@ final class AppStore: ObservableObject {
                 return false
             }
             // 重新加载（拿到排序后的新列表）
-            Task { await self.load() }
+            games = saved.map.ordered
             return true
         }
     }
 
-    /// 删游戏（**清四处旁挂数据**）。
-    ///
-    /// ⚠️ 这条是本文件最容易漏的地方（Electron 版踩过）：
-    ///    `saveGame` 用 `max+1` 生成 id，**容易落回刚删的号** →
-    ///    新游戏继承上一个游戏的游玩历史和分类归属。
-    ///    所以删的时候必须清：games.json / library-meta（元数据）/
-    ///    play-stats（游玩记录）/ **assignments（分类归属）**。
-    ///
-    ///    本鱼现在只实现前两项（元数据与分类）—— play-stats 要等 P6。
-    ///    **但这里要留一个显式的 TODO 注释**，不能悄悄少做一件事。
+    /// 先清理旁挂数据，再释放编号；清理失败时保留游戏记录供重试。
     func deleteGame(id: String) {
+        refreshRunning()
+        guard runningGames[id] == nil else {
+            operationError = "游戏仍在运行，请先停止游戏再移除。"
+            return
+        }
         let url = URL(fileURLWithPath: dataDir).appendingPathComponent("games.json")
-        guard case .loaded(let map) = JSONStore.load(GameMap.self, from: url) else { return }
-
+        guard case .loaded(let map) = JSONStore.load(
+            GameMap.self, from: url, quarantineCorrupt: false
+        ) else {
+            operationError = "无法读取游戏库，未移除游戏。"
+            return
+        }
+        guard map.games[id] != nil else { return }
+        if let error = GameMetaStore.removeGameData(dataDir: dataDir, gameId: id) {
+            operationError = "清理游戏关联数据失败：\(error)"
+            return
+        }
+        let statsURL = URL(fileURLWithPath: dataDir).appendingPathComponent("play-stats.json")
+        switch JSONStore.load([String: JSONValue].self, from: statsURL, quarantineCorrupt: false) {
+        case .corrupt(let failure):
+            operationError = "无法清理游玩记录：\(failure.reason)"
+            return
+        case .loaded(var stats):
+            stats.removeValue(forKey: id)
+            if let error = JSONStore.save(stats, to: statsURL) {
+                operationError = "保存游玩记录失败：\(error)"
+                return
+            }
+        case .missing: break
+        }
         let updated = GameLibrary.remove(from: map, id: id)
-        _ = JSONStore.save(updated, to: url)
-
-        // ② 分类归属（必须清，否则 id 复用会把旧归属安到新游戏）
-        var newAssignments = assignments
-        newAssignments.removeValue(forKey: id)
-        assignments = newAssignments
-
-        // TODO(P6)：③ play-stats（游玩记录）与 ④ library-meta 里的 DLsite 元数据
-        //           现在 P4/P5 还没有这两层的写入口，等实现时**必须**一起加上。
-        persistCategories()
-
+        if let error = JSONStore.save(updated, to: url) {
+            operationError = "移除游戏失败：\(error)"
+            return
+        }
+        // 网络请求可能在编号复用之后才返回，必须使旧请求的 token 失效。
+        metaTokens.removeValue(forKey: id)
+        searchTokens.removeValue(forKey: id)
+        fetchingMeta.remove(id)
+        gameMeta.removeValue(forKey: id)
+        metaError.removeValue(forKey: id)
+        clearSearch(gameId: id)
+        assignments.removeValue(forKey: id)
         games = updated.ordered
-        runningGames.removeValue(forKey: id)
         lastLaunchFailure.removeValue(forKey: id)
     }
 
     // MARK: - 引擎管理（P5 引擎页）
 
     /// 引擎状态表（引擎页读它）。
-    @Published private(set) var engineEntries: [EngineStatus.Entry] = []
+    @Published var engineEntries: [EngineStatus.Entry] = []
 
     /// 安装进度（folder → 进度）。没有键 = 没在装。
-    @Published private(set) var engineProgress: [String: EngineProgress] = [:]
+    @Published var engineProgress: [String: EngineProgress] = [:]
 
     /// 一次安装的进度状态。
     ///
@@ -470,144 +507,7 @@ final class AppStore: ObservableObject {
     }
 
     /// 正在跑的安装任务（取消用）。
-    private var installTasks: [String: Task<Void, Never>] = [:]
-
-    /// 刷新引擎状态表。
-    func refreshEngineEntries() {
-        engineEntries = EngineStatus.scan(dataDir: dataDir)
-        installedEngines = Set(engineEntries.filter(\.installed).map(\.id))
-    }
-
-    /// 安装一个引擎。
-    ///
-    /// - Parameters:
-    ///   - folder: 引擎 folder
-    ///   - force: `true` = 已装也重装（覆盖）
-    ///
-    /// ⚠️ **拒绝覆盖已装的**（非 force），与 CLI 同一个保护：
-    ///    用户机器上已有 1.1GB 运行时，误覆盖等于删掉他装好的东西。
-    func installEngine(_ folder: String, force: Bool) {
-        guard let definition = EngineRegistry.find(folder: folder) else { return }
-
-        // 已经在装 → 忽略重复点击
-        if installTasks[folder] != nil { return }
-
-        // 已装且非 force → 拒绝
-        let root = BinaryPaths.moduleDir(dataDir, folder)
-        if !force && FileManager.default.fileExists(atPath: root) {
-            lastAddGameError = "「\(definition.name)」已经装了。要重装请点「重装」。"
-            return
-        }
-
-        let deps = EngineDependencies.dependencies(for: folder)
-        engineProgress[folder] = .step(label: "准备中")
-
-        let task = Task { [weak self] in
-            guard let self else { return }
-            await self.runInstall(folder: folder, root: root, deps: deps)
-        }
-        installTasks[folder] = task
-    }
-
-    /// 真正的安装执行。
-    ///
-    /// ⚠️ **整个流程在 `Task` 里跑**（不是阻塞主线程）：
-    ///    RTP 有 244MB，阻塞主线程会把 UI 冻住 —— 用户会以为卡死然后强杀。
-    private func runInstall(
-        folder: String, root: String, deps: [(name: String, spec: DependencySpec)]
-    ) async {
-        let downloader = Downloader()
-        let env = InstallEnvironment(
-            download: { url, destination, progress in
-                try await downloader.download(url, to: destination) { p in
-                    progress?(p.receivedBytes, p.totalBytes)
-                }
-                let attrs = try? FileManager.default.attributesOfItem(atPath: destination)
-                return (attrs?[.size] as? Int64) ?? 0
-            },
-            extract: { archive, destination in
-                try Extract.extractArchive(archive: archive, to: destination)
-            }
-        )
-
-        do {
-            // 先写 manifest（D62：全新安装时本地还没有）
-            try FileManager.default.createDirectory(
-                atPath: root, withIntermediateDirectories: true)
-            let manifestJSON = JSONValue.object(
-                EngineDependencies.buildManifest(for: EngineRegistry.find(folder: folder)!))
-            if let data = try? JSONStore.defaultEncoder.encode(manifestJSON) {
-                let path = (root as NSString).appendingPathComponent("manifest.json")
-                try? data.write(to: URL(fileURLWithPath: path), options: .atomic)
-            }
-
-            _ = try await EngineInstaller.install(
-                root: root,
-                dependencies: deps,
-                env: env,
-                arch: Arch.current().rawValue,
-                onProgress: { [weak self] event in
-                    // ⚠️ 进度回调在**后台线程** → 必须切回 MainActor 才能改 @Published
-                    Task { @MainActor in
-                        guard let self else { return }
-                        switch event {
-                        case .step(let key, let label, _):
-                            let human = Self.humanLabel(forKey: key, label: label)
-                            self.engineProgress[folder] = .step(label: human)
-                        case .download(let name, let received, let total):
-                            self.engineProgress[folder] = .downloading(
-                                name: name, received: received, total: total)
-                        }
-                    }
-                })
-
-            await MainActor.run {
-                self.engineProgress.removeValue(forKey: folder)
-                self.installTasks.removeValue(forKey: folder)
-                self.refreshEngineEntries()
-            }
-        } catch {
-            await MainActor.run {
-                self.engineProgress.removeValue(forKey: folder)
-                self.installTasks.removeValue(forKey: folder)
-                let message = (error as? InstallError)?.message ?? error.localizedDescription
-                self.lastAddGameError = "安装「\(folder)」失败：\(message)"
-            }
-        }
-    }
-
-    /// 把进度事件的 i18n key 翻成人话。
-    ///
-    /// ⚠️ core 里给的是 key（`progress.download`），因为 core 不该管文案
-    ///    （规矩：文案一律进 locales）。这里做最后一步翻译。
-    private static func humanLabel(forKey key: String, label: String) -> String {
-        switch key {
-        case "progress.prepare": return "准备 \(label)"
-        case "progress.download": return "正在下载 \(label)"
-        case "progress.extracting": return "正在解压 \(label)"
-        case "progress.done": return "\(label) 完成"
-        default: return label
-        }
-    }
-
-    /// 取消安装。
-    ///
-    /// ⚠️ 语义是「丢弃这次任务」而不是「优雅回滚」——
-    ///    已下载的部分会成为**半截目录**。好在 `EngineStatus.scan` 的判据是
-    ///    「二进制能不能找到」而不是「目录存不存在」，所以半截目录会显示成「未装」，
-    ///    用户可以重装覆盖。**不做自动清理**（删了可能删到用户别的文件）。
-    func cancelEngineInstall(_ folder: String) {
-        installTasks[folder]?.cancel()
-        installTasks.removeValue(forKey: folder)
-        engineProgress.removeValue(forKey: folder)
-    }
-
-    /// 卸载引擎（删掉整个模块目录）。
-    func uninstallEngine(_ folder: String) {
-        let root = BinaryPaths.moduleDir(dataDir, folder)
-        EngineInstaller.uninstall(root: root)
-        refreshEngineEntries()
-    }
+    var installTasks: [String: Task<Void, Never>] = [:]
 
     // MARK: - 设置（P5 设置页）
 
@@ -625,7 +525,7 @@ final class AppStore: ObservableObject {
 
     /// 读设置。
     func loadSettings() {
-        if case .loaded(let map) = JSONStore.load([String: JSONValue].self, from: settingsURL) {
+        if case .loaded(let map) = JSONStore.load([String: JSONValue].self, from: settingsURL, quarantineCorrupt: false) {
             settings = map
         } else {
             // 没有 / 损坏 → 空字典（所有项回落到默认值）
@@ -649,8 +549,13 @@ final class AppStore: ObservableObject {
     ///    用户改完就期望它生效。攒着等一个保存按钮反而是 mac 上少见的做法
     ///    （系统偏好设置也是改完立刻生效）。
     func setSetting(_ key: SettingsGroups.Key, _ value: JSONValue) {
-        settings[key.rawValue] = value
-        persistSettings()
+        var updated = settings
+        updated[key.rawValue] = value
+        if let error = JSONStore.save(JSONValue.object(updated), to: settingsURL) {
+            operationError = "设置保存失败：\(error)"
+            return
+        }
+        settings = updated
         applySettingSideEffect(key, value)
     }
 
@@ -707,14 +612,6 @@ final class AppStore: ObservableObject {
         case "dark": app.appearance = NSAppearance(named: .darkAqua)
         default: app.appearance = nil
         }
-    }
-
-    /// 落盘。
-    ///
-    /// ⚠️ **保留未知键**：写出的就是 `settings` 原始字典，
-    ///    包括我们不认识的（可能是旧版本写的、或未来版本写的）。
-    private func persistSettings() {
-        _ = JSONStore.save(JSONValue.object(settings), to: settingsURL)
     }
 
     // MARK: - 编辑游戏（P5 编辑页）
@@ -800,9 +697,10 @@ final class AppStore: ObservableObject {
     /// ⚠️ 不属于「这个游戏的记录」，它在 library-meta.json 的 assignments 里。
     ///    攒着等保存会让「取消编辑」时它已经被改了（见 GameEditView 的文件头）。
     func setCategoryMembership(gameId: String, categoryId: String, member: Bool) {
-        assignments = Categories.setMembership(
+        let updated = Categories.setMembership(
             assignments, gameId: gameId, categoryId: categoryId, member: member)
-        persistCategories()
+        guard persistCategories(categories: categories, assignments: updated) else { return }
+        assignments = updated
     }
 
     // MARK: - 删除确认（P5 补齐）
@@ -919,8 +817,15 @@ final class AppStore: ObservableObject {
         fetchingMeta.insert(gameId)
         metaError.removeValue(forKey: gameId)
 
+        let token = UUID()
+        metaTokens[gameId] = token
         Task { @MainActor in
-            defer { fetchingMeta.remove(gameId) }
+            defer {
+                if metaTokens[gameId] == token {
+                    fetchingMeta.remove(gameId)
+                    metaTokens.removeValue(forKey: gameId)
+                }
+            }
 
             // 懒建服务
             if dlsiteService == nil {
@@ -929,6 +834,7 @@ final class AppStore: ObservableObject {
             guard let service = dlsiteService else { return }
 
             let result = await service.fetchWork(rj: rj, refresh: refresh)
+            guard metaTokens[gameId] == token, game(id: gameId) != nil else { return }
 
             switch result {
             case .success(let work):
@@ -972,8 +878,19 @@ final class AppStore: ObservableObject {
         if !meta.editedFields.contains(field) {
             meta.editedFields.append(field)
         }
-        _ = GameMetaStore.save(dataDir: dataDir, gameId: gameId, meta: meta)
+        _ = updateMeta(gameId: gameId, meta: meta)
+    }
+
+    @discardableResult
+    func updateMeta(gameId: String, meta: GameDlsiteMeta) -> Bool {
+        if let error = GameMetaStore.save(dataDir: dataDir, gameId: gameId, meta: meta) {
+            lastAddGameError = "保存作品信息失败：\(error)"
+            metaError[gameId] = lastAddGameError
+            return false
+        }
         gameMeta[gameId] = meta
+        metaError.removeValue(forKey: gameId)
+        return true
     }
 
     // MARK: - DLsite 搜索（P7）
@@ -996,6 +913,8 @@ final class AppStore: ObservableObject {
         searchError.removeValue(forKey: gameId)
         searchHits.removeValue(forKey: gameId)
         lastKeyword[gameId] = keyword
+        let token = UUID()
+        searchTokens[gameId] = token
 
         Task { @MainActor in
             defer { searchingFor = nil }
@@ -1006,6 +925,7 @@ final class AppStore: ObservableObject {
             guard let service = dlsiteService else { return }
 
             let result = await service.search(keyword: keyword)
+            guard searchTokens[gameId] == token, game(id: gameId) != nil else { return }
 
             switch result {
             case .success(let hits):
@@ -1027,6 +947,7 @@ final class AppStore: ObservableObject {
     }
 
     func clearSearch(gameId: String) {
+        searchTokens.removeValue(forKey: gameId)
         searchHits.removeValue(forKey: gameId)
         searchError.removeValue(forKey: gameId)
         lastKeyword.removeValue(forKey: gameId)
@@ -1089,28 +1010,29 @@ final class AppStore: ObservableObject {
         deleteCategory(id: pair.id)
         // ⚠️ 如果删的正好是当前筛选的那个，要回到「全部」
         //    （否则列表会空 —— 用户会以为游戏丢了）
-        if activeCategory == pair.id { activeCategory = nil }
+        if categories[pair.id] == nil && activeCategory == pair.id { activeCategory = nil }
     }
 
-    /// 保存分类（**保留其他所有顶层键**，见 LibraryMetaStore 的注释）。
-    private func persistCategories() {
-        var raw: [String: JSONValue] = [:]
-        // 先读一遍当前文件（拿 raw，避免抹掉元数据）
+    /// 保存成功后才发布状态，避免用户重开应用时发现改动丢失。
+    private func persistCategories(
+        categories: CategoryDefs, assignments: CategoryAssignments
+    ) -> Bool {
         let loaded = LibraryMetaStore.load(dataDir: dataDir)
-        raw = loaded.raw
-
-        _ = LibraryMetaStore.saveCategories(
+        if let error = LibraryMetaStore.saveCategories(
             LibraryMeta(categories: categories, assignments: assignments),
-            dataDir: dataDir,
-            raw: raw
-        )
+            dataDir: dataDir, raw: loaded.raw
+        ) {
+            operationError = "保存分类失败：\(error)"
+            return false
+        }
+        return true
     }
 
     /// 新建分类。
     func createCategory(name: String) -> Bool {
         guard let result = Categories.create(categories, name: name) else { return false }
+        guard persistCategories(categories: result.defs, assignments: assignments) else { return false }
         categories = result.defs
-        persistCategories()
         return true
     }
 
@@ -1119,16 +1041,16 @@ final class AppStore: ObservableObject {
         guard let updated = Categories.rename(categories, id: id, newName: newName) else {
             return false
         }
+        guard persistCategories(categories: updated, assignments: assignments) else { return false }
         categories = updated
-        persistCategories()
         return true
     }
 
     /// 删分类（**同时清掉所有归属**）。
     func deleteCategory(id: String) {
         let result = Categories.remove(categories, assignments: assignments, id: id)
+        guard persistCategories(categories: result.defs, assignments: result.assignments) else { return }
         categories = result.defs
         assignments = result.assignments
-        persistCategories()
     }
 }

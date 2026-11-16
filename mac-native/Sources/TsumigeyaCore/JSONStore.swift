@@ -119,39 +119,26 @@ public enum JSONStore {
             return "encode failed: \(error)"
         }
 
-        let tmp = url.appendingPathExtension("tmp")
         let bak = url.appendingPathExtension("bak")
-
-        // ---- 1. 写 .tmp ----
-        do {
-            try data.write(to: tmp, options: .atomic)
-        } catch {
-            try? fileManager.removeItem(at: tmp)
-            return "write tmp failed: \(error.localizedDescription)"
-        }
 
         if fileManager.fileExists(atPath: url.path) {
             do {
-                if fileManager.fileExists(atPath: bak.path) {
-                    try fileManager.removeItem(at: bak)
-                }
-                try fileManager.copyItem(at: url, to: bak)
+                let previous = try Data(contentsOf: url)
+                // 不用损坏内容覆盖备份，也不允许普通保存覆盖损坏的原件。
+                _ = try JSONDecoder().decode(JSONValue.self, from: previous)
+                try previous.write(to: bak, options: .atomic)
             } catch {
                 // 备份失败就**不继续**。没有回退点的新写入，风险高于收益。
-                try? fileManager.removeItem(at: tmp)
                 return "backup failed: \(error.localizedDescription)"
             }
         }
 
         // ---- 3. rename（原子）----
         do {
-            if fileManager.fileExists(atPath: url.path) {
-                try fileManager.removeItem(at: url)
-            }
-            try fileManager.moveItem(at: tmp, to: url)
+            // .atomic 在同目录内替换；先 remove 再 move 会留下正式文件消失的窗口。
+            try data.write(to: url, options: .atomic)
             return nil
         } catch {
-            try? fileManager.removeItem(at: tmp)
             return "rename failed: \(error.localizedDescription)"
         }
     }

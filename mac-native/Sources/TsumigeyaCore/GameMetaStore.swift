@@ -99,7 +99,11 @@ public enum GameMetaStore {
         dataDir: String, gameId: String, meta: GameDlsiteMeta,
         fileManager: FileManager = .default
     ) -> String? {
-        var raw = readRaw(dataDir: dataDir, fileManager: fileManager)
+        mutationLock.lock()
+        defer { mutationLock.unlock() }
+        var raw: [String: JSONValue]
+        do { raw = try readRawForUpdate(dataDir: dataDir, fileManager: fileManager) }
+        catch { return error.localizedDescription }
 
         // 拿到这个游戏条目（可能是新的）
         var entry = raw[gameId]?.objectValue ?? [:]
@@ -109,7 +113,14 @@ public enum GameMetaStore {
               let json = try? JSONDecoder().decode(JSONValue.self, from: data) else {
             return "序列化元数据失败"
         }
-        entry["dlsite"] = json
+        // 保留新旧版本扩展字段，同时允许本次清空已知的可选字段。
+        var dlsite = entry["dlsite"]?.objectValue ?? [:]
+        for key in ["rj", "title", "titleSub", "circle", "coverUrl", "workType",
+                    "ageRating", "description", "fetchedAt", "editedFields"] {
+            dlsite.removeValue(forKey: key)
+        }
+        dlsite.merge(json.objectValue ?? [:]) { _, new in new }
+        entry["dlsite"] = .object(dlsite)
         raw[gameId] = .object(entry)
 
         // ⚠️ **`raw` 里原本的非数字键（categories / assignments）原样还在** ——
@@ -120,15 +131,53 @@ public enum GameMetaStore {
     /// 删一部游戏的元数据（删游戏时调）。
     ///
     /// ⚠️ 只删这个 gameId 的条目，**不动分类**（D31 的精神）。
+    @discardableResult
     public static func remove(
         dataDir: String, gameId: String, fileManager: FileManager = .default
-    ) {
-        var raw = readRaw(dataDir: dataDir, fileManager: fileManager)
+    ) -> String? {
+        removeData(dataDir: dataDir, gameId: gameId, assignments: false,
+                   fileManager: fileManager)
+    }
+
+    /// 删游戏时在同一次写入中清理元数据和分类归属，避免 id 复用继承旧分类。
+    @discardableResult
+    public static func removeGameData(
+        dataDir: String, gameId: String, fileManager: FileManager = .default
+    ) -> String? {
+        removeData(dataDir: dataDir, gameId: gameId, assignments: true,
+                   fileManager: fileManager)
+    }
+
+    private static func removeData(
+        dataDir: String, gameId: String, assignments: Bool, fileManager: FileManager
+    ) -> String? {
+        mutationLock.lock()
+        defer { mutationLock.unlock() }
+        var raw: [String: JSONValue]
+        do { raw = try readRawForUpdate(dataDir: dataDir, fileManager: fileManager) }
+        catch { return error.localizedDescription }
         raw.removeValue(forKey: gameId)
-        _ = writeRaw(raw, dataDir: dataDir, fileManager: fileManager)
+        if assignments, var ids = raw["assignments"]?.objectValue {
+            ids.removeValue(forKey: gameId)
+            raw["assignments"] = .object(ids)
+        }
+        return writeRaw(raw, dataDir: dataDir, fileManager: fileManager)
     }
 
     // MARK: - 原始读写
+
+    // 分类与元数据共享文件，锁必须覆盖整个读改写而不只是最后一次写盘。
+    static let mutationLock = NSRecursiveLock()
+
+    static func readRawForUpdate(
+        dataDir: String, fileManager: FileManager = .default
+    ) throws -> [String: JSONValue] {
+        let url = URL(fileURLWithPath: dataDir).appendingPathComponent(fileName)
+        guard fileManager.fileExists(atPath: url.path) else { return [:] }
+        let data = try Data(contentsOf: url)
+        // 已存在的空文件也可能来自中断写入，不能把它当首次运行覆盖。
+        return try JSONDecoder().decode([String: JSONValue].self, from: data)
+    }
 
     /// 读整份文件（**保留所有键，包括非数字的**）。
     static func readRaw(
@@ -148,16 +197,6 @@ public enum GameMetaStore {
         fileManager: FileManager = .default
     ) -> String? {
         let url = URL(fileURLWithPath: dataDir).appendingPathComponent(fileName)
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        guard let data = try? encoder.encode(raw) else {
-            return "序列化 library-meta 失败"
-        }
-        do {
-            try data.write(to: url, options: .atomic)
-            return nil
-        } catch {
-            return error.localizedDescription
-        }
+        return JSONStore.save(JSONValue.object(raw), to: url, fileManager: fileManager)
     }
 }
