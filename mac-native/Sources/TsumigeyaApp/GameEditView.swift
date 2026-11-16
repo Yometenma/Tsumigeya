@@ -484,30 +484,25 @@ struct EngineArgRow: View {
     @Binding var value: JSONValue?
     let availableVersions: [String]
 
+    // 控件和测试共享同一套绑定，避免显示值与父层草稿脱节。
+    var control: EngineArgs.Control {
+        EngineArgs.control(
+            for: def, engine: engine, key: name,
+            availableVersions: availableVersions)
+    }
+
+    var booleanBinding: Binding<Bool> {
+        Binding(
+            get: { booleanCurrentValue },
+            set: { value = .bool($0) }
+        )
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            // ⚠️ **必须传 engine 与 key** —— 否则内置选项表（rgssVersion 的下拉）
-            //    完全不生效（`EngineArgs.control` 里查不到就回落成文本框）。
-            switch EngineArgs.control(
-                for: def, engine: engine, key: name,
-                availableVersions: availableVersions) {
+            switch control {
             case .boolean:
-                // ⚠️⚠️ **`get` 必须读 `value`，不能传空字典**
-                //    （用户 2026-11-06 报：开关点了生效、但显示还是关的、而且关不掉）。
-                //
-                //    本鱼原来写的是 `booleanValue(for: name, in: [:], schema: def)`
-                //    —— 传了个**空字典**，于是 `get` 永远读不到用户改的值，
-                //    只会返回 manifest 的 default（false）。
-                //
-                //    表现：点了之后 `set` 写进去了（真的生效），
-                //    但界面重绘时 `get` 又读出 false → **显示还是关的**；
-                //    而用户再点一下是想关掉，`set(false)` 与当前显示相同 → **关不掉**。
-                //
-                //    正确做法：直接读 `value`（父层传进来的那个 binding）。
-                Toggle(label, isOn: Binding(
-                    get: { booleanCurrentValue },
-                    set: { value = .bool($0) }
-                ))
+                Toggle(label, isOn: booleanBinding)
 
             case .text:
                 HStack(spacing: 10) {

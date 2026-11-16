@@ -492,7 +492,7 @@ struct ExtractRoundTripTests {
     ///   · `LANG=en_US.UTF-8` → `./中文 文件名.txt`
     @Test("负对照：LANG 为空时中文名确实会变成八进制转义")
     func bsdtarOctalEscapeReproduced() throws {
-        guard Extract.hasSystemTar() else { return }   // 没有 tar 就跳过（§6 的规矩）
+        try #require(Extract.hasSystemTar(), "解压集成测试需要系统 tar，不能跳过后算通过")
         let tmp = TempDir(prefix: "tsmg-p3-escape")
         defer { tmp.cleanup() }
 
@@ -523,7 +523,7 @@ struct ExtractRoundTripTests {
     /// 因为老坑的表现是「抛错」，修坏了的表现可能是「不抛错但名字是转义产物」。
     @Test("LANG 为空时，靠 tarEnv 也能完整往返（含中文名）")
     func roundTripWithChineseNamesUnderEmptyLang() throws {
-        guard Extract.hasSystemTar() else { return }
+        try #require(Extract.hasSystemTar(), "解压集成测试需要系统 tar，不能跳过后算通过")
         let tmp = TempDir(prefix: "tsmg-p3-roundtrip")
         defer { tmp.cleanup() }
 
@@ -559,7 +559,7 @@ struct ExtractRoundTripTests {
     /// 这一条**断言失败**是有意义的，它证明修复不可省。
     @Test("对照：不走 tarEnv 时含中文名的包会被判不安全")
     func withoutTarEnvChineseArchiveRejected() throws {
-        guard Extract.hasSystemTar() else { return }
+        try #require(Extract.hasSystemTar(), "解压集成测试需要系统 tar，不能跳过后算通过")
         let tmp = TempDir(prefix: "tsmg-p3-nofix")
         defer { tmp.cleanup() }
 
@@ -581,7 +581,7 @@ struct ExtractRoundTripTests {
 
     @Test("目标目录已存在也能解（往里合并，不报错）")
     func destinationExists() throws {
-        guard Extract.hasSystemTar() else { return }
+        try #require(Extract.hasSystemTar(), "解压集成测试需要系统 tar，不能跳过后算通过")
         let tmp = TempDir(prefix: "tsmg-p3-existing")
         defer { tmp.cleanup() }
 
@@ -612,7 +612,7 @@ struct UnsafeArchiveTests {
     ///   所以流程必须是「**先列全量条目 → 全部校验 → 才动手**」（见 Extract.extractArchive）。
     @Test("含 ../ 的包被拒，且目标目录不出现任何文件")
     func traversalArchiveRejected() throws {
-        guard Extract.hasSystemTar() else { return }
+        try #require(Extract.hasSystemTar(), "解压集成测试需要系统 tar，不能跳过后算通过")
         let tmp = TempDir(prefix: "tsmg-p3-evil")
         defer { tmp.cleanup() }
 
@@ -657,7 +657,7 @@ struct UnsafeArchiveTests {
     /// 目标目录**已存在**且里有旧文件时，恶意包也不能动它们。
     @Test("已存在的目标目录不被污染")
     func existingDestinationUntouched() throws {
-        guard Extract.hasSystemTar() else { return }
+        try #require(Extract.hasSystemTar(), "解压集成测试需要系统 tar，不能跳过后算通过")
         let tmp = TempDir(prefix: "tsmg-p3-evil2")
         defer { tmp.cleanup() }
 
@@ -689,7 +689,7 @@ struct UnsafeArchiveTests {
     /// 绝对路径条目同样整包拒。
     @Test("绝对路径条目被拒")
     func absoluteEntryRejected() throws {
-        guard Extract.hasSystemTar() else { return }
+        try #require(Extract.hasSystemTar(), "解压集成测试需要系统 tar，不能跳过后算通过")
         let tmp = TempDir(prefix: "tsmg-p3-abs")
         defer { tmp.cleanup() }
 
@@ -733,7 +733,7 @@ struct UnsafeArchiveTests {
     ///    （换行名经 tar 转义必然带反斜杠），就会被判 unsafe。
     @Test("名字里的字面换行会被 tar 转义成反斜杠+n，于是整条被拒（真实行为）")
     func newlineNameIsEscapedThenRejected() throws {
-        guard Extract.hasSystemTar() else { return }
+        try #require(Extract.hasSystemTar(), "解压集成测试需要系统 tar，不能跳过后算通过")
         let tmp = TempDir(prefix: "tsmg-p3-newline")
         defer { tmp.cleanup() }
 
@@ -770,7 +770,7 @@ struct UnsafeArchiveTests {
     /// 转义后整条变成 `a\n../evil`，含反斜杠 → 当场拒。
     @Test("换行藏穿越绕不过判据")
     func newlineSplitCannotBypassTraversal() throws {
-        guard Extract.hasSystemTar() else { return }
+        try #require(Extract.hasSystemTar(), "解压集成测试需要系统 tar，不能跳过后算通过")
         let tmp = TempDir(prefix: "tsmg-p3-newline2")
         defer { tmp.cleanup() }
 
@@ -822,7 +822,7 @@ struct ExtractFailureTests {
     /// 两者处境不同：前者「这个文件坏了」，后者「这个包想动我的文件」。
     @Test("不是归档 → extractFailed，且带上 tar 的原话")
     func notAnArchive() throws {
-        guard Extract.hasSystemTar() else { return }
+        try #require(Extract.hasSystemTar(), "解压集成测试需要系统 tar，不能跳过后算通过")
         let tmp = TempDir(prefix: "tsmg-p3-bad")
         defer { tmp.cleanup() }
 
