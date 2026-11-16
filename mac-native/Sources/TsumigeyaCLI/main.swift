@@ -1,14 +1,4 @@
-// P0 骨架的入口（命令行）。
-//
-// 这个文件在 P4 会被换成 SwiftUI 的 `@main struct App: App`。
-// 现在就做成命令行的理由见 Package.swift 文件头：
-// P0–P3 是纯逻辑层，能在 Mac 上无 UI 验证，先不浪费一帧 UI 代码。
-//
-// 用法：
-//   tsumigeya-cli data-dir          打印解析到的数据目录（含降级警告）
-//   tsumigeya-cli list-games        读真实 games.json 并列出游戏
-//   tsumigeya-cli roundtrip-games   读 → 写回临时文件 → 再读，验证不丢字段
-//   tsumigeya-cli selftest          跑全部 P0 自检
+// 真实数据、引擎安装与启动的命令行验收入口；命令列表见下方 switch。
 import Foundation
 import TsumigeyaCore
 

@@ -1,27 +1,7 @@
 #!/usr/bin/env python3
-"""审计：找出「定义了但没人调用」的 public 函数/方法。
+"""静态列出调用较少的 public 函数，供人工复核。
 
-===== 为什么需要这个脚本 =====
-
-本鱼在 Swift 版已经**犯了两次同一类错误**：
-
-  ① `refreshRunning()` —— 定义正确，只在 load() 里调过一次，**没有轮询**
-     → 用户报「关掉游戏还显示运行中」
-  ② `loadSettings()` —— 定义正确，只在设置页里调过
-     → 用户报「设了列表视图但重开是卡片」
-
-两次都是：**函数写对了，调用点漏了**。编译器、类型检查、所有纯函数单测
-**全部不会发现** —— 因为「函数存在」不等于「函数被调用」。
-
-本脚本用机械化的方式找这类问题：对每个 `public/public static` 定义，
-统计它在**所有 swift 文件**（含 Tests）里被**调用**的次数（排除定义行本身）。
-计数为 0 或 1（只有定义）的列出来人工判断。
-
-用法（在 mac-native/ 目录下）：
-    python3 ../../scripts/audit-uncalled.py
-或直接：
-    python3 audit-uncalled.py
-"""
+扫描 Sources 与 Tests；协议回调、重载和动态调用可能误报，不作为验收门禁。"""
 import os
 import re
 import sys
@@ -131,7 +111,4 @@ for c, name, defs in suspects:
 print("\n" + "=" * 78)
 print(f"共 {len(suspects)} 个可疑（总 public 函数 {len(by_name)} 个）")
 print("=" * 78)
-print("\n⚠️ 注意：这不等于「全是 bug」——")
-print("   · 被 App target 跨模块调用的会显示 0（因为 App 只用点语法，脚本能抓到）")
-print("   · 测试专用的（fixture/helper）本来就只被测试调")
-print("   · 但「库里的 public API 却 0 调用」值得逐个看一遍")
+print("\n仅供人工复核；文本引用次数不等于实际调用。")

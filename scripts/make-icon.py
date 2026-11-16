@@ -1,67 +1,11 @@
-"""
-Tsumigeya 应用图标：从源图「像素复刻」→ 生成全套平台图标。
+"""从 assets/icon-source.jpg 生成 assets/icon.icns。
 
-════════════════════════════════════════════════════════════════════
-用法
-════════════════════════════════════════════════════════════════════
-
-    py scripts/make-icon.py
-
-输入：build/icon-source.jpg（手绘/GEN 的图标源图，灰底 #92887e）
-输出：
-    build/icon_1024.png         Apple 规范 1024 画布母版（RGBA）
-    build/icon.icns            macOS 包（11 档，含 icp4/icp5 两个小档）
-    build/icon.ico             Windows 包（7 档，含 256）
-    build/icon.png             512 通用兜底
-    build/iconset/*.png        Apple iconutil 的 10 档拆解（便于人工核对）
-
-换图标的正确姿势：**换 build/icon-source.jpg，重跑本脚本**。
-不要去改 build/iconset 里的某个小档 —— 它是生成物，下次会被覆盖。
-
-════════════════════════════════════════════════════════════════════
-为什么要「像素复刻」而不是直接缩放（这张图踩了 4 版）
-════════════════════════════════════════════════════════════════════
-
-源图是像素画，但本市图的实际情况是：**它已经被放大过、且被 JPEG 压过**
-（每格约 8.5px，非整数；边缘带振铃伪影）。直接把 256×274 的图案
-LANCZOS 放大到 824 内容区（3.0x），会得到一张「糊掉的像素画」——
-每个像素块边缘都是柔的，看着像低质 JPEG 放大图。
-
-四版试错记录（别重走）：
-
-  ✗ v1  dist>TOL 直接判透明
-        → 反锯齿边留成不透明的浅色，放大后一圈白毛
-
-  ✗ v2  除以 alpha 反解前景色 fg=(C-bg*(1-a))/a
-        → 低 alpha 时分母趋零，数值爆炸，边缘被**提亮成白圈**
-
-  ✗ v3  形态学腐蚀 2px 削振铃环
-        → 白圈没了，但**心形被挖出洞**（心形顶部尖角只有 1~2px 宽，
-          腐蚀直接磨断），且心形内部的高光被当成噪点筛掉
-
-  ✓ v4（本版）**像素复刻**
-        ① 推断原始像素画分辨率 —— 按「格内色差最小」扫描 10~45 格
-           实测最优是 **30×32**（格内色差 9.05；30/34 格回升到 9.55/12.03，
-           这个"U 型回升"是分带对上了的典型信号）
-        ② 每格取**中位色**（中位比均值更抗 JPEG 振铃 —— 均值会被亮边拉高）
-        ③ 颜色聚类成调色板（实测收敛到 20 色），把 JPEG 的抖动噪声吃干净
-        ④ 离背景近的格 → alpha 0
-        ⑤ **最近邻整数倍放大**（k=25）→ 硬边，刀切一样
-        ⑥ 补齐到内容区尺寸（最后一步不可避免要一次非整数缩放，可接受）
-
-结果：每个像素块都是**纯色 + 硬边**，16px 小图标也能一眼认出剑穿心 + 花瓣。
-
-════════════════════════════════════════════════════════════════════
-版面（Apple 规范，macOS 11+ Big Sur 起）
-════════════════════════════════════════════════════════════════════
-
-  画布 1024×1024，内容区 824×824，四边各留 100px 透明。
-  **图标本身是方的**，圆角由系统统一裁切（macOS 会给所有 App 图标套同一个遮罩）。
-  垂直略上移 2.2% —— 因为图标下方系统要放应用名，纯几何居中会显得偏下。
+依赖 Pillow、NumPy；在仓库根运行 python scripts/make-icon.py。
+源图经过 JPEG 压缩，先按像素网格取中位色并聚类，再放大以避免模糊与白边。
+预览、母版及调色板写入 .dev-scratch/icons/。
 """
 import io
 import os
-import shutil
 import struct
 import sys
 from collections import Counter
@@ -71,8 +15,9 @@ from PIL import Image
 from PIL import ImageDraw
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-BUILD = os.path.join(ROOT, "build")
-SRC = os.path.join(BUILD, "icon-source.jpg")
+ASSETS = os.path.join(ROOT, "assets")
+BUILD = os.path.join(ROOT, ".dev-scratch", "icons")
+SRC = os.path.join(ASSETS, "icon-source.jpg")
 
 CANVAS = 1024
 MARGIN = 100
@@ -245,24 +190,17 @@ def main():
 
     sprite, pal = extract_sprite()
     sprite.save(os.path.join(BUILD, "sprite-source.png"))
-    log("精灵存档 → build/sprite-source.png")
+    log("精灵存档 → .dev-scratch/icons/sprite-source.png")
 
     canvas = build_canvas(sprite)
     master = os.path.join(BUILD, "icon_1024.png")
     canvas.save(master, "PNG", optimize=True)
-    log(f"母版 → build/icon_1024.png")
+    log(f"母版 → .dev-scratch/icons/icon_1024.png")
 
     # ---- icns ----
-    icns_path = os.path.join(BUILD, "icon.icns")
+    icns_path = os.path.join(ASSETS, "icon.icns")
     write_icns(canvas, icns_path)
     log(f"[OK] icon.icns  {os.path.getsize(icns_path):,} 字节  11 档")
-
-    # ---- ico ----
-    ico_path = os.path.join(BUILD, "icon.ico")
-    canvas.save(ico_path, "ICO",
-                sizes=[(256, 256), (128, 128), (64, 64), (48, 48),
-                       (32, 32), (24, 24), (16, 16)])
-    log(f"[OK] icon.ico   {os.path.getsize(ico_path):,} 字节  7 档")
 
     # ---- 兜底 png ----
     png_path = os.path.join(BUILD, "icon.png")
@@ -271,9 +209,7 @@ def main():
 
     # ---- iconset（Apple iconutil 的 10 档，便于核对）----
     ICONSET = os.path.join(BUILD, "iconset")
-    if os.path.isdir(ICONSET):
-        shutil.rmtree(ICONSET)
-    os.makedirs(ICONSET)
+    os.makedirs(ICONSET, exist_ok=True)
     for name, px in [
         ("icon_16x16.png", 16), ("icon_16x16@2x.png", 32),
         ("icon_32x32.png", 32), ("icon_32x32@2x.png", 64),

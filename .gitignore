@@ -1,30 +1,18 @@
-# 依赖与构建产物
-node_modules/
+# SwiftPM 与打包产物
+.build/
+.swiftpm/
+build/
 dist/
-out/
-release/
-*.tsbuildinfo
 
-# SwiftPM 构建产物
-mac-native/.build/
-mac-native/dist/
-
-# 打包与构建日志
-*.log
-*.local
-
-# 系统
-.DS_Store
-
-# 本机调试数据目录（`.dev-data` 及所有探针变体）
+# 本地调试数据与中间文件
+.dev-scratch/
 .dev-data/
 .dev-data-*/
-.dev-scratch/
-.verify-dist/
-.vite/
+*.log
+*.local
 __pycache__/
-.zcode/
+*.pyc
 
-# 探针结果文件与 boot 痕迹（项目目录内）
-.dev-*boot.txt
-.dev-*probe.json
+# 系统文件
+.DS_Store
+Thumbs.db
