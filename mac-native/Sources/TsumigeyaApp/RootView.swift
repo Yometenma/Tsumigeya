@@ -44,7 +44,7 @@ struct RootView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .frame(minWidth: 980, minHeight: 660, maxWidth: .infinity, maxHeight: .infinity)
+        .frame(minWidth: 980, maxWidth: .infinity, minHeight: 660, maxHeight: .infinity)
         .background(Color(nsColor: .windowBackgroundColor))
         .tint(.indigo)
         .task {
