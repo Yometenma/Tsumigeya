@@ -1,9 +1,10 @@
 import SwiftUI
 import TsumigeyaCore
 
-/// 只展示作品元数据中的封面；不从游戏目录猜测图片，避免把素材误当封面。
+/// 只展示 DLsite 资料中的封面或预览图；不从游戏目录猜测图片，避免把素材误当作品图。
 struct GameArtwork: View {
     let game: GameRecord
+    var contentMode: ContentMode = .fit
     @EnvironmentObject private var store: AppStore
     @State private var imageAttempt = 0
 
@@ -16,7 +17,7 @@ struct GameArtwork: View {
                     AsyncImage(url: url) { phase in
                         switch phase {
                         case .success(let image):
-                            image.resizable().scaledToFit()
+                            image.resizable().aspectRatio(contentMode: contentMode)
                                 .accessibilityLabel("作品封面已加载")
                         case .empty: ProgressView().controlSize(.small)
                         case .failure:

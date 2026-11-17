@@ -4,14 +4,22 @@ import UniformTypeIdentifiers
 import TsumigeyaCore
 
 struct GameAssistanceView: View {
+    enum Mode { case all, translation, assistance }
+
     let game: GameRecord
+    let mode: Mode
     @EnvironmentObject private var store: AppStore
+
+    init(game: GameRecord, mode: Mode = .all) {
+        self.game = game
+        self.mode = mode
+    }
     @State private var session: AssistanceSession?
     var body: some View {
         Group {
             if store.privacy.hidesTitles {
                 Label("辅助功能已隐藏，关闭标题隐藏后可查看。", systemImage: "eye.slash")
-            } else if let session { AssistanceContent(session: session) }
+            } else if let session { AssistanceContent(session: session, mode: mode) }
             else { ProgressView("读取辅助配置……") }
         }
         .task(id: "\(store.dataDir)\0\(game.id)\0\(game.gamePath)") { session = store.assistanceSession(for: game) }
@@ -20,6 +28,7 @@ struct GameAssistanceView: View {
 
 private struct AssistanceContent: View {
     @ObservedObject var session: AssistanceSession
+    let mode: GameAssistanceView.Mode
     @EnvironmentObject private var store: AppStore
     private var running: Bool { store.runningGames[session.game.id] != nil }
     private var restoreTitle: String { session.project?.usesFileBridge == true ? "移除辅助功能" : "恢复原始入口" }
@@ -38,15 +47,15 @@ private struct AssistanceContent: View {
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
-            Text("翻译与作弊").font(.title2.bold())
+            Text(title).font(.title2.bold())
             if let error = session.error { Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.red).textSelection(.enabled) }
             if !session.message.isEmpty { Text(session.message).foregroundStyle(.secondary).textSelection(.enabled) }
             if let project = session.project {
                 Label("已识别 \(project.displayName)", systemImage: "checkmark.circle")
                 Text("已接入内置辅助模块，翻译与作弊分别启用；具体兼容范围以模块说明和作品实测为准。").font(.caption).foregroundStyle(.secondary)
                 installation
-                if project.module.translation != nil { translation }
-                if project.module.cheats != nil { cheats }
+                if project.module.translation != nil && mode != .assistance { translation }
+                if project.module.cheats != nil && mode != .translation { cheats }
             }
         }
         .sheet(item: $selected) { entry in
@@ -66,6 +75,14 @@ private struct AssistanceContent: View {
             Button(restoreTitle, role: .destructive) { session.restore() }
         } message: { Text("移除辅助入口和辅助文件，保留启动器中的译文，不修改原始剧本或数据库。此操作不会撤销已写入存档的作弊修改。") }
     }
+    private var title: String {
+        switch mode {
+        case .all: return "翻译与辅助"
+        case .translation: return "翻译"
+        case .assistance: return "辅助"
+        }
+    }
+
     private var installation: some View {
         GroupBox("游戏接入") {
             VStack(alignment: .leading, spacing: 12) {

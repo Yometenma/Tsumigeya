@@ -231,17 +231,17 @@ struct AddGameWizard: View {
                 .font(.callout)
                 .foregroundStyle(.orange)
         } else if installed {
-            Label("运行时已装好，可以直接保存", systemImage: "checkmark.circle.fill")
+            Label("引擎组件已准备好，可以直接保存", systemImage: "checkmark.circle.fill")
                 .font(.callout)
                 .foregroundStyle(.secondary)
         } else {
             // ⚠️ **没装也要能继续**（断网不能卡死用户）—— 这是 S4 的判据。
             //    但要说清「现在存进去还跑不起来」。
             VStack(alignment: .leading, spacing: 8) {
-                Label("这个引擎的运行时还没装", systemImage: "exclamationmark.circle.fill")
+                Label("这个引擎组件还没准备好", systemImage: "exclamationmark.circle.fill")
                     .font(.callout)
                     .foregroundStyle(.orange)
-                Text("可以先保存游戏 —— 之后到「引擎」页装好运行时再启动。")
+                Text("可以先保存游戏，之后到「引擎管理」准备好组件再启动。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

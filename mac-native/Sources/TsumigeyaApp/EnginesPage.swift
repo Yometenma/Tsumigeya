@@ -30,12 +30,12 @@ struct EnginesPage: View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    Text("运行时管理").font(.system(size: 24, weight: .bold))
+                    Text("引擎管理").font(.system(size: 24, weight: .bold))
                     Spacer()
                     Text("已就绪 \(EngineStatus.installedCount(store.engineEntries)) / \(EngineRegistry.launchable.count)")
                         .font(.callout).foregroundStyle(.secondary)
                 }
-                Text("安装游戏所需的运行时即可，无需全部安装。Windows 程序可选择 Wine；重装与卸载位于更多菜单中。")
+                Text("准备游戏所需的引擎组件即可，无需全部安装。Windows 程序可选择 Wine；重装与移除位于更多菜单中。")
                     .font(.callout).foregroundStyle(.secondary)
             }
             .padding(24)
@@ -46,7 +46,7 @@ struct EnginesPage: View {
                         EngineRow(entry: entry)
                     }
                 } header: {
-                    Text("可安装的运行时")
+                    Text("可用引擎组件")
                 }
             }
             .listStyle(.inset)
@@ -116,7 +116,7 @@ struct EngineRow: View {
             }
         }
         .padding(.vertical, 12)
-        .alert("卸载运行时？", isPresented: $confirmsUninstall) {
+        .alert("移除引擎组件？", isPresented: $confirmsUninstall) {
             Button("卸载", role: .destructive) { store.uninstallEngine(entry.id) }
             Button("取消", role: .cancel) {}
         } message: {
@@ -170,7 +170,7 @@ struct EngineRow: View {
                     .foregroundStyle(.secondary)
                 Menu {
                     Button("重新安装") { store.installEngine(entry.id, force: true) }
-                    Button("卸载运行时…", role: .destructive) { confirmsUninstall = true }
+                    Button("移除组件…", role: .destructive) { confirmsUninstall = true }
                         .disabled(!store.runningGames.isEmpty)
                 } label: {
                     Image(systemName: "ellipsis.circle")
@@ -179,7 +179,7 @@ struct EngineRow: View {
                 .menuIndicator(.hidden)
                 .fixedSize()
                 .accessibilityLabel("\(entry.definition.name)的更多操作")
-                .help(store.runningGames.isEmpty ? "重新安装或卸载运行时" : "请先停止游戏再卸载运行时")
+                .help(store.runningGames.isEmpty ? "重新安装或移除组件" : "请先停止游戏再移除组件")
             }
         } else {
             Button("安装") {

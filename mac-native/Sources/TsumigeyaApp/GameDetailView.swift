@@ -11,14 +11,15 @@ struct GameDetailView: View {
     var onManageEngines: (() -> Void)? = nil
 
     enum DetailTab: String, CaseIterable, Identifiable {
-        case overview, saves, assistance, runtime
+        case overview, saves, translation, assistance, runtime
         var id: String { rawValue }
         var title: String {
             switch self {
-            case .overview: return "概览"
+            case .overview: return "作品介绍"
             case .saves: return "存档"
-            case .assistance: return "翻译与作弊"
-            case .runtime: return "运行信息"
+            case .translation: return "翻译"
+            case .assistance: return "辅助"
+            case .runtime: return "引擎管理"
             }
         }
     }
@@ -76,36 +77,59 @@ struct GameDetailView: View {
     }
 
     private var header: some View {
-        HStack(alignment: .top, spacing: 20) {
-            GameArtwork(game: game)
-                .frame(width: 160, height: 120)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+        let work = store.meta(for: game.id)?.work
+        let tags = Array((work?.tags ?? []).prefix(3))
+        return ZStack(alignment: .bottomLeading) {
+            GameArtwork(game: game, contentMode: .fill)
+                .frame(maxWidth: .infinity, minHeight: 250, maxHeight: 280)
+                .overlay(
+                    LinearGradient(
+                        colors: [Color.black.opacity(0.82), Color.black.opacity(0.38), .clear],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
 
             VStack(alignment: .leading, spacing: 10) {
+                Text("DLsite · 作品详情")
+                    .font(.system(size: 11, weight: .semibold))
+                    .tracking(1.1)
+                    .foregroundStyle(.white.opacity(0.72))
                 Text(store.displayTitle(for: game))
-                    .font(.system(size: 23, weight: .bold))
-                    .lineLimit(3)
-                    .textSelection(.enabled)
-                HStack(spacing: 8) {
-                    Text(engineDisplayName)
-                        .font(.caption.weight(.medium))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(.indigo.opacity(0.12), in: Capsule())
+                    .font(.system(size: 28, weight: .bold))
+                    .foregroundStyle(.white)
+                    .lineLimit(2)
+                if let description = work?.description, !description.isEmpty {
+                    Text(description)
+                        .font(.system(size: 13))
+                        .foregroundStyle(.white.opacity(0.78))
+                        .lineLimit(2)
+                        .frame(maxWidth: 460, alignment: .leading)
+                }
+                HStack(spacing: 7) {
                     if store.runningGames[game.id] != nil {
-                        Label("运行中", systemImage: "play.circle.fill")
-                            .font(.caption)
-                            .foregroundStyle(.green)
+                        heroPill("正在游玩", tint: .green)
+                    }
+                    ForEach(tags, id: \.self) { tag in
+                        heroPill(tag)
                     }
                 }
-                Text(store.privacy.text(folderHint, replacement: "游戏目录已隐藏"))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(28)
         }
-        .padding(24)
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .padding(.horizontal, 24)
+        .padding(.top, 24)
+    }
+
+    private func heroPill(_ title: String, tint: Color? = nil) -> some View {
+        Text(title)
+            .font(.system(size: 11, weight: .medium))
+            .foregroundStyle(tint ?? .white.opacity(0.9))
+            .padding(.horizontal, 9)
+            .padding(.vertical, 5)
+            .background(.white.opacity(0.12), in: Capsule())
+            .overlay(Capsule().stroke(.white.opacity(0.24), lineWidth: 1))
     }
 
     // MARK: - DLsite 元数据
@@ -207,9 +231,11 @@ struct GameDetailView: View {
             }
         case .saves:
             SaveSection(game: game)
+        case .translation:
+            if tab == .translation { GameAssistanceView(game: game, mode: .translation) }
         case .assistance:
             // 只有打开辅助页才读取接口凭据，浏览其他页面不应触发钥匙串授权。
-            if tab == .assistance { GameAssistanceView(game: game) }
+            if tab == .assistance { GameAssistanceView(game: game, mode: .assistance) }
         case .runtime:
             if store.privacy.hidesTitles {
                 privacyNotice
@@ -228,14 +254,14 @@ struct GameDetailView: View {
         VStack(alignment: .leading, spacing: 24) {
             HStack {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("运行环境").font(.headline)
-                    Text("此游戏使用 \(engineDisplayName)。启动异常时，可检查运行时和下方的启动参数。")
+                    Text("引擎信息").font(.headline)
+                    Text("此游戏使用 \(engineDisplayName)。如果启动异常，可以检查下方的启动参数。")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 12)
                 if let onManageEngines {
-                    Button("管理运行时", action: onManageEngines)
+                    Button("管理引擎", action: onManageEngines)
                 }
             }
             if game.gameEngine == "wine" {

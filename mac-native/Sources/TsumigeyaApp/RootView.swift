@@ -1,4 +1,4 @@
-// 导航与游戏浏览分开：列表用于快速切换，卡片用于整库浏览。
+// 游戏库采用 macOS 原生侧边栏：分类在左侧，详情在右侧，空选择时只展示欢迎页。
 import SwiftUI
 import TsumigeyaCore
 
@@ -7,6 +7,8 @@ struct RootView: View {
     @State private var selection: String?
     @State private var editingGameID: String?
     @State private var page: AppPage = .library
+    @State private var sidebarVisible = true
+    @State private var collapsedGroups: Set<String> = []
     private let loadsOnAppear: Bool
 
     init(selection: String? = nil, loadsOnAppear: Bool = true, initialPage: AppPage = .library) {
@@ -17,11 +19,12 @@ struct RootView: View {
 
     enum AppPage: String, CaseIterable, Identifiable {
         case library, engines, settings
+
         var id: String { rawValue }
         var title: String {
             switch self {
             case .library: return "游戏库"
-            case .engines: return "运行时"
+            case .engines: return "引擎管理"
             case .settings: return "设置"
             }
         }
@@ -32,9 +35,16 @@ struct RootView: View {
             topBar
             Divider()
             dataDirectoryNotice
-            content
+            HStack(spacing: 0) {
+                if sidebarVisible {
+                    librarySidebar
+                    Divider()
+                }
+                content
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(minWidth: 980, minHeight: 660, maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: .windowBackgroundColor))
         .tint(.indigo)
         .task {
@@ -42,15 +52,9 @@ struct RootView: View {
             await store.load()
             store.refreshInstalledEngines()
             store.refreshEngineEntries()
-            // ⚠️ 启动时若已有游戏在跑（上次没关干净），要开始轮询
-            if !store.runningGames.isEmpty {
-                store.startRunningPoll()
-            }
+            if !store.runningGames.isEmpty { store.startRunningPoll() }
         }
-        .onReceive(
-            NotificationCenter.default.publisher(
-                for: NSApplication.didBecomeActiveNotification)
-        ) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             store.refreshRunningFromAppActivation()
         }
         .modifier(AppPresentations(editingGameID: $editingGameID))
@@ -75,22 +79,26 @@ struct RootView: View {
         }
     }
 
-    // MARK: - 顶部导航
-
     private var topBar: some View {
-        HStack(spacing: 20) {
+        HStack(spacing: 12) {
+            Button { sidebarVisible.toggle() } label: {
+                Image(systemName: sidebarVisible ? "sidebar.leading" : "sidebar.trailing")
+                    .frame(width: 22, height: 22)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(sidebarVisible ? "收起侧边栏" : "显示侧边栏")
+            .help(sidebarVisible ? "收起侧边栏" : "显示侧边栏")
+
             Label("Tsumigeya", systemImage: "gamecontroller.fill")
                 .font(.system(size: 15, weight: .bold))
-                .foregroundStyle(.primary)
-
-            Picker("页面", selection: $page) {
-                ForEach(AppPage.allCases) { p in Text(p.title).tag(p) }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .frame(width: 240)
 
             Spacer(minLength: 12)
+
+            if page == .library {
+                SearchField(text: $store.searchText)
+                    .frame(width: 240)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
 
             Button { store.togglePrivacyMode() } label: {
                 Label(store.privacy.isEnabled ? "隐私已开启" : "隐私模式",
@@ -104,85 +112,138 @@ struct RootView: View {
                 }
                 .keyboardShortcut("o", modifiers: .command)
                 .help("添加游戏（⌘O）")
-                Menu("批量操作") {
-                    Button("批量补全作品信息") { store.isBatchMetaPresented = true }
-                        .disabled(store.games.isEmpty)
-                    Button("批量入库") { store.isBatchAdding = true }
-                }
-                .disabled(store.privacy.hidesTitles)
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 12)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
     }
 
-    // MARK: - 分类栏（库页顶部）
+    private var librarySidebar: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                Text("游戏库")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 4)
+                libraryMenu
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
 
-    /// 分类筛选栏 + 新建入口。
-    ///
-    /// ⚠️ **分类在库页顶部，不在侧边栏**（D84 —— 用户 2026-11-05 拍板）：
-    ///    侧边栏同时装着导航，分类越攒越多会把导航挤远。
-    ///
-    /// ⚠️ **必须有「新建分类」入口**（用户 2026-11-06 报的第 3 个问题：
-    ///    「没有地方创建分类」）。本鱼第一版只做了筛选，忘了新建。
-    private var categoryBar: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 7) {
-                categoryChip(title: "全部", isActive: store.activeCategory == nil) {
-                    store.activeCategory = nil
-                }
+            Divider()
 
-                ForEach(Categories.ordered(store.categories), id: \.id) { pair in
-                    categoryChip(
-                        title: pair.def.name,
-                        isActive: store.activeCategory == pair.id
-                    ) {
-                        store.activeCategory = (store.activeCategory == pair.id) ? nil : pair.id
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 5) {
+                    ForEach(store.groups) { group in
+                        DisclosureGroup(isExpanded: groupExpansion(for: group.id)) {
+                            VStack(spacing: 2) {
+                                ForEach(group.games, id: \.id) { game in
+                                    SidebarGameRow(
+                                        game: game,
+                                        isSelected: selection == game.id,
+                                        isRunning: store.runningGames[game.id] != nil
+                                    ) {
+                                        page = .library
+                                        selection = game.id
+                                    }
+                                }
+                            }
+                            .padding(.top, 2)
+                        } label: {
+                            HStack(spacing: 6) {
+                                Text(group.title)
+                                Spacer(minLength: 4)
+                                Text("\(group.games.count)")
+                                    .font(.caption2)
+                                    .foregroundStyle(.tertiary)
+                            }
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(.secondary)
+                        }
+                        .padding(.horizontal, 8)
                     }
-                    .contextMenu {
-                        Button("删除分类「\(pair.def.name)」", role: .destructive) {
-                            store.confirmDeleteCategory(id: pair.id, name: pair.def.name)
+
+                    if store.groups.isEmpty && !store.games.isEmpty {
+                        Text("没有匹配的作品")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .padding(12)
+                    }
+                }
+                .padding(.vertical, 10)
+            }
+
+            Spacer(minLength: 8)
+            Divider()
+            VStack(spacing: 2) {
+                sidebarNavigationButton(.engines, systemImage: "gearshape", title: "引擎管理")
+                sidebarNavigationButton(.settings, systemImage: "slider.horizontal.3", title: "设置")
+            }
+            .padding(8)
+        }
+        .frame(width: 248)
+        .background(Color(nsColor: .underPageBackgroundColor))
+    }
+
+    private var libraryMenu: some View {
+        Menu {
+            Button("全部作品") { store.activeCategory = nil }
+            if !store.categories.isEmpty {
+                Divider()
+                ForEach(Categories.ordered(store.categories), id: \.id) { pair in
+                    Button {
+                        store.activeCategory = store.activeCategory == pair.id ? nil : pair.id
+                    } label: {
+                        HStack {
+                            Text(pair.def.name)
+                            if store.activeCategory == pair.id { Image(systemName: "checkmark") }
                         }
                     }
                 }
-
-                // 新建分类
-                Button {
-                    store.beginCreateCategory()
-                } label: {
-                    Label("新建分类", systemImage: "plus")
-                        .font(.system(size: 11))
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3)
-                .background(Color.secondary.opacity(0.08), in: Capsule())
-
-                Spacer()
             }
-            .padding(.vertical, 4)
+            Divider()
+            Button("收起所有分类") { collapsedGroups = Set(store.groups.map(\.id)) }
+            Button("展开所有分类") { collapsedGroups.removeAll() }
+            Button("新建分类…") { store.beginCreateCategory() }
+            Divider()
+            Button("批量补全作品信息") { store.isBatchMetaPresented = true }
+                .disabled(store.games.isEmpty || store.privacy.hidesTitles)
+            Button("批量入库") { store.isBatchAdding = true }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.system(size: 12, weight: .semibold))
+                .frame(width: 24, height: 24)
         }
-        .frame(height: 32)
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .accessibilityLabel("游戏库菜单")
+        .help("游戏库菜单")
     }
 
-    private func categoryChip(
-        title: String, isActive: Bool, action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(.system(size: 12, weight: isActive ? .semibold : .regular))
+    private func groupExpansion(for id: String) -> Binding<Bool> {
+        Binding(
+            get: { !collapsedGroups.contains(id) },
+            set: { expanded in
+                if expanded { collapsedGroups.remove(id) }
+                else { collapsedGroups.insert(id) }
+            }
+        )
+    }
+
+    private func sidebarNavigationButton(_ target: AppPage, systemImage: String, title: String) -> some View {
+        Button {
+            page = target
+        } label: {
+            Label(title, systemImage: systemImage)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 9)
-                .padding(.vertical, 3)
-                .background(
-                    isActive ? Color.accentColor.opacity(0.18) : Color.secondary.opacity(0.08),
-                    in: Capsule())
-                .foregroundStyle(isActive ? Color.accentColor : Color.secondary)
+                .padding(.vertical, 7)
+                .background(page == target ? Color.secondary.opacity(0.12) : .clear,
+                            in: RoundedRectangle(cornerRadius: 7))
         }
         .buttonStyle(.plain)
+        .foregroundStyle(page == target ? .primary : .secondary)
     }
-
-    // MARK: - 内容
 
     @ViewBuilder
     private var content: some View {
@@ -204,25 +265,13 @@ struct RootView: View {
                 }
             } else if store.games.isEmpty {
                 WelcomeView()
+            } else if store.filteredGames.isEmpty {
+                LibraryNoResultsView()
+            } else if let id = selection, let game = store.game(id: id) {
+                GameDetailView(game: game, onEdit: { editingGameID = game.id }, onManageEngines: { page = .engines })
+                    .id(game.id)
             } else {
-                VStack(spacing: 0) {
-                    libraryToolbar
-                    Divider()
-                    if store.filteredGames.isEmpty {
-                        LibraryNoResultsView()
-                    } else if store.settingBool(.listView) {
-                        HSplitView {
-                            GameListView(selection: $selection)
-                                .frame(minWidth: 260, idealWidth: 300, maxWidth: 380)
-                            selectedGamePane
-                                .frame(minWidth: 480, maxWidth: .infinity, maxHeight: .infinity)
-                        }
-                    } else if selection != nil {
-                        selectedGamePane
-                    } else {
-                        GameListView(selection: $selection)
-                    }
-                }
+                WelcomeView()
             }
         case .engines:
             EnginesPage()
@@ -230,56 +279,46 @@ struct RootView: View {
             SettingsPage()
         }
     }
-
-    private var libraryToolbar: some View {
-        HStack(spacing: 12) {
-            if !store.settingBool(.listView), selection != nil {
-                Button { selection = nil } label: {
-                    Label("返回游戏库", systemImage: "chevron.left")
-                }
-                .keyboardShortcut(.cancelAction)
-            } else {
-                Text("\(store.filteredGames.count) 个游戏")
-                    .font(.callout.weight(.medium))
-                    .foregroundStyle(.secondary)
-                    .fixedSize()
-            }
-            categoryBar
-                .frame(maxWidth: .infinity)
-            SearchField(text: $store.searchText)
-                .frame(width: 250)
-            Picker("显示方式", selection: Binding(
-                get: { store.settingBool(.listView) },
-                set: { value in
-                    store.setSetting(.listView, .bool(value))
-                    if !value { selection = nil }
-                }
-            )) {
-                Image(systemName: "list.bullet").tag(true)
-                Image(systemName: "square.grid.2x2").tag(false)
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .frame(width: 76)
-            .help("切换列表或卡片视图")
-        }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 10)
-    }
-
-    @ViewBuilder
-    private var selectedGamePane: some View {
-        if let id = selection, let game = store.game(id: id) {
-            GameDetailView(game: game, onEdit: { editingGameID = game.id },
-                           onManageEngines: { page = .engines })
-                .id(game.id)
-        } else {
-            WelcomeView()
-        }
-    }
-
 }
 
+struct SidebarGameRow: View {
+    let game: GameRecord
+    let isSelected: Bool
+    let isRunning: Bool
+    let action: () -> Void
+    @EnvironmentObject private var store: AppStore
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 9) {
+                GameArtwork(game: game)
+                    .frame(width: 34, height: 34)
+                    .clipShape(RoundedRectangle(cornerRadius: 7))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(store.displayTitle(for: game))
+                        .font(.system(size: 11.5, weight: .medium))
+                        .lineLimit(1)
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(isRunning ? Color.green : Color.secondary.opacity(0.35))
+                            .frame(width: 5, height: 5)
+                        Text(isRunning ? "正在游玩" : (EngineRegistry.find(folder: game.gameEngine)?.name ?? game.gameEngine))
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .background(isSelected ? Color.secondary.opacity(0.16) : .clear,
+                        in: RoundedRectangle(cornerRadius: 9))
+        }
+        .buttonStyle(.plain)
+        .help(store.privacy.text(game.gamePath, replacement: "游戏路径已隐藏"))
+    }
+}
 // MARK: - 搜索框
 
 /// 自绘搜索框。
@@ -538,29 +577,26 @@ struct WelcomeView: View {
     @EnvironmentObject private var store: AppStore
 
     var body: some View {
-        VStack(spacing: 14) {
-            Image(systemName: "gamecontroller")
-                .font(.system(size: 54))
-                .foregroundStyle(.tertiary)
-
+        VStack(spacing: 18) {
+            Image(systemName: "sparkles")
+                .font(.system(size: 26, weight: .light))
+                .foregroundStyle(.indigo.opacity(0.78))
+            Text("把喜欢的故事，留在这里。")
+                .font(.system(size: 24, weight: .semibold))
             if store.games.isEmpty {
-                Text("游戏库还是空的")
-                    .font(.title2.weight(.medium))
-                Text("添加游戏文件或文件夹，自动识别引擎后即可开始。")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                Button("添加第一个游戏") { store.openAddGame() }
+                Button("添加游戏") { store.openAddGame() }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
-            } else {
-                Text("选一个游戏，开始游玩")
-                    .font(.title2.weight(.medium))
-                Text("从左侧选择游戏，查看作品信息、管理存档或调整启动设置。")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(
+            LinearGradient(
+                colors: [Color(nsColor: .textBackgroundColor), Color.indigo.opacity(0.06)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
     }
 }
 

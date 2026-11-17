@@ -470,7 +470,9 @@ final class AppStore: ObservableObject {
 
     func artworkURL(for game: GameRecord) -> URL? {
         guard !privacy.isEnabled else { return nil }
-        return privacy.coverURL(meta(for: game.id)?.work.coverUrl)
+        let work = meta(for: game.id)?.work
+        // 详情页优先使用 DLsite 封面；封面缺失时退回已抓取的首张预览图，绝不使用看板娘或占位素材。
+        return privacy.coverURL(work?.coverUrl ?? work?.sampleImageURLs.first)
     }
 
     func togglePrivacyMode() {

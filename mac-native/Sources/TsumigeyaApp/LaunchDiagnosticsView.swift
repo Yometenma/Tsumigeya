@@ -37,7 +37,7 @@ struct LaunchDiagnosticsView: View {
                     Button {
                         onManageEngines()
                     } label: {
-                        Text("管理运行时").foregroundStyle(.black)
+                        Text("管理引擎").foregroundStyle(.black)
                     }
                     .buttonStyle(.bordered)
                 }
