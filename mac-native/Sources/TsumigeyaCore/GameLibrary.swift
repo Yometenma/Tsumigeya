@@ -100,6 +100,17 @@ public enum GameLibrary {
         return .success((updated, id, true))
     }
 
+    /// 从完整旧记录定点修改目录，不能走空扩展字段继承，否则清除最后一个键会恢复旧值。
+    public static func settingSaveDirectory(
+        in map: GameMap, gameId: String, directory: String?
+    ) -> Result<GameMap, ValidationError> {
+        guard var record = map.games[gameId] else { return .failure(.invalidId) }
+        record.setSaveDirectoryOverride(directory)
+        var updated = map
+        updated.games[gameId] = record
+        return .success(updated)
+    }
+
     /// 删游戏。
     ///
     /// ⚠️ **本函数只负责 games map**。四处旁挂数据的清理是调用方（AppStore）的责任 ——

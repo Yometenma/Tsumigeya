@@ -198,26 +198,39 @@ enum UISnapshot {
                 id: "__save-preview__", gameTitle: "存档位置未知示例",
                 gamePath: previewDirectory.appendingPathComponent("Game.exe").path,
                 gameEngine: "tyrano", gameArgs: [:])
+            // 存档会话校验当前库记录，预览也必须使用已登记的独立测试库。
+            let saveData = previewDirectory.appendingPathComponent("save-state")
+            try FileManager.default.createDirectory(at: saveData, withIntermediateDirectories: true)
+            try JSONStore.defaultEncoder.encode(GameMap(games: [unknownSaveGame.id: unknownSaveGame]))
+                .write(to: saveData.appendingPathComponent("games.json"), options: .atomic)
+            let saveStore = AppStore()
+            await saveStore.load(dataDirectory: saveData.path)
             failures += captureWindow(
-                SaveSection(game: unknownSaveGame).environmentObject(previewStore),
+                SaveSection(game: unknownSaveGame).environmentObject(saveStore)
+                    .padding(16).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .background(Color(nsColor: .windowBackgroundColor)),
                 size: CGSize(width: 600, height: 470), name: "22-save-unknown",
                 dir: directory, appearance: appearance)
 
-            var manualSaveGame = unknownSaveGame
-            manualSaveGame.setSaveDirectoryOverride(savePreviewRoot.path)
+            guard saveStore.setSaveDirectoryOverride(gameId: unknownSaveGame.id, path: savePreviewRoot.path),
+                  let manualSaveGame = saveStore.game(id: unknownSaveGame.id) else {
+                throw CocoaError(.fileWriteUnknown)
+            }
             failures += captureWindow(
-                SaveSection(game: manualSaveGame).environmentObject(previewStore),
+                SaveSection(game: manualSaveGame).environmentObject(saveStore)
+                    .padding(16).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .background(Color(nsColor: .windowBackgroundColor)),
                 size: CGSize(width: 600, height: 520), name: "23-save-manual-directory",
                 dir: directory, appearance: appearance)
 
-            previewStore.setSetting(.privacyMode, .bool(true))
-            previewStore.setSetting(.privacyHideTitles, .bool(true))
+            saveStore.setSetting(.privacyMode, .bool(true))
+            saveStore.setSetting(.privacyHideTitles, .bool(true))
             failures += captureWindow(
-                SaveSection(game: manualSaveGame).environmentObject(previewStore),
+                SaveSection(game: manualSaveGame).environmentObject(saveStore)
+                    .padding(16).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .background(Color(nsColor: .windowBackgroundColor)),
                 size: CGSize(width: 600, height: 300), name: "24-save-privacy",
                 dir: directory, appearance: appearance)
-            previewStore.setSetting(.privacyMode, .bool(false))
-            previewStore.setSetting(.privacyHideTitles, .bool(false))
             if var game = store.games.first {
                 game.gameTitle = "超长标题布局验收：遠い星の物語・異世界の冒険と約束の記憶 — 完全版 "
                     + "追加章节与多语言游戏名称的显示检查"

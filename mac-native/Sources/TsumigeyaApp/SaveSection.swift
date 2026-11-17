@@ -1,26 +1,5 @@
-// 详情页的「存档」区块。
-//
-// 对应 Electron 版：`components/SaveSection.vue`（191 行 / S2+S3+S4）
-// 契约：M4 S2/S3/S4，D81 / D82 / D85
-//
-// ===== 三态必须分开（这是 S1 的核心判据）=====
-//
-// | 状态 | 含义 | 用户该做什么 |
-// |---|---|---|
-// | **unknown** | **不知道存档在哪** | 去排障 / 这个引擎不支持 |
-// | **empty** | 知道在哪，但目录是空的 | **先去游戏里存一次档**（正常状态） |
-// | **list** | 有存档 | 正常 |
-//
-// ⚠️ 把前两者糊成一句「没有存档」，用户会**永远查不出问题** ——
-//    前者是故障，后者是正常，他要做的事完全不同。
-//
-// ===== 运行中禁用导出（D82）=====
-//
-// 游戏正在写存档时导出的包是**半截文件**（头对、尾缺）。
-// 用户带着它换机，导入后游戏报存档损坏 —— 而他想不到问题出在「当初没关游戏」。
-//
-// ⚠️ **UI 禁用只是提前告知，不是判据**：真正的拦截在 `SaveArchiveIO.export`
-//    （主进程那一层）。UI 拦不住所有路径（比如用户刚点完导出游戏就启动了）。
+// 存档展示及系统文件选择；列表、结果和业务操作由 AppStore 创建的 SaveSession 管理。
+// 位置未知、有效空目录和已有存档必须分开显示，按钮禁用不能代替操作入口的安全检查。
 import AppKit
 import SwiftUI
 import TsumigeyaCore
@@ -29,14 +8,21 @@ struct SaveSection: View {
     let game: GameRecord
     @EnvironmentObject private var store: AppStore
 
-    /// 当前列表（`nil` = 还没加载）。
-    @State private var listing: SaveListing?
-    /// 导出/导入进行中。
-    @State private var isWorking = false
-    /// 结果提示（成功/失败）。
-    @State private var message: (text: String, isError: Bool)?
-    /// 用户明确选择的存档目录；nil 表示使用自动探测。
-    @State private var overridePath: String?
+    var body: some View {
+        let session = store.saveSession(for: game)
+        SaveSessionContent(session: session).id(session.id)
+    }
+}
+
+private struct SaveSessionContent: View {
+    @EnvironmentObject private var store: AppStore
+    @ObservedObject var session: SaveSession
+
+    private var game: GameRecord { session.game }
+    private var listing: SaveListing? { session.listing }
+    private var isWorking: Bool { session.isWorking }
+    private var message: (text: String, isError: Bool)? { session.message }
+    private var overridePath: String? { session.overridePath }
 
     private var isRunning: Bool {
         store.runningGames[game.id] != nil
@@ -69,17 +55,10 @@ struct SaveSection: View {
                     .textSelection(.enabled)
             }
         }
-        .onAppear {
-            overridePath = game.saveDirectoryOverride
-            reload()
-        }
-        .onChange(of: game.saveDirectoryOverride) { _, newValue in
-            overridePath = newValue
-            reload()
-        }
-        .onChange(of: store.runningGames[game.id]) { _, _ in
-            // ⚠️ 运行状态变化时重新探测（游戏跑起来可能创建了存档目录）
-            reload()
+        .onAppear { session.reload() }
+        .onChange(of: store.runningGames[game.id]) { _, _ in session.reload() }
+        .onChange(of: store.privacy.hidesTitles) { _, hidden in
+            if !hidden { session.reload() }
         }
     }
 
@@ -120,8 +99,7 @@ struct SaveSection: View {
 
     /// 能不能导出（运行中一律不能）。
     private var canExport: Bool {
-        guard let listing, let _ = listing.dir else { return false }
-        return listing.hasSaves
+        session.canExport
     }
 
     // MARK: - 内容（三态）
@@ -308,13 +286,9 @@ struct SaveSection: View {
     private func copyDirectoryPath(_ path: String) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(path, forType: .string)
-        message = ("已复制存档目录路径。", false)
+        session.reportCopiedPath()
     }
     private func chooseSaveDirectory() {
-        guard !isRunning else {
-            message = ("游戏运行中，不能更改存档目录。", true)
-            return
-        }
         let panel = NSOpenPanel()
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
@@ -326,84 +300,27 @@ struct SaveSection: View {
             panel.directoryURL = URL(fileURLWithPath: overridePath)
         }
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        guard store.setSaveDirectoryOverride(gameId: game.id, path: url.path) else {
-            message = (store.lastAddGameError ?? "保存存档目录失败。", true)
-            return
-        }
-        overridePath = url.standardizedFileURL.path
-        message = ("已指定存档目录。", false)
-        reload()
+        session.setDirectory(url.path)
     }
 
     private func clearSaveDirectoryOverride() {
-        guard store.setSaveDirectoryOverride(gameId: game.id, path: nil) else {
-            message = (store.lastAddGameError ?? "恢复自动探测失败。", true)
-            return
-        }
-        overridePath = nil
-        message = ("已恢复自动探测。", false)
-        reload()
-    }
-
-    // MARK: - 动作
-
-    private func reload() {
-        listing = SaveStore.list(
-            gamePath: game.gamePath, engine: game.gameEngine,
-            overrideDirectory: overridePath)
+        session.setDirectory(nil)
     }
 
     private func doExport() {
-        isWorking = true
-        message = nil
-        defer { isWorking = false }
-
-        // 输出到 ~/Downloads（用户找得到的地方）
-        let downloads = (NSHomeDirectory() as NSString)
-            .appendingPathComponent("Downloads")
-
-        let result = SaveArchiveIO.export(
-            gamePath: game.gamePath, engine: game.gameEngine,
-            gameTitle: game.gameTitle, outputDir: downloads,
-            isRunning: isRunning, overrideDirectory: overridePath)
-
-        switch result {
-        case .success(let exported):
-            message = ("已导出 \(exported.fileCount) 个文件 → \(exported.archivePath)", false)
-        case .failure(let error):
-            message = (error.message, true)
-        }
+        let downloads = (NSHomeDirectory() as NSString).appendingPathComponent("Downloads")
+        session.exportArchive(outputDirectory: downloads)
     }
 
     private func doImport() {
-        // 选 zip
         let panel = NSOpenPanel()
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
         panel.allowedContentTypes = [.zip]
         panel.message = "选择要导入的存档包（现有存档会先备份）"
-
         guard panel.runModal() == .OK, let url = panel.url else { return }
-
-        isWorking = true
-        message = nil
-        defer { isWorking = false }
-
-        let result = SaveArchiveIO.importArchive(
-            archivePath: url.path, gamePath: game.gamePath, engine: game.gameEngine,
-            overrideDirectory: overridePath)
-
-        switch result {
-        case .success(let imported):
-            let backupNote = imported.backups.isEmpty
-                ? ""
-                : "（\(imported.backups.count) 个原文件已备份为 .tsumigeya-bak）"
-            message = ("已恢复 \(imported.files.count) 个文件\(backupNote)", false)
-            reload()
-        case .failure(let error):
-            message = (error.message, true)
-        }
+        session.importArchive(at: url)
     }
 
     // MARK: - 格式化

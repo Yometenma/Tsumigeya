@@ -1,21 +1,6 @@
 import SwiftUI
 import TsumigeyaCore
 
-struct BatchMetaItem: Identifiable {
-    enum State: String {
-        case pending = "等待处理"
-        case running = "正在处理"
-        case saved = "已保存"
-        case needsConfirmation = "待确认"
-        case failed = "失败"
-        case skipped = "已跳过"
-    }
-    let game: GameRecord
-    var id: String { game.id }
-    var state: State = .pending
-    var message: String?
-}
-
 struct BatchMetadataView: View {
     @EnvironmentObject private var store: AppStore
 
