@@ -30,6 +30,12 @@ final class BatchMetadataCoordinator: ObservableObject {
         }
     }
 
+    /// 游戏管理可以在删除部分失败前撤销队列快照，防止尚未开始的旧任务重新补回资料。
+    func invalidateGame(gameId: String) {
+        guard batchMetaItems.contains(where: { $0.id == gameId }) else { return }
+        setBatchMeta(gameId, state: .skipped, message: "游戏记录正在变更，该项已取消；请重新准备列表。")
+    }
+
     @Published private(set) var batchMetaItems: [BatchMetaItem] = []
     @Published private(set) var batchMetaRunning = false
     @Published private(set) var batchMetaRefreshAssociated = false
@@ -70,6 +76,7 @@ final class BatchMetadataCoordinator: ObservableObject {
                 }
             }
             for item in pending {
+                guard batchMetaItems.first(where: { $0.id == item.id })?.state == .pending else { continue }
                 guard !Task.isCancelled, batchMetaToken == token, !metadata.hidesTitles() else { break }
                 let id = item.id
                 guard metadata.currentGame(id) == item.game else {
@@ -107,6 +114,7 @@ final class BatchMetadataCoordinator: ObservableObject {
                         metadata.searchMeta(gameId: id, keyword: keyword)
                         await metadata.waitForSearch(gameId: id)
                         guard !Task.isCancelled, batchMetaToken == token else { break }
+                        guard batchMetaItems.first(where: { $0.id == id })?.state == .running else { continue }
                         guard metadata.currentGame(id) == item.game else {
                             setBatchMeta(id, state: .skipped, message: "游戏已移除或发生变化。")
                             continue
@@ -125,6 +133,7 @@ final class BatchMetadataCoordinator: ObservableObject {
     }
 
     private func finishBatchFetch(_ item: BatchMetaItem) {
+        guard batchMetaItems.first(where: { $0.id == item.id })?.state == .running else { return }
         guard metadata.currentGame(item.id) == item.game else {
             setBatchMeta(item.id, state: .skipped, message: "游戏已移除或发生变化。")
             return
@@ -152,7 +161,9 @@ final class BatchMetadataCoordinator: ObservableObject {
             let finishedFetch = !metadata.fetchingMeta.contains(id) && metadata.metaNotice[id] != nil
             let finishedSearch = !metadata.searchingGameIDs.contains(id) && !(metadata.searchHits[id] ?? []).isEmpty
             metadata.cancelLookup(gameId: id)
-            if finishedFetch, let item = batchMetaItems.first(where: { $0.id == id }) {
+            if batchMetaItems.first(where: { $0.id == id })?.state == .skipped {
+                // 已撤销的游戏管理快照不能在暂停时重新排队。
+            } else if finishedFetch, let item = batchMetaItems.first(where: { $0.id == id }) {
                 finishBatchFetch(item)
             } else if finishedSearch {
                 setBatchMeta(id, state: .needsConfirmation, message: "候选已准备好，请预览确认。")

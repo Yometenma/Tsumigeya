@@ -20,7 +20,7 @@ import Foundation
 
 /// 一条分类定义。
 public struct CategoryDef: Sendable, Equatable {
-    /// 显示名（用户建的）。
+    /// 显示名（自动生成或用户命名，允许手动修改）。
     public var name: String
     /// 排序权重。
     ///
@@ -28,9 +28,13 @@ public struct CategoryDef: Sendable, Equatable {
     ///    而 order 是稳定值 —— 用户删掉第 2 个，第 3 个不会突然变成第 2。
     public var order: Int
 
-    public init(name: String, order: Int) {
+    /// 自动分类的稳定来源；改显示名不改变来源。
+    public var sourceWorkType: String?
+
+    public init(name: String, order: Int, sourceWorkType: String? = nil) {
         self.name = name
         self.order = order
+        self.sourceWorkType = sourceWorkType
     }
 }
 

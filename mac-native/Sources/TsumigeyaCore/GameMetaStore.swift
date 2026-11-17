@@ -151,9 +151,10 @@ public enum GameMetaStore {
         dlsite.merge(json.objectValue ?? [:]) { _, new in new }
         entry["dlsite"] = .object(dlsite)
         raw[gameId] = .object(entry)
+        // 资料与自动分类共用一次原子写入，不能出现资料已保存但分类未更新。
+        LibraryClassification.synchronize(&raw, gameIDs: [gameId])
 
-        // ⚠️ **`raw` 里原本的非数字键（categories / assignments）原样还在** ——
-        //    因为我们只改了 `raw[gameId]`，没有重建整个 `raw`。
+        // 基于完整原件定点合并；分类之外的顶层键、人工覆盖与未知扩展不丢失。
         return writeRaw(raw, dataDir: dataDir, fileManager: fileManager)
     }
 

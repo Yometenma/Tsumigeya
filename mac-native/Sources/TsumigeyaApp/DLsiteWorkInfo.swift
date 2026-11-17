@@ -112,8 +112,8 @@ struct DLsiteWorkInfo: View {
     }
 
     private func typeName(_ code: String) -> String {
-        ["RPG": "角色扮演", "ADV": "冒险游戏", "SLN": "模拟游戏", "ACT": "动作游戏",
-         "SOU": "音声作品", "ACN": "动作游戏", "PZL": "益智游戏" ][code] ?? code
+        if let normalized = GameWorkType.code(code), let name = GameWorkType.names[normalized] { return name }
+        return code == "SOU" ? "音声作品" : code
     }
 
     private func languageName(_ code: String) -> String {

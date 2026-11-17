@@ -42,7 +42,7 @@ struct BatchMetadataView: View {
                             .disabled(failedCount == 0)
                     }
                     Spacer()
-                    Text("刷新保留手动修改；不改游戏名称、分类和存档。")
+                    Text("按作品类型自动归类并保留手动调整；不改游戏名称和存档。")
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }

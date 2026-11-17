@@ -204,9 +204,8 @@ struct GameEditView: View {
                     .lineLimit(2)
                     .truncationMode(.middle)
             }
-            // ⚠️ **路径不可编辑**：改路径等于「这游戏搬走了」，
-            //    那应该重新添加（会走识别流程），而不是在这里手打。
-            Text("要换路径请重新添加这个游戏。")
+            // 路径更新走重新定位校验，不允许直接把任意文本当成有效入口。
+            Text("要换路径，请在游戏详情的更多菜单中选择「重新定位游戏目录」。")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
             }
@@ -426,28 +425,9 @@ struct GameEditView: View {
 
     private var categoriesSection: some View {
         Section {
-            // ⚠️ 按 `categoriesOpen` 显隐（同上）
-            if categoriesOpen {
-            if store.categories.isEmpty {
-                Text("还没有建任何分类。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            } else {
-                ForEach(Categories.ordered(store.categories), id: \.id) { pair in
-                    let isMember = (store.assignments[game.id] ?? []).contains(pair.id)
-                    Toggle(pair.def.name, isOn: Binding(
-                        get: { isMember },
-                        set: { member in
-                            // ⚠️ **立刻落盘**（见文件头：分类归属不属于这个游戏的记录）
-                            store.setCategoryMembership(
-                                gameId: game.id, categoryId: pair.id, member: member)
-                        }
-                    ))
-                }
-            }
-            }
+            if categoriesOpen { GameClassificationEditor(gameID: game.id) }
         } header: {
-            headerRow("分类", "立刻生效，不需要点保存", isOpen: $categoriesOpen)
+            headerRow("分类", "自动归类，手动调整立刻保存", isOpen: $categoriesOpen)
         }
     }
 

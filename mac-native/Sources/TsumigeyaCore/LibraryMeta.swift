@@ -63,13 +63,18 @@ public enum LibraryMetaStore {
             return (LibraryMeta(), [:])
         }
 
+        return (decode(raw), raw)
+    }
+
+    static func decode(_ raw: [String: JSONValue]) -> LibraryMeta {
         var categories: CategoryDefs = [:]
         if let obj = raw["categories"]?.objectValue {
             for (id, value) in obj {
                 guard let def = value.objectValue,
                       let name = def["name"]?.stringValue else { continue }
                 categories[id] = CategoryDef(
-                    name: name, order: def["order"]?.intValue ?? 0)
+                    name: name, order: def["order"]?.intValue ?? 0,
+                    sourceWorkType: def["sourceWorkType"]?.stringValue)
             }
         }
 
@@ -82,7 +87,7 @@ public enum LibraryMetaStore {
             }
         }
 
-        return (LibraryMeta(categories: categories, assignments: assignments), raw)
+        return LibraryMeta(categories: categories, assignments: assignments)
     }
 
     /// 只保存分类（**保留其他所有顶层键**）。
@@ -108,7 +113,13 @@ public enum LibraryMetaStore {
         // 磁盘上的元数据可能在分类面板打开后刷新过，不能写回旧快照。
         let url = URL(fileURLWithPath: dataDir).appendingPathComponent(fileName)
         if !fileManager.fileExists(atPath: url.path) { updated = raw }
-        let oldCategories = updated["categories"]?.objectValue ?? [:]
+        updated = applying(meta, to: updated)
+
+        return JSONStore.save(JSONValue.object(updated), to: url, fileManager: fileManager)
+    }
+    static func applying(_ meta: LibraryMeta, to raw: [String: JSONValue]) -> [String: JSONValue] {
+        var raw = raw
+        let oldCategories = raw["categories"]?.objectValue ?? [:]
 
         // 分类定义
         var catObj: [String: JSONValue] = [:]
@@ -116,17 +127,19 @@ public enum LibraryMetaStore {
             var fields = oldCategories[id]?.objectValue ?? [:]
             fields["name"] = .string(def.name)
             fields["order"] = .int(def.order)
+            fields["sourceWorkType"] = def.sourceWorkType.map(JSONValue.string)
             catObj[id] = .object(fields)
         }
-        updated["categories"] = catObj.isEmpty ? .null : .object(catObj)
+        raw["categories"] = catObj.isEmpty ? .null : .object(catObj)
 
         // 归属
         var assignObj: [String: JSONValue] = [:]
         for (gameId, ids) in meta.assignments where !ids.isEmpty {
             assignObj[gameId] = .array(ids.map { .string($0) })
         }
-        updated["assignments"] = assignObj.isEmpty ? .null : .object(assignObj)
+        raw["assignments"] = assignObj.isEmpty ? .null : .object(assignObj)
 
-        return JSONStore.save(JSONValue.object(updated), to: url, fileManager: fileManager)
+        return raw
     }
+
 }

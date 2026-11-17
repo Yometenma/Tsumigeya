@@ -7,6 +7,7 @@ import TsumigeyaCore
 final class LibraryMetadataStore: ObservableObject {
     private(set) var dataDir = ""
     var currentGame: (String) -> GameRecord? = { _ in nil }
+    var didSave: (String, GameDlsiteMeta) -> Void = { _, _ in }
     var hidesTitles: () -> Bool = { false }
     private let injectedService: DLsiteService?
     private var metaTasks: [String: Task<Void, Never>] = [:]
@@ -143,12 +144,7 @@ final class LibraryMetadataStore: ObservableObject {
 
                 let meta = GameDlsiteMeta(
                     work: merged, editedFields: fields)
-                if let err = GameMetaStore.save(
-                    dataDir: dataDir, gameId: gameId, meta: meta) {
-                    metaError[gameId] = "保存元数据失败：\(err)"
-                    return
-                }
-                gameMeta[gameId] = meta
+                guard updateMeta(gameId: gameId, meta: meta) else { return }
                 metaNotice[gameId] = "作品信息已更新；手动修改的字段已保留。"
             case .failure(let error):
                 // ⚠️ 结构化错误 → 直接显示它的 message（每种错误说不同的话）
@@ -189,6 +185,7 @@ final class LibraryMetadataStore: ObservableObject {
             return false
         }
         gameMeta[gameId] = meta
+        didSave(gameId, meta)
         metaError.removeValue(forKey: gameId)
         return true
     }

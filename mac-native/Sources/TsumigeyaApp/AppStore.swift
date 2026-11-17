@@ -11,6 +11,7 @@ final class AppStore: ObservableObject {
     var translateAssistanceText: @Sendable (TranslationService, String) async throws -> String = { service, source in
         try await service.translate(source)
     }
+    let library = GameLibraryState()
     let metadata: LibraryMetadataStore
     let batchMetadata: BatchMetadataCoordinator
     private var featureSubscriptions = Set<AnyCancellable>()
@@ -21,6 +22,9 @@ final class AppStore: ObservableObject {
         batchMetadata = BatchMetadataCoordinator(metadata: metadata)
         metadata.currentGame = { [weak self] id in self?.game(id: id) }
         metadata.hidesTitles = { [weak self] in self?.privacy.hidesTitles ?? true }
+        metadata.didSave = { [weak self] _, _ in self?.library.metadataDidSave() }
+        library.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &featureSubscriptions)
         // ObservableObject 不会自动转发子对象变化，界面仍需收到更新。
         metadata.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &featureSubscriptions)
@@ -49,15 +53,18 @@ final class AppStore: ObservableObject {
 
     // MARK: - 已发布状态
 
-    @Published private(set) var games: [GameRecord] = []
+    var games: [GameRecord] { library.games }
     @Published private(set) var dataDir: String = ""
     @Published private(set) var isLoading = true
     /// 加载失败的原因（有值 = 界面该显示错误，而不是空白）。
-    @Published private(set) var loadError: String?
+    var loadError: String? { library.loadError }
     /// 数据目录降级警告（有值 = 该提示用户 —— 静默降级是错的）。
     @Published private(set) var dataDirWarning: DataDirResolution.DataDirWarning?
 
-    @Published var searchText: String = ""
+    var searchText: String {
+        get { library.searchText }
+        set { library.searchText = newValue }
+    }
 
     /// 正在运行的游戏（id → pid）。
     ///
@@ -71,8 +78,8 @@ final class AppStore: ObservableObject {
     @Published private(set) var lastLaunchFailure: [String: String] = [:]
 
     /// 分类数据（P4：从 library-meta.json 读）。
-    @Published private(set) var categories: CategoryDefs = [:]
-    @Published private(set) var assignments: CategoryAssignments = [:]
+    var categories: CategoryDefs { library.categories }
+    var assignments: CategoryAssignments { library.assignments }
 
     @Published var operationError: String?
     @Published var engineErrors: [String: String] = [:]
@@ -81,83 +88,13 @@ final class AppStore: ObservableObject {
 
     // MARK: - 派生
 
-    /// 一个分组（分类名 + 该组游戏）。
-    struct Group: Identifiable {
-        let id: String
-        let title: String
-        let games: [GameRecord]
-    }
-
-    /// 按分类分组的游戏列表。
-    ///
-    /// ⚠️ 三条必须守住的语义：
-    ///  ① **多归属**：一个游戏可以出现在**多个**分组里（与标签一致）
-    ///  ② **未归类放最后**，且**不能藏起来**（藏了用户以为游戏丢了）
-    ///  ③ 搜索/筛选后为空的组**不显示**（否则一堆空标题）
-    var groups: [Group] {
-        let filtered = filteredGames
-
-        // 分类顺序（按 order，相同 order 按 id —— 保证稳定）
-        let ordered = Categories.ordered(categories)
-
-        var result: [Group] = []
-
-        for (catId, def) in ordered {
-            let inCat = filtered.filter { game in
-                (assignments[game.id] ?? []).contains(catId)
-            }
-            if inCat.isEmpty { continue }
-            result.append(Group(id: catId, title: def.name, games: inCat))
-        }
-
-        // 未归类的：**没在任何分类里**的游戏
-        //
-        // ⚠️ 判据是「没有归属记录」而不是「不在任何已显示的分组里」——
-        //    否则「被搜索过滤掉的归类游戏」会被误算进未分类。
-        let unassigned = filtered.filter { game in
-            let ids = assignments[game.id] ?? []
-            // 完全没归属，或归属的分类都不存在（悬空引用）
-            return ids.isEmpty || ids.allSatisfy { categories[$0] == nil }
-        }
-        if !unassigned.isEmpty {
-            result.append(Group(id: "__unassigned", title: "未分类", games: unassigned))
-        }
-
-        // 如果既没分类也没未归类（比如全都归到已过滤掉的分类里）→ 兜底显示全部
-        if result.isEmpty && !filtered.isEmpty {
-            result.append(Group(id: "__all", title: "全部", games: filtered))
-        }
-        return result
-    }
-
-    /// 库页要显示的游戏（过滤后）。
-    ///
-    /// ⚠️ 判据**不要**写在 View 里（Electron 版踩过：画错不报错，只能靠单测钉）。
-    var filteredGames: [GameRecord] {
-        let metadata = searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? [:] : GameMetaStore.loadAll(dataDir: dataDir)
-        var result = LibraryFilter.apply(
-            games: games,
-            searchText: searchText,
-            onlyUnbound: false,
-            hasBinding: { !($0.gameArgs?.isEmpty ?? true) },
-            metadata: { self.gameMeta[$0.id]?.work ?? metadata[$0.id]?.work }
-        )
-        // ⚠️ **分类筛选**（P5 补上）。
-        //
-        //    用户 2026-11-06 报「没有地方创建分类」—— 本鱼加了创建入口之后，
-        //    还得让**筛选真的生效**，否则那个栏位仍然是个摆设。
-        if let activeCategory {
-            result = result.filter { game in
-                (assignments[game.id] ?? []).contains(activeCategory)
-            }
-        }
-        return result
-    }
+    typealias Group = GameLibraryState.Group
+    var groups: [Group] { library.groups }
+    var filteredGames: [GameRecord] { library.filteredGames }
 
     /// 按 id 查一个游戏。
     func game(id: String) -> GameRecord? {
-        games.first { $0.id == id }
+        library.game(id: id)
     }
 
     // MARK: - 加载
@@ -169,31 +106,13 @@ final class AppStore: ObservableObject {
         assistanceSessions.values.forEach { $0.invalidate() }
         assistanceSessions.removeAll()
         isLoading = true
-        loadError = nil
 
         let resolution = DataDir.resolve()
         dataDir = dataDirectory ?? resolution.path
         dataDirWarning = dataDirectory == nil ? resolution.warning : nil
         metadata.reset(dataDirectory: dataDir)
 
-        // ---- games.json ----
-        let url = URL(fileURLWithPath: dataDir).appendingPathComponent("games.json")
-        switch JSONStore.load(GameMap.self, from: url, quarantineCorrupt: false) {
-        case .missing:
-            // **正常状态**：首次运行还没有 games.json（不是错误）
-            games = []
-        case .corrupt(let failure):
-            // **故障**：文件存在但读不出。必须告诉用户
-            loadError = "无法读取游戏库：\(failure.reason)\n原件保留在：\(url.path)"
-            games = []
-        case .loaded(let map):
-            games = map.ordered
-        }
-
-        // ---- 分类（library-meta.json）----
-        let meta = LibraryMetaStore.load(dataDir: dataDir)
-        categories = meta.meta.categories
-        assignments = meta.meta.assignments
+        operationError = library.load(dataDirectory: dataDir)
 
         // ---- ⚠️ 设置（global-settings.json）**必须在启动时读** ----
         //
@@ -454,112 +373,37 @@ final class AppStore: ObservableObject {
         installedEngines = set
     }
 
-    /// 保存一个新游戏。
-    ///
-    /// - Returns: 是否成功。失败原因写在 `lastAddGameError`。
-    ///
-    /// ⚠️ **四处旁挂数据**（D18/D31 的取向）：
-    ///    新增时不涉及删除，所以只需要写 `games.json`。
-    ///    但**保存后要重新加载分类**（新游戏 id 可能影响归属视图）。
+    /// 持久化由游戏库负责；AppStore 只协调请求、会话和界面反馈。
     func addGame(title: String, folder: String, engine: String, entryPath: String? = nil) -> Bool {
-        lastAddGameError = nil
-
-        // 读当前 games.json（**不能用内存里的 games** —— 可能已被外部改动）
-        let url = URL(fileURLWithPath: dataDir).appendingPathComponent("games.json")
-        var map: GameMap
-        guard loadError == nil else {
-            lastAddGameError = "游戏库加载失败，请先处理读取错误再添加游戏。"
-            return false
-        }
-        switch JSONStore.load(GameMap.self, from: url, quarantineCorrupt: false) {
-        case .loaded(let loaded): map = loaded
-        case .missing: map = GameMap()
-        case .corrupt(let failure):
-            lastAddGameError = "无法读取游戏库，未写入任何游戏：\(failure.reason)"
-            return false
-        }
-
-        // 组装 draft
-        //
-        // ⚠️ `gamePath` 存的是**游戏目录下的入口占位**，不是目录本身 ——
-        //    这与 Electron 版一致（它存的是 `…/Game.exe` 这种）。
-        //    真正的启动路径由 `LaunchPlanner` 按引擎规则拼。
-        if let id = LibraryIntake.duplicateFolder(folder, in: map) {
-            lastAddGameError = "此目录已入库（游戏 \(id)）"
-            return false
-        }
-        let entry: String
-        if engine == "wine" {
-            switch WineRuntime.resolveEntry(folder: folder, selected: entryPath) {
-            case .success(let resolved): entry = resolved
-            case .failure(let error): lastAddGameError = error.message; return false
-            }
-        } else { entry = (folder as NSString).appendingPathComponent("Game.exe") }
-        let draft = GameRecord(
-            id: "", gameTitle: title, gamePath: entry, gameEngine: engine,
-            gameArgs: [:]   // 空 = 用 manifest 的缺省值（补缺省值在启动时做）
-        )
-
-        let result = GameLibrary.save(into: map, draft: draft)
-        switch result {
-        case .failure(let err):
-            lastAddGameError = err.message
-            return false
-        case .success(let saved):
-            if let writeError = JSONStore.save(saved.map, to: url) {
-                lastAddGameError = "写 games.json 失败：\(writeError)"
-                return false
-            }
-            // 重新加载（拿到排序后的新列表）
-            games = saved.map.ordered
-            return true
-        }
+        saveLibraryChange { try library.add(title: title, folder: folder, engine: engine, entryPath: entryPath) }
     }
 
-    /// 先清理旁挂数据，再释放编号；清理失败时保留游戏记录供重试。
     func deleteGame(id: String) {
+        operationError = nil
         refreshRunning()
         guard runningGames[id] == nil else {
             operationError = "游戏仍在运行，请先停止游戏再移除。"
             return
         }
-        let url = URL(fileURLWithPath: dataDir).appendingPathComponent("games.json")
-        guard case .loaded(let map) = JSONStore.load(
-            GameMap.self, from: url, quarantineCorrupt: false
-        ) else {
-            operationError = "无法读取游戏库，未移除游戏。"
-            return
-        }
-        guard map.games[id] != nil else { return }
-        assistanceSessions[id]?.pause()
-        if let error = GameMetaStore.removeGameData(dataDir: dataDir, gameId: id) {
-            operationError = "清理游戏关联数据失败：\(error)"
-            return
-        }
-        let statsURL = URL(fileURLWithPath: dataDir).appendingPathComponent("play-stats.json")
-        switch JSONStore.load([String: JSONValue].self, from: statsURL, quarantineCorrupt: false) {
-        case .corrupt(let failure):
-            operationError = "无法清理游玩记录：\(failure.reason)"
-            return
-        case .loaded(var stats):
-            stats.removeValue(forKey: id)
-            if let error = JSONStore.save(stats, to: statsURL) {
-                operationError = "保存游玩记录失败：\(error)"
-                return
-            }
-        case .missing: break
-        }
-        let updated = GameLibrary.remove(from: map, id: id)
-        if let error = JSONStore.save(updated, to: url) {
-            operationError = "移除游戏失败：\(error)"
-            return
-        }
+        guard let expected = game(id: id) else { return }
+        // 先撤销旧请求和会话；即使之后只完成部分清理，也不能让旧任务把数据写回来。
+        invalidateGameFeatures(id: id)
+        let report = library.remove(expected)
+        operationError = report.message
+        if report.map != nil { lastLaunchFailure.removeValue(forKey: id) }
+    }
+
+    private func invalidateGameFeatures(id: String) {
+        batchMetadata.invalidateGame(gameId: id)
         metadata.forget(gameId: id)
         saveSessions.removeValue(forKey: id)?.invalidate()
-        assignments.removeValue(forKey: id)
         assistanceSessions.removeValue(forKey: id)?.invalidate()
-        games = updated.ordered
-        lastLaunchFailure.removeValue(forKey: id)
+    }
+
+    private func saveLibraryChange(_ operation: () throws -> Void) -> Bool {
+        lastAddGameError = nil
+        do { try operation(); return true }
+        catch { lastAddGameError = "\(error)"; return false }
     }
 
     // MARK: - 引擎管理（P5 引擎页）
@@ -737,127 +581,34 @@ final class AppStore: ObservableObject {
         return NwjsVersion.availableVersions(dataDir: dataDir)
     }
 
-    /// 设置某个游戏的手动存档目录。
-    ///
-    /// 只保存用户明确选择的目录，不会移动或创建存档文件。清除时传 `nil`，
-    /// 之后恢复引擎的自动探测。目录必须已经存在且可读取；运行中的游戏不能修改。
+    /// 目录修改不移动文件；隐私和运行状态由应用层检查。
     func setSaveDirectoryOverride(gameId: String, path: String?) -> Bool {
         lastAddGameError = nil
         refreshRunning()
-
-        guard !privacy.hidesTitles else {
-            lastAddGameError = "请先关闭标题隐藏。"
-            return false
-        }
+        guard !privacy.hidesTitles else { lastAddGameError = "请先关闭标题隐藏。"; return false }
         guard runningGames[gameId] == nil else {
-            lastAddGameError = "游戏运行中，不能更改存档目录。"
-            return false
+            lastAddGameError = "游戏运行中，不能更改存档目录。"; return false
         }
+        return saveLibraryChange { try library.setSaveDirectory(gameID: gameId, path: path) }
+    }
 
-        let url = URL(fileURLWithPath: dataDir).appendingPathComponent("games.json")
-        guard case .loaded(let map) = JSONStore.load(
-            GameMap.self, from: url, quarantineCorrupt: false
-        ) else {
-            lastAddGameError = "无法读取游戏库，未更改存档目录。"
-            return false
-        }
-        guard map.games[gameId] != nil else {
-            lastAddGameError = "游戏 id \(gameId) 不存在。"
-            return false
-        }
-
-        let normalizedPath: String?
-        if let path {
-            let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmed.isEmpty {
-                normalizedPath = nil
-            } else {
-                let candidate = URL(fileURLWithPath: trimmed).standardizedFileURL.path
-                var isDirectory: ObjCBool = false
-                guard FileManager.default.fileExists(atPath: candidate, isDirectory: &isDirectory),
-                      isDirectory.boolValue,
-                      FileManager.default.isReadableFile(atPath: candidate) else {
-                    lastAddGameError = "存档目录不存在或无法读取：\(candidate)"
-                    return false
-                }
-                normalizedPath = candidate
-            }
-        } else {
-            normalizedPath = nil
-        }
-
-        let result = GameLibrary.settingSaveDirectory(in: map, gameId: gameId, directory: normalizedPath)
-        guard case .success(let updated) = result else {
-            if case .failure(let error) = result { lastAddGameError = error.message }
-            return false
-        }
-        if let writeError = JSONStore.save(updated, to: url) {
-            lastAddGameError = "写 games.json 失败：\(writeError)"
-            return false
-        }
-
-        games = updated.ordered
+    func updateGame(id: String, title: String, engine: String, gameArgs: [String: JSONValue]) -> Bool {
+        guard saveLibraryChange({ try library.update(id: id, title: title, engine: engine, gameArgs: gameArgs) }) else { return false }
+        invalidateGameFeatures(id: id)
+        manifestCache.removeAll()
         return true
     }
-    /// 更新一个游戏（**全页一个保存**，U8 的核心）。
-    ///
-    /// - Returns: 是否成功。失败原因写在 `lastAddGameError`。
-    ///
-    /// ⚠️ **只改传进来的三个字段**：标题 / 引擎 / 参数。
-    ///    路径不在其中 —— 改路径等于「这游戏搬走了」，该重新添加（见 GameEditView 的注释）。
-    ///
-    /// ⚠️ **未知字段必须原样保留**（D10）：`GameLibrary.save` 里有继承逻辑，
-    ///    但这里要保证传进去的 draft 不把 `unknownFields` 清空
-    ///    （否则用户从旧版带来的字段会消失）。
-    func updateGame(
-        id: String, title: String, engine: String, gameArgs: [String: JSONValue]
-    ) -> Bool {
-        lastAddGameError = nil
 
-        let url = URL(fileURLWithPath: dataDir).appendingPathComponent("games.json")
-        guard case .loaded(var map) = JSONStore.load(GameMap.self, from: url) else {
-            lastAddGameError = "读不到 games.json"
-            return false
-        }
-        guard let existing = map.games[id] else {
-            lastAddGameError = "游戏 id \(id) 不存在"
-            return false
-        }
-
-        // 组装新记录（保留不在表单里的字段）
-        var draft = existing
-        draft.gameTitle = title
-        draft.gameEngine = engine
-        draft.gameArgs = gameArgs
-        // unknownFields 原样保留（不显式设，draft 是从 existing 拷的，已经带着）
-
-        let result = GameLibrary.save(into: map, draft: draft, id: id)
-        switch result {
-        case .failure(let err):
-            lastAddGameError = err.message
-            return false
-        case .success(let saved):
-            if let writeError = JSONStore.save(saved.map, to: url) {
-                lastAddGameError = "写 games.json 失败：\(writeError)"
-                return false
-            }
-            map = saved.map
-            games = map.ordered
-            // ⚠️ manifest 缓存要清（引擎可能改了）
-            manifestCache.removeAll()
-            return true
-        }
+    func setCategoryMembership(gameId: String, categoryId: String, member: Bool) {
+        guard !privacy.hidesTitles else { operationError = "请先关闭标题隐藏。"; return }
+        guard game(id: gameId) != nil else { operationError = "游戏已移除。"; return }
+        _ = changeClassification(.membership(gameID: gameId, categoryID: categoryId, member: member))
     }
 
-    /// 设置分类归属（**立刻落盘**）。
-    ///
-    /// ⚠️ 不属于「这个游戏的记录」，它在 library-meta.json 的 assignments 里。
-    ///    攒着等保存会让「取消编辑」时它已经被改了（见 GameEditView 的文件头）。
-    func setCategoryMembership(gameId: String, categoryId: String, member: Bool) {
-        let updated = Categories.setMembership(
-            assignments, gameId: gameId, categoryId: categoryId, member: member)
-        guard persistCategories(categories: categories, assignments: updated) else { return }
-        assignments = updated
+    func restoreAutomaticClassification(gameId: String) {
+        guard !privacy.hidesTitles else { operationError = "请先关闭标题隐藏。"; return }
+        guard game(id: gameId) != nil else { operationError = "游戏已移除。"; return }
+        _ = changeClassification(.restoreAutomatic(gameID: gameId))
     }
 
     // MARK: - 删除确认（P5 补齐）
@@ -952,31 +703,10 @@ final class AppStore: ObservableObject {
                                               isDirectory: &isDirectory) && isDirectory.boolValue
     }
 
-    private func intakeMap() throws -> GameMap {
-        guard loadError == nil else { throw LibraryIntake.Failure("游戏库加载失败，请先处理读取错误。") }
-        let url = URL(fileURLWithPath: dataDir).appendingPathComponent("games.json")
-        switch JSONStore.load(GameMap.self, from: url, quarantineCorrupt: false) {
-        case .loaded(let map): return map
-        case .missing: return GameMap()
-        case .corrupt(let failure): throw LibraryIntake.Failure("游戏库损坏，未写入：\(failure.reason)")
-        }
-    }
-
-    private func saveIntake(_ map: GameMap) throws {
-        let url = URL(fileURLWithPath: dataDir).appendingPathComponent("games.json")
-        if let error = JSONStore.save(map, to: url) {
-            throw LibraryIntake.Failure("保存游戏库失败，未完成操作：\(error)")
-        }
-        games = map.ordered
-    }
-
     func addBatch(_ candidates: [LibraryIntake.Candidate]) -> Bool {
         lastAddGameError = nil
         guard !privacy.hidesTitles else { lastAddGameError = "请先关闭标题隐藏。"; return false }
-        do {
-            try saveIntake(LibraryIntake.adding(candidates, to: intakeMap()))
-            return true
-        } catch { lastAddGameError = "\(error)"; return false }
+        return saveLibraryChange { try library.addBatch(candidates) }
     }
 
     func relocateGame(_ expected: GameRecord, folder: String) -> Bool {
@@ -986,19 +716,19 @@ final class AppStore: ObservableObject {
         guard runningGames[expected.id] == nil else {
             lastAddGameError = "游戏运行中，不能更改路径。"; return false
         }
-        do {
-            try saveIntake(LibraryIntake.relocating(expected, to: folder, in: intakeMap()))
-            metadata.forget(gameId: expected.id)
-            saveSessions.removeValue(forKey: expected.id)?.invalidate()
-            lastLaunchFailure.removeValue(forKey: expected.id)
-            return true
-        } catch { lastAddGameError = "\(error)"; return false }
+        guard saveLibraryChange({ try library.relocate(expected, folder: folder) }) else { return false }
+        invalidateGameFeatures(id: expected.id)
+        lastLaunchFailure.removeValue(forKey: expected.id)
+        return true
     }
 
     // MARK: - 分类操作
 
     /// 当前筛选的分类（`nil` = 全部）。
-    @Published var activeCategory: String?
+    var activeCategory: String? {
+        get { library.activeCategory }
+        set { library.activeCategory = newValue }
+    }
 
     /// 是否在新建分类。
     @Published var isCreatingCategory = false
@@ -1031,44 +761,22 @@ final class AppStore: ObservableObject {
         if categories[pair.id] == nil && activeCategory == pair.id { activeCategory = nil }
     }
 
-    /// 保存成功后才发布状态，避免用户重开应用时发现改动丢失。
-    private func persistCategories(
-        categories: CategoryDefs, assignments: CategoryAssignments
-    ) -> Bool {
-        let loaded = LibraryMetaStore.load(dataDir: dataDir)
-        if let error = LibraryMetaStore.saveCategories(
-            LibraryMeta(categories: categories, assignments: assignments),
-            dataDir: dataDir, raw: loaded.raw
-        ) {
-            operationError = "保存分类失败：\(error)"
-            return false
-        }
-        return true
+    private func changeClassification(_ change: LibraryClassification.Change) -> Bool {
+        operationError = nil
+        do { try library.changeClassification(change); return true }
+        catch { operationError = "\(error)"; return false }
     }
 
-    /// 新建分类。
     func createCategory(name: String) -> Bool {
-        guard let result = Categories.create(categories, name: name) else { return false }
-        guard persistCategories(categories: result.defs, assignments: assignments) else { return false }
-        categories = result.defs
-        return true
+        changeClassification(.create(name: name, gameIDs: games.map(\.id)))
     }
 
-    /// 重命名分类。
     func renameCategory(id: String, newName: String) -> Bool {
-        guard let updated = Categories.rename(categories, id: id, newName: newName) else {
-            return false
-        }
-        guard persistCategories(categories: updated, assignments: assignments) else { return false }
-        categories = updated
-        return true
+        changeClassification(.rename(id: id, name: newName))
     }
 
-    /// 删分类（**同时清掉所有归属**）。
     func deleteCategory(id: String) {
-        let result = Categories.remove(categories, assignments: assignments, id: id)
-        guard persistCategories(categories: result.defs, assignments: result.assignments) else { return }
-        categories = result.defs
-        assignments = result.assignments
+        _ = changeClassification(.delete(id: id))
     }
+
 }

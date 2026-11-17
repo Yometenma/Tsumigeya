@@ -653,7 +653,7 @@ private struct AppPresentations: ViewModifier {
             }
         } message: { pair in
             Text("分类「\(pair.name)」会被删除。\n\n"
-                 + "**游戏不会被删除**，只是它们不再属于这个分类。")
+                 + "**游戏不会被删除**，只是它们不再属于这个分类。作品类型分类删除后不会在刷新资料时自动重建；新建同名类型分类可重新启用。")
         }
     }
 }
