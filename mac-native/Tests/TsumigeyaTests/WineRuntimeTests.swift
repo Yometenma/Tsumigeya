@@ -33,6 +33,28 @@ struct WineRuntimeTests {
         #expect(!EngineRegistry.all.contains { ["unity", "rpgbakin", "wolfrpg"].contains($0.folder) })
     }
 
+    @Test("选择普通文件也能识别 Wine；唯一入口自动填写，多个入口不猜选")
+    func importingOrdinaryFile() throws {
+        let folder = try fixture(); defer { try? FileManager.default.removeItem(at: folder) }
+        let readme = folder.appendingPathComponent("说明.txt")
+        let exe = folder.appendingPathComponent("启动.exe")
+        try Data("说明".utf8).write(to: readme)
+        #expect(GameImport.inspect(selectedPath: readme.path).engine == nil)
+        try wineTestPE().write(to: exe)
+        let single = GameImport.inspect(selectedPath: readme.path)
+        #expect(single.engine?.folder == "wine")
+        #expect(single.resolvedFolder == folder.path)
+        #expect(single.entryPath == exe.path)
+        try wineTestPE().write(to: folder.appendingPathComponent("配置.exe"))
+        let multiple = GameImport.inspect(selectedPath: readme.path)
+        #expect(multiple.engine?.folder == "wine")
+        #expect(multiple.entryPath.isEmpty)
+        #expect(GameImport.inspect(selectedPath: exe.path).entryPath == exe.path)
+        try Data().write(to: folder.appendingPathComponent("nw.dll"))
+        try Data().write(to: folder.appendingPathComponent("package.json"))
+        #expect(GameImport.inspect(selectedPath: readme.path).engine?.folder == "nwjs")
+    }
+
     @Test("多个入口拒绝猜测，明确指定时使用参数数组和正确工作目录")
     func plans() throws {
         let folder = try fixture(); defer { try? FileManager.default.removeItem(at: folder) }

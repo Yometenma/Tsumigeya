@@ -149,8 +149,8 @@ public enum GameImport {
         /// ⚠️ 为什么不是「用户选的那个文件」：
         ///    用户可能选的是 `readme.txt`，而真正的入口是
         ///    `www/index.html` 或游戏根里的某个 exe。
-        ///    这里只保证「是游戏目录下的一个文件」，不追求精确到可执行文件
-        ///    （真正启动时由 `LaunchPlanner` 按引擎规则拼）。
+        ///    专用运行时由 LaunchPlanner 按引擎规则拼；Wine 保留明确或唯一的 EXE，
+        ///    有多个候选且未明确选择时留空，由添加界面要求确认。
         public let entryPath: String
     }
 
@@ -213,12 +213,20 @@ public enum GameImport {
             folder = parent.isEmpty || parent == base ? base : parent
         }
 
+        // 与专用运行时一样允许选择说明等普通文件；多个 EXE 仍由用户确认，不猜入口。
+        let windowsEntries = engine == nil || engine?.folder == "wine" ? WineRuntime.executables(in: folder) : []
+        if engine == nil, !windowsEntries.isEmpty { engine = EngineRegistry.find(folder: "wine") }
+        let entry: String
+        if engine?.folder == "wine" {
+            entry = WineRuntime.isExecutable(base) ? base : windowsEntries.count == 1 ? windowsEntries[0] : ""
+        } else { entry = (folder as NSString).appendingPathComponent("Game.exe") }
+
         return Outcome(
             selectedPath: selectedPath,
             resolvedFolder: folder,
             ascendLevel: level,
             engine: engine,
-            entryPath: engine?.folder == "wine" && WineRuntime.isExecutable(base) ? base : (folder as NSString).appendingPathComponent("Game.exe")
+            entryPath: entry
         )
     }
 }
