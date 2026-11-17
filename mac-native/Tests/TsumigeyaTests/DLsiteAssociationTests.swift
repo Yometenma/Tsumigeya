@@ -78,6 +78,63 @@ struct DLsiteAssociationTests {
         #expect(fixture.store.game(id: "1")?.gameTitle == "本地中文名")
     }
 
+    @Test("统一名称查找合并成人向和全年龄候选，选择后仍需确认")
+    func unifiedSearchRequiresConfirmation() async throws {
+        let adultHit = """
+        <title>検索結果</title><div data-list_item_product_id="RJ123456"><dd class="work_name"><a title="成人作品">成人作品</a></dd></div>
+        """
+        let generalHit = adultHit.replacingOccurrences(of: "RJ123456", with: "RJ654321")
+            .replacingOccurrences(of: "成人作品", with: "全年龄作品")
+        let transport = DLsiteSequenceTransport([(200, adultHit), (200, generalHit), (200, page("RJ654321"))])
+        let fixture = try ScrapingFixture(transport: transport)
+        defer { fixture.cleanup() }
+        await fixture.load()
+        fixture.store.searchMeta(gameId: "1", keyword: "作品")
+        await fixture.store.metadata.waitForSearch(gameId: "1")
+        let hits = try #require(fixture.store.searchHits["1"])
+        #expect(hits.map(\.rj) == ["RJ123456", "RJ654321"])
+        #expect(hits.map(\.category) == ["maniax", "home"])
+        #expect(fixture.store.metaPreviews["1"] == nil)
+        #expect(GameMetaStore.load(dataDir: fixture.directory.path, gameId: "1") == nil)
+
+        fixture.store.selectSearchHit(gameId: "1", rj: "RJ654321")
+        await fixture.store.metadata.waitForFetch(gameId: "1")
+        let urls = await transport.urls
+        #expect(urls.count == 3)
+        #expect(urls.last == DLsiteService.pageURL(category: "home", rj: "RJ654321"))
+        #expect(fixture.store.metaPreviews["1"]?.category == "home")
+        #expect(GameMetaStore.load(dataDir: fixture.directory.path, gameId: "1") == nil)
+        #expect(fixture.store.applyMetaPreview(gameId: "1"))
+        #expect(GameMetaStore.load(dataDir: fixture.directory.path, gameId: "1")?.work.category == "home")
+    }
+
+    @Test("裸 RJ 自动定位分区，确认后保留年龄分级", arguments: ["maniax", "home", "pro"])
+    func unifiedRJPreservesClassification(category: String) async throws {
+        let categories = ["maniax", "home", "pro"]
+        let index = try #require(categories.firstIndex(of: category))
+        let html = """
+        <script>var contents = {"detail":[{"id":"RJ123456","name":"作品","category":"\(category)"}]};</script>
+        """
+        let responses = Array(repeating: (404, ""), count: index) + [(200, html)]
+        let transport = DLsiteSequenceTransport(responses)
+        let fixture = try ScrapingFixture(transport: transport)
+        defer { fixture.cleanup() }
+        await fixture.load()
+        fixture.store.fetchMeta(gameId: "1", rj: "RJ123456", preview: true)
+        await fixture.store.metadata.waitForFetch(gameId: "1")
+        let preview = try #require(fixture.store.metaPreviews["1"])
+        #expect(preview.category == category)
+        #expect(preview.ageRating == (category == "home" ? "general" : "r18"))
+        #expect(GameMetaStore.load(dataDir: fixture.directory.path, gameId: "1") == nil)
+        let urls = await transport.urls
+        #expect(urls == categories.prefix(index + 1).map { DLsiteService.pageURL(category: $0, rj: "RJ123456") })
+        #expect(fixture.store.applyMetaPreview(gameId: "1"))
+        let saved = try #require(GameMetaStore.load(dataDir: fixture.directory.path, gameId: "1"))
+        #expect(saved.work.category == preview.category)
+        #expect(saved.work.ageRating == preview.ageRating)
+        #expect(fixture.store.game(id: "1")?.gameTitle == "本地中文名")
+    }
+
     @Test("同作品刷新保留手改，换作品不混入旧字段", arguments: ["RJ123456", "RJ654321"])
     func mergePolicy(target: String) async throws {
         let fixture = try ScrapingFixture(transport: FakeTransport(body: page(target)))

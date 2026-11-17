@@ -5,7 +5,6 @@ struct ManualRJSheet: View {
     @EnvironmentObject private var store: AppStore
     let gameId: String
     @State private var text = ""
-    @State private var category = ""
     @State private var inputError: String?
     @FocusState private var focused: Bool
 
@@ -43,7 +42,7 @@ struct ManualRJSheet: View {
 
     private var searchContent: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("输入作品名、RJ 编号或 DLsite 作品链接；搜索不会修改游戏名称。")
+            Text("输入作品名、RJ 编号或 DLsite 作品链接，自动查找成人向与全年龄作品；搜索不会修改游戏名称。")
                 .font(.callout).foregroundStyle(.secondary)
             HStack {
                 TextField("作品名 / RJ 编号 / 作品链接", text: $text)
@@ -52,11 +51,6 @@ struct ManualRJSheet: View {
                 Button("查找") { lookup() }.buttonStyle(.borderedProminent)
                     .disabled(busy || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
-            Picker("查找范围", selection: $category) {
-                Text("自动（成人向与一般向）").tag("")
-                Text("成人向同人").tag("maniax")
-                Text("一般向").tag("home")
-            }.pickerStyle(.menu).disabled(busy)
             if busy {
                 HStack {
                     ProgressView().controlSize(.small)
@@ -129,11 +123,11 @@ struct ManualRJSheet: View {
         let input = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if let reference = DlsiteLookup.workReference(input) {
             store.fetchMeta(gameId: gameId, rj: reference.rj,
-                            category: reference.category ?? (category.isEmpty ? nil : category), preview: true)
+                            category: reference.category, preview: true)
         } else if input.contains("://") || input.range(of: #"(?i)^rj[-_\s]*\d"#, options: .regularExpression) != nil {
             inputError = "请输入有效的 RJ 编号、DLsite 作品链接，或改用作品名搜索。"
         } else if !input.isEmpty {
-            store.searchMeta(gameId: gameId, keyword: input, category: category.isEmpty ? nil : category)
+            store.searchMeta(gameId: gameId, keyword: input)
         }
     }
 }
