@@ -57,7 +57,7 @@ struct LaunchDiagnosticsView: View {
     private var header: some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             Image(systemName: "stethoscope")
-                .foregroundStyle(.indigo)
+                .foregroundStyle(Color.tsumigeyaAccent)
             Text("启动诊断")
                 .font(.title2.weight(.semibold))
             Text(store.privacy.hidesTitles ? "游戏 \(game.id)" : game.gameTitle)
@@ -144,7 +144,7 @@ struct LaunchDiagnosticsView: View {
         .textSelection(.enabled)
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.indigo.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+        .background(Color.tsumigeyaAccent.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
     }
 
     private func icon(for level: LaunchDiagnosticLevel) -> String {

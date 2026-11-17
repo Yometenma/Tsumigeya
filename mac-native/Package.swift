@@ -25,7 +25,8 @@ let package = Package(
         .executableTarget(
             name: "TsumigeyaApp",
             dependencies: ["TsumigeyaCore"],
-            path: "Sources/TsumigeyaApp"
+            path: "Sources/TsumigeyaApp",
+            resources: [.process("Resources")]
         ),
         .testTarget(
             name: "TsumigeyaTests",

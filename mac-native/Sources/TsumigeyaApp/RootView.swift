@@ -1,5 +1,6 @@
 // 游戏库采用 macOS 原生侧边栏：分类在左侧，详情在右侧，空选择时只展示欢迎页。
 import SwiftUI
+import AppKit
 import TsumigeyaCore
 
 struct RootView: View {
@@ -46,7 +47,7 @@ struct RootView: View {
         }
         .frame(minWidth: 980, maxWidth: .infinity, minHeight: 660, maxHeight: .infinity)
         .background(Color(nsColor: .windowBackgroundColor))
-        .tint(.indigo)
+        .tint(Color.tsumigeyaAccent)
         .task {
             guard loadsOnAppear else { return }
             await store.load()
@@ -182,7 +183,7 @@ struct RootView: View {
             .padding(8)
         }
         .frame(width: 248)
-        .background(Color(nsColor: .underPageBackgroundColor))
+        .background(Color(nsColor: .controlBackgroundColor))
     }
 
     private var libraryMenu: some View {
@@ -577,29 +578,69 @@ struct WelcomeView: View {
     @EnvironmentObject private var store: AppStore
 
     var body: some View {
-        VStack(spacing: 18) {
-            Image(systemName: "sparkles")
-                .font(.system(size: 26, weight: .light))
-                .foregroundStyle(.indigo.opacity(0.78))
-            Text("把喜欢的故事，留在这里。")
-                .font(.system(size: 24, weight: .semibold))
-            if store.games.isEmpty {
-                Button("添加游戏") { store.openAddGame() }
+        ZStack(alignment: .leading) {
+            welcomeArtwork
+
+            LinearGradient(
+                colors: [Color(nsColor: .windowBackgroundColor).opacity(0.96), Color(nsColor: .windowBackgroundColor).opacity(0.78), .clear],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+
+            VStack(alignment: .leading, spacing: 16) {
+                Text("Tsumigeya")
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .tracking(2.4)
+                    .foregroundStyle(Color.tsumigeyaAccent.opacity(0.78))
+                    .textCase(.uppercase)
+
+                Text("把喜欢的故事，留在这里。")
+                    .font(.system(size: 30, weight: .bold, design: .rounded))
+                    .foregroundStyle(Color(nsColor: .labelColor))
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text("从一部作品开始，慢慢整理成属于你的游戏库。")
+                    .font(.system(size: 14, weight: .regular))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if store.games.isEmpty {
+                    Button {
+                        store.openAddGame()
+                    } label: {
+                        Label("添加第一部作品", systemImage: "plus")
+                            .font(.system(size: 13, weight: .semibold))
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 9)
+                    }
                     .buttonStyle(.borderedProminent)
+                    .tint(Color.tsumigeyaAccent)
                     .controlSize(.large)
+                }
             }
+            .frame(maxWidth: 360, alignment: .leading)
+            .padding(.leading, 42)
+            .padding(.vertical, 36)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(
-            LinearGradient(
-                colors: [Color(nsColor: .textBackgroundColor), Color.indigo.opacity(0.06)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        )
+        .background(Color(nsColor: .textBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .padding(22)
+    }
+    @ViewBuilder
+    private var welcomeArtwork: some View {
+        if let url = Bundle.module.url(forResource: "welcome-wide", withExtension: "png"),
+           let image = NSImage(contentsOf: url) {
+            Image(nsImage: image)
+                .resizable()
+                .scaledToFill()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .clipped()
+        } else {
+            Color.clear
+        }
     }
 }
-
 /// 游戏 id 是字符串，而模态表单需要稳定的 Identifiable 目标。
 struct GameSheetTarget: Identifiable {
     let id: String

@@ -20,6 +20,7 @@
 //    理由：识别是基于文件特征的推测，可能错（比如 Unity 那种）。
 //    让用户确认一次，错了能改；自动保存就只能在启动失败时才发现。
 import SwiftUI
+import AppKit
 import TsumigeyaCore
 
 struct AddGameWizard: View {
@@ -41,25 +42,74 @@ struct AddGameWizard: View {
     @State private var errorMessage: String?
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
+        HStack(spacing: 0) {
+            mascotAside
             Divider()
-            if store.privacy.hidesTitles {
-                Text("添加内容已隐藏，关闭标题隐藏后可继续。")
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                Button("取消") { store.closeAddGame() }
-                    .keyboardShortcut(.cancelAction)
-                    .padding()
-            } else {
-                content
+            VStack(spacing: 0) {
+                header
                 Divider()
-                footer
+                if store.privacy.hidesTitles {
+                    Text("添加内容已隐藏，关闭标题隐藏后可继续。")
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    Button("取消") { store.closeAddGame() }
+                        .keyboardShortcut(.cancelAction)
+                        .padding()
+                } else {
+                    content
+                    Divider()
+                    footer
+                }
             }
         }
-        .frame(width: 560, height: 460)
+        .frame(width: 820, height: 560)
+        .background(Color(nsColor: .windowBackgroundColor))
     }
 
+    @ViewBuilder
+    private var assistantArtwork: some View {
+        if let url = Bundle.module.url(forResource: "assistant-scan", withExtension: "png"),
+           let image = NSImage(contentsOf: url) {
+            Image(nsImage: image)
+                .resizable()
+                .scaledToFill()
+                .frame(width: 220, height: 300)
+                .clipped()
+        } else {
+            Color.clear.frame(width: 220, height: 300)
+        }
+    }
+
+    private var mascotAside: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            assistantArtwork
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(Color.white.opacity(0.64), lineWidth: 1)
+                )
+                .shadow(color: Color.tsumigeyaAccent.opacity(0.12), radius: 18, y: 8)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("添加游戏助手")
+                    .font(.system(size: 17, weight: .semibold, design: .rounded))
+                Text("选一个游戏文件，剩下的交给我。")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(18)
+        .frame(width: 256, alignment: .topLeading)
+        .frame(maxHeight: .infinity, alignment: .topLeading)
+        .background(
+            LinearGradient(
+                colors: [Color.tsumigeyaAccent.opacity(0.12), Color.pink.opacity(0.06)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
+    }
     // MARK: - 头部（步骤指示）
 
     private var header: some View {

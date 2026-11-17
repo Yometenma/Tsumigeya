@@ -468,11 +468,18 @@ final class AppStore: ObservableObject {
 
     func displayTitle(for game: GameRecord) -> String { privacy.title(for: game) }
 
-    func artworkURL(for game: GameRecord) -> URL? {
+    /// 返回作品图片。列表和卡片使用主封面；详情 Hero 优先使用刮削到的首张展示图。
+    func artworkURL(for game: GameRecord, preferPreview: Bool = false) -> URL? {
         guard !privacy.isEnabled else { return nil }
         let work = meta(for: game.id)?.work
-        // 详情页优先使用 DLsite 封面；封面缺失时退回已抓取的首张预览图，绝不使用看板娘或占位素材。
-        return privacy.coverURL(work?.coverUrl ?? work?.sampleImageURLs.first)
+        let address: String?
+        if preferPreview {
+            address = work?.sampleImageURLs.first ?? work?.coverUrl
+        } else {
+            address = work?.coverUrl ?? work?.sampleImageURLs.first
+        }
+        // 只使用刮削到的真实作品图片，绝不使用看板娘或占位素材。
+        return privacy.coverURL(address)
     }
 
     func togglePrivacyMode() {

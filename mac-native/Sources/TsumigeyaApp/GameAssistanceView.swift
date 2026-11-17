@@ -86,8 +86,8 @@ private struct AssistanceContent: View {
     private var installation: some View {
         GroupBox("游戏接入") {
             VStack(alignment: .leading, spacing: 12) {
-                if session.project?.module.translation != nil { Toggle("启用游戏文字翻译", isOn: $session.options.translation) }
-                if session.project?.module.cheats != nil { Toggle(session.project?.usesFileBridge == true ? "启用游戏状态编辑" : "启用游戏内作弊面板", isOn: $session.options.cheats) }
+                if mode != .assistance, session.project?.module.translation != nil { Toggle("启用游戏文字翻译", isOn: $session.options.translation) }
+                if mode != .translation, session.project?.module.cheats != nil { Toggle(session.project?.usesFileBridge == true ? "启用游戏状态编辑" : "启用游戏内作弊面板", isOn: $session.options.cheats) }
                 Text(session.project?.module.installationNote ?? "").font(.callout).foregroundStyle(.secondary)
                 HStack {
                     Button("应用到游戏") { session.apply() }.buttonStyle(.borderedProminent)

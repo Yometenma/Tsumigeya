@@ -5,6 +5,7 @@ import TsumigeyaCore
 struct GameArtwork: View {
     let game: GameRecord
     var contentMode: ContentMode = .fit
+    var preferPreview = false
     @EnvironmentObject private var store: AppStore
     @State private var imageAttempt = 0
 
@@ -13,7 +14,7 @@ struct GameArtwork: View {
             ZStack {
                 placeholder
                 // 隐私模式移除图片子树；晚到的下载结果不能重新显示原图。
-                if let url = store.artworkURL(for: game) {
+                if let url = store.artworkURL(for: game, preferPreview: preferPreview) {
                     AsyncImage(url: url) { phase in
                         switch phase {
                         case .success(let image):
@@ -38,7 +39,7 @@ struct GameArtwork: View {
     private var placeholder: some View {
         ZStack {
             LinearGradient(
-                colors: [.indigo.opacity(0.22), .purple.opacity(0.08)],
+                colors: [Color.tsumigeyaAccent.opacity(0.22), Color.tsumigeyaAccentSoft.opacity(0.08)],
                 startPoint: .topLeading, endPoint: .bottomTrailing)
             Image(systemName: store.privacy.isEnabled ? "eye.slash" : "gamecontroller")
                 .font(.system(size: 28, weight: .light))

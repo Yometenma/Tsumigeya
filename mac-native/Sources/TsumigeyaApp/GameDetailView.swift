@@ -69,7 +69,7 @@ struct GameDetailView: View {
                 }
             }
         }
-        .background(Color(nsColor: .textBackgroundColor))
+        .background(Color(nsColor: .windowBackgroundColor))
         .sheet(isPresented: $showsDiagnostics) {
             LaunchDiagnosticsView(game: game, onManageEngines: onManageEngines)
                 .environmentObject(store)
@@ -80,8 +80,8 @@ struct GameDetailView: View {
         let work = store.meta(for: game.id)?.work
         let tags = Array((work?.tags ?? []).prefix(3))
         return ZStack(alignment: .bottomLeading) {
-            GameArtwork(game: game, contentMode: .fill)
-                .frame(maxWidth: .infinity, minHeight: 250, maxHeight: 280)
+            GameArtwork(game: game, contentMode: .fit, preferPreview: true)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .overlay(
                     LinearGradient(
                         colors: [Color.black.opacity(0.82), Color.black.opacity(0.38), .clear],
@@ -117,6 +117,8 @@ struct GameDetailView: View {
             }
             .padding(28)
         }
+        // DLsite 展示图通常是宽幅图；用 16:9 保留原构图，避免之前 3:1 容器把人物和文字裁掉。
+        .aspectRatio(16 / 9, contentMode: .fit)
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .padding(.horizontal, 24)
         .padding(.top, 24)
@@ -298,7 +300,7 @@ struct GameDetailView: View {
                         .frame(minWidth: 108)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 11)
-                        .background(isRunning ? Color.red : Color.indigo,
+                        .background(isRunning ? Color.red : Color.tsumigeyaAccent,
                                     in: RoundedRectangle(cornerRadius: 9))
                         .opacity(isStopping ? 0.55 : 1)
                 }
