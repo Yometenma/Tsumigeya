@@ -51,7 +51,7 @@ struct LiveAssistanceView: View {
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(session.project?.engine == .rgss ? "通过启动器进入游戏后，在这里修改金钱、物品、角色生命／魔力／等级、变量和开关。" : "进入游戏后，在这里搜索和编辑简单变量。支持数字、布尔值和短文字；不执行任意脚本，也不修改复杂对象。")
+            Text(session.project?.module.cheatInstructions ?? "")
             Text("锁定和搜索只在本次运行有效；新游戏／读档会解除锁定。数值修改本身仍可能写入游戏存档。").font(.caption).foregroundStyle(.secondary)
             Text(session.liveMessage).textSelection(.enabled)
             if session.installed && session.options.cheats {

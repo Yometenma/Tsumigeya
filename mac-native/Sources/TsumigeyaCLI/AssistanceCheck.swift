@@ -10,7 +10,7 @@ func runAssistCommand(_ args: [String]) -> Int32 {
             let options = try AssistanceInstaller.options(project)
             print("\(project.displayName)；入口：\(project.page.path)；辅助：\(options == nil ? "未安装" : "已安装")")
         case "extract":
-            let entries = try RPGTextExtractor.extract(project)
+            let entries = try AssistanceModules.extract(project)
             let data = try JSONStore.defaultEncoder.encode(entries)
             print(String(decoding: data, as: UTF8.self))
         case "install":

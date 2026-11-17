@@ -43,10 +43,10 @@ private struct AssistanceContent: View {
             if !session.message.isEmpty { Text(session.message).foregroundStyle(.secondary).textSelection(.enabled) }
             if let project = session.project {
                 Label("已识别 \(project.displayName)", systemImage: "checkmark.circle")
-                Text("启动能力与辅助能力分别判断；已识别当前游戏的文字翻译和状态编辑接入。").font(.caption).foregroundStyle(.secondary)
+                Text("已接入内置辅助模块，翻译与作弊分别启用；具体兼容范围以模块说明和作品实测为准。").font(.caption).foregroundStyle(.secondary)
                 installation
-                translation
-                cheats
+                if project.module.translation != nil { translation }
+                if project.module.cheats != nil { cheats }
             }
         }
         .sheet(item: $selected) { entry in
@@ -69,9 +69,9 @@ private struct AssistanceContent: View {
     private var installation: some View {
         GroupBox("游戏接入") {
             VStack(alignment: .leading, spacing: 12) {
-                Toggle("启用游戏文字翻译", isOn: $session.options.translation)
-                Toggle(session.project?.usesFileBridge == true ? "启用游戏状态编辑" : "启用游戏内作弊面板", isOn: $session.options.cheats)
-                Text(session.project?.usesFileBridge == true ? "两项独立启用。应用前需退出游戏；不替换原始剧本或数据库。RGSS 必须通过本启动器启动；Ren’Py 添加独立辅助剧本。译文修订完成后需重新应用。" : "两项独立启用。应用前需退出游戏；会备份原始页面，仅添加辅助加载入口，不替换 main.js。译文修订完成后也需重新应用。").font(.callout).foregroundStyle(.secondary)
+                if session.project?.module.translation != nil { Toggle("启用游戏文字翻译", isOn: $session.options.translation) }
+                if session.project?.module.cheats != nil { Toggle(session.project?.usesFileBridge == true ? "启用游戏状态编辑" : "启用游戏内作弊面板", isOn: $session.options.cheats) }
+                Text(session.project?.module.installationNote ?? "").font(.callout).foregroundStyle(.secondary)
                 HStack {
                     Button("应用到游戏") { session.apply() }.buttonStyle(.borderedProminent)
                     if session.installed { Button(restoreTitle) { confirmRestore = true } }
@@ -135,11 +135,8 @@ private struct AssistanceContent: View {
             VStack(alignment: .leading, spacing: 10) {
                 if session.project?.usesFileBridge == true {
                     LiveAssistanceView(session: session)
-                } else if session.project?.engine == .tyrano {
-                    Text("启用后启动游戏，点击右上角「游戏辅助」或按 ⇧F8。支持游戏变量 f、系统变量 sf 的搜索、修改、锁定及数值逐次筛选；不提供 RPG 专用的角色和战斗操作。")
                 } else {
-                Text("启用后启动游戏，在游戏右上角点击「游戏辅助」或按 ⇧F8。进入游戏或读档后可操作，不需要启动器保持开启。")
-                Text("• 金钱、物品、防具、武器、角色属性和恢复\n• 变量／开关搜索与编辑、持续锁定与解除\n• 已知／未知数值查找，按增加、减少、改变和未改变逐次筛选\n• 游戏／移动速度、随机遇敌控制、穿墙\n• 地图搜索与坐标传送、地图事件和公共事件查看及执行")
+                    Text(session.project?.module.cheatInstructions ?? "")
                 }
                 Label("作弊修改可能写入存档并破坏剧情；移除辅助功能不能撤销，请先备份存档。", systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
                 Text("数值搜索针对引擎公开的变量与角色状态，不是任意进程内存扫描。游戏自定义插件可能改变这些行为，不能保证所有作品完全兼容。").font(.caption).foregroundStyle(.secondary)

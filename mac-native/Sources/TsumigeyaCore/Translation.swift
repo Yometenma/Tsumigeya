@@ -150,69 +150,9 @@ public enum TranslationTokens {
 
 public enum RPGTextExtractor {
     public static func extract(_ project: RPGMakerProject) throws -> [TranslationEntry] {
-        if project.engine != .rpgMaker { return try AdditionalTextExtractor.extract(project) }
-        let dir = project.content.appendingPathComponent("data")
-        let urls = try FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.isRegularFileKey])
-            .filter { $0.pathExtension.lowercased() == "json" }.sorted { $0.lastPathComponent < $1.lastPathComponent }
-        var result = TranslationCatalog(identity: project.identity)
-        let database = Set(["Actors.json", "Classes.json", "Skills.json", "Items.json", "Weapons.json", "Armors.json", "Enemies.json", "States.json", "MapInfos.json"])
-        for url in urls {
-            try Task.checkCancellation()
-            let name = url.lastPathComponent
-            guard database.contains(name) || name == "System.json" || name == "CommonEvents.json" || name.range(of: #"^Map\d+\.json$"#, options: .regularExpression) != nil else { continue }
-            guard url.resolvingSymlinksInPath().path.hasPrefix(dir.resolvingSymlinksInPath().path + "/") else { throw AssistanceError.invalid("数据文件越出游戏目录。") }
-            let raw = try Data(contentsOf: url)
-            guard raw.count <= 64 * 1024 * 1024 else { throw AssistanceError.invalid("游戏数据文件过大：\(name)") }
-            let json = try JSONDecoder().decode(JSONValue.self, from: raw)
-            var entries: [TranslationEntry] = []
-            func add(_ value: JSONValue?, _ context: String) {
-                guard let text = value?.stringValue, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-                entries.append(.init(source: text, contexts: ["\(name)：\(context)"]))
-            }
-            func eventList(_ value: JSONValue?, _ context: String) {
-                for command in value?.arrayValue ?? [] {
-                    guard let obj = command.objectValue, let code = obj["code"]?.intValue else { continue }
-                    let p = obj["parameters"]?.arrayValue ?? []
-                    switch code {
-                    case 401, 405: if let first = p.first { add(first, context) }
-                    case 102: for choice in p.first?.arrayValue ?? [] { add(choice, context + "选项") }
-                    case 101: if p.count > 4 { add(p[4], context + "说话人") }
-                    case 320, 324, 325: if p.count > 1 { add(p[1], context + "角色文字") }
-                    default: break // 脚本和插件命令参数不是任意可翻译字符串。
-                    }
-                }
-            }
-            if database.contains(name) {
-                for (i, row) in (json.arrayValue ?? []).enumerated() {
-                    let obj = row.objectValue ?? [:]
-                    for key in ["name", "nickname", "profile", "description", "message1", "message2", "message3", "message4"] { add(obj[key], "\(i).\(key)") }
-                }
-            } else if name == "System.json" {
-                let obj = json.objectValue ?? [:]
-                add(obj["gameTitle"], "标题"); add(obj["currencyUnit"], "货币")
-                for key in ["elements", "skillTypes", "weaponTypes", "armorTypes", "equipTypes", "variables", "switches"] {
-                    for v in obj[key]?.arrayValue ?? [] { add(v, key) }
-                }
-                func terms(_ value: JSONValue) {
-                    switch value { case .string: add(value, "系统用语")
-                    case .object(let d): for v in d.values { terms(v) }
-                    case .array(let a): for v in a { terms(v) }
-                    default: break }
-                }
-                if let t = obj["terms"] { terms(t) }
-            } else if name == "CommonEvents.json" {
-                for (i, row) in (json.arrayValue ?? []).enumerated() { eventList(row.objectValue?["list"], "公共事件\(i)") }
-            } else {
-                let obj = json.objectValue ?? [:]; add(obj["displayName"], "地图名")
-                for event in obj["events"]?.arrayValue ?? [] {
-                    let e = event.objectValue ?? [:]
-                    for page in e["pages"]?.arrayValue ?? [] { eventList(page.objectValue?["list"], "事件\(e["id"]?.intValue ?? 0)") }
-                }
-            }
-            result.merge(entries)
-        }
-        return result.entries
+        try AssistanceModules.extract(project)
     }
+
 }
 
 public struct TranslationServiceSettings: Codable, Sendable, Equatable {

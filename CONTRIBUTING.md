@@ -46,6 +46,16 @@ swift run Tsumigeya
 
 临时截图、日志、探针和开发数据统一放入已忽略的 `.dev-scratch/`，不要提交构建产物或阶段性验收报告。个人连接信息和本机专用配置不应写入公共文档。
 
+## 扩展翻译与作弊
+
+引擎辅助模块位于 `mac-native/Sources/TsumigeyaCore/AssistanceModules/`。现有 MV/MZ、RGSS、Ren’Py 和 Tyrano 都实现 `AssistanceEngineModule`，由 `AssistanceModules` 统一选择。它们是 Core 内的逻辑模块，不是独立 Swift target 或可下载插件。
+
+- 引擎模块持有识别与身份算法、文本提取、运行时脚本映射、进程匹配和能力说明；共用层负责安装备份、校验恢复、译文管理与通信，不能在模块中绕开安全检查。
+- 新增引擎时补充 `AssistanceEngine` 与注册分发，明确翻译、作弊各自的能力和接入方式；未接入的能力用 `nil` 表示，不能先填文案伪装成可用。界面与运行时能力页从相同声明读取。
+- 只有采用现有网页入口或文件桥约定的模块才能直接复用相应安装流程；新宿主、入口或编译文件格式需要补齐安全安装与恢复行为，不能仅注册名称。
+- 保留旧身份算法、安装记录、配置未知字段和译文；变更前后验证提取、独立开关、资源映射、旧安装更新、运行中拒绝修改以及完整恢复。真实作品和封装兼容性仍需另外实测。
+- 辅助资源继续由 `Resources/Assist` 随应用打包；新增资源须验证打包后与重定位时的选择，不要只在开发目录测试。
+
 ## 使用 CLI 验证真实流程
 
 在 `mac-native/` 中执行 `swift run tsumigeya-cli <命令>`。可用命令以 `Sources/TsumigeyaCLI/main.swift` 为准：

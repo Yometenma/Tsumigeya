@@ -17,49 +17,12 @@ public enum NativeAssistance {
     }
 
     static func detect(_ root: URL) throws -> AssistanceProject? {
-        let fm = FileManager.default
-        let ini = root.appendingPathComponent("Game.ini")
-        if fm.fileExists(atPath: ini.path), let text = String(data: try Data(contentsOf: ini), encoding: .isoLatin1) {
-            let lines = text.components(separatedBy: .newlines).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            if let line = lines.first(where: { $0.lowercased().hasPrefix("scripts=") }) {
-                let path = String(line.dropFirst(8)).replacingOccurrences(of: "\\", with: "/")
-                let ext = (path as NSString).pathExtension.lowercased()
-                let edition = ["rxdata": "XP", "rvdata": "VX", "rvdata2": "VX Ace"][ext]
-                if let edition {
-                    _ = try hash(ini, within: root)
-                    let scripts = root.appendingPathComponent(path).standardizedFileURL
-                    let archive = root.appendingPathComponent(["XP": "Game.rgssad", "VX": "Game.rgss2a", "VX Ace": "Game.rgss3a"][edition]!)
-                    guard let identityFile = fm.fileExists(atPath: scripts.path) ? scripts : (fm.fileExists(atPath: archive.path) ? archive : nil) else { throw AssistanceError.invalid("缺少 RGSS 脚本数据或游戏归档。") }
-                    let digest = try hash(identityFile, within: root)
-                    let identity = SHA256.hex(Array((root.path + "\0" + identityFile.path + "\0" + digest + "\0" + edition).utf8))
-                    return .init(root: root, page: ini, content: root, edition: edition, identity: identity, engine: .rgss)
-                }
-            }
-        }
-        let game = root.appendingPathComponent("game")
-        if fm.fileExists(atPath: root.appendingPathComponent("renpy").path), fm.fileExists(atPath: game.path) {
-            guard game.resolvingSymlinksInPath().path == game.path else { throw AssistanceError.invalid("Ren’Py 游戏数据目录不能是符号链接。") }
-            guard let enumerator = fm.enumerator(at: game, includingPropertiesForKeys: [.isSymbolicLinkKey, .isRegularFileKey], options: [.skipsHiddenFiles]) else { throw AssistanceError.invalid("无法读取 Ren’Py 游戏目录。") }
-            var files: [URL] = []
-            for case let url as URL in enumerator {
-                let values = try url.resourceValues(forKeys: [.isSymbolicLinkKey, .isRegularFileKey])
-                if values.isSymbolicLink == true || ["cache", "saves"].contains(url.lastPathComponent) { enumerator.skipDescendants(); continue }
-                guard values.isRegularFile == true, ["rpy", "rpyc", "rpa"].contains(url.pathExtension),
-                      url.deletingPathExtension().lastPathComponent != "zz_tsumigeya_assist",
-                      !(url.pathExtension == "rpyc" && fm.fileExists(atPath: url.deletingPathExtension().appendingPathExtension("rpy").path)) else { continue }
-                files.append(url.standardizedFileURL)
-                guard files.count <= 10000 else { throw AssistanceError.invalid("Ren’Py 身份文件数量超出限制。") }
-            }
-            guard !files.isEmpty else { throw AssistanceError.invalid("未找到 Ren’Py 剧本或资源归档。") }
-            let signature = try files.sorted { $0.path < $1.path }.map {
-                String($0.path.dropFirst(game.path.count + 1)) + ":" + (try hash($0, within: root))
-            }.joined(separator: "\0")
-            let identity = SHA256.hex(Array((root.path + "\0RenPy\0" + signature).utf8))
-            return .init(root: root, page: game.appendingPathComponent("zz_tsumigeya_assist.rpy"), content: game, edition: "Ren’Py", identity: identity, engine: .renpy)
+        for module in AssistanceModules.registered where module.info.transport == .fileBridge {
+            if let project = try module.detect(root) { return project }
         }
         return nil
     }
-    private static func scriptFiles(_ p: AssistanceProject) -> [String] { p.engine == .renpy ? ["renpy.py"] : ["rgss.rb"] }
+    private static func scriptFiles(_ p: AssistanceProject) -> [String] { AssistanceModules.module(for: p.engine).scripts.map(\.filename) }
     private static func directory(_ p: AssistanceProject) throws -> URL {
         let url = AssistanceInstaller.location(p)
         guard url.path == url.resolvingSymlinksInPath().path else { throw AssistanceError.invalid("辅助目录不能是符号链接。") }
@@ -78,7 +41,7 @@ public enum NativeAssistance {
             let url = try checked(name, in: dir)
             guard record[name]?.stringValue == SHA256.hexOfFile(at: url.path) else { throw AssistanceError.invalid("辅助脚本已被外部修改，停止覆盖：\(name)") }
         }
-        if p.engine == .renpy {
+        if AssistanceModules.module(for: p.engine).entrySource != nil {
             guard p.page.path == p.page.resolvingSymlinksInPath().path, record["entry"]?.stringValue == SHA256.hexOfFile(at: p.page.path) else { throw AssistanceError.invalid("Ren’Py 辅助入口已改变。") }
         }
         return record
@@ -90,19 +53,6 @@ public enum NativeAssistance {
         let json = try JSONDecoder().decode([String: JSONValue].self, from: Data(contentsOf: checked("config.json", in: dir)))
         return .init(translation: json["translation"]?.boolValue ?? false, cheats: json["cheats"]?.boolValue ?? false)
     }
-    private static let renpyEntry = """
-    init 999 python hide:
-        import os as _tsumigeya_os
-        import types as _tsumigeya_types
-        import sys as _tsumigeya_sys
-        _tsumigeya_file = _tsumigeya_os.path.join(config.gamedir, '.tsumigeya-assist', 'renpy.py')
-        _tsumigeya_module = _tsumigeya_types.ModuleType('_tsumigeya_runtime')
-        _tsumigeya_sys.modules['_tsumigeya_runtime'] = _tsumigeya_module
-        with open(_tsumigeya_file, 'rb') as _tsumigeya_stream:
-            exec(compile(_tsumigeya_stream.read(), _tsumigeya_file, 'exec'), _tsumigeya_module.__dict__)
-        _tsumigeya_module.install(renpy)
-
-    """
     static func configure(_ p: AssistanceProject, options: AssistanceOptions, translations: [String: String]?, running: Bool) throws {
         guard try AssistanceProject.detect(folder: p.root.path) == p else { throw AssistanceError.invalid("游戏身份已改变。") }
         guard !running, try !AssistanceProcesses.isRunning(p) else { throw AssistanceError.invalid("请先关闭游戏，再修改辅助功能。") }
@@ -118,7 +68,7 @@ public enum NativeAssistance {
             record = try manifest(p)
             var prior = try JSONDecoder().decode([String: JSONValue].self, from: Data(contentsOf: checked("config.json", in: dir)))
             prior.merge(config) { _, new in new }; config = prior
-        } else if p.engine == .renpy {
+        } else if AssistanceModules.module(for: p.engine).entrySource != nil {
             for entry in [p.page, p.page.appendingPathExtension("bak"), p.page.deletingPathExtension().appendingPathExtension("rpyc")] {
                 guard entry.path == entry.resolvingSymlinksInPath().path, !fm.fileExists(atPath: entry.path) else { throw AssistanceError.invalid("同名辅助入口已存在，拒绝覆盖。") }
             }
@@ -127,12 +77,13 @@ public enum NativeAssistance {
         if exists { dictionary = try JSONDecoder().decode([String: String].self, from: Data(contentsOf: checked("translations.json", in: dir))) }
         else { dictionary = [:] }
         var writes: [(URL, Data)] = []
-        for name in scriptFiles(p) {
-            let data = try AssistanceInstaller.resource(name)
+        for script in AssistanceModules.module(for: p.engine).scripts {
+            let name = script.filename
+            let data = try AssistanceInstaller.resource(script.resource)
             record[name] = .string(SHA256.hex(Array(data)))
             writes.append((try checked(name, in: dir), data))
         }
-        let entryData = p.engine == .renpy ? Data(renpyEntry.utf8) : nil
+        let entryData = AssistanceModules.module(for: p.engine).entrySource.map { Data($0.utf8) }
         if let entryData { record["entry"] = .string(SHA256.hex(Array(entryData))) }
         writes.append((try checked("config.json", in: dir), try JSONEncoder().encode(config)))
         writes.append((try checked("translations.json", in: dir), try JSONEncoder().encode(translations ?? dictionary)))
@@ -174,7 +125,7 @@ public enum NativeAssistance {
             guard allowed.contains(name), (try url.resourceValues(forKeys: [.isRegularFileKey])).isRegularFile == true else { throw AssistanceError.invalid("辅助目录含未知文件，未移除任何文件。") }
         }
         var targets: [URL] = []
-        if p.engine == .renpy {
+        if AssistanceModules.module(for: p.engine).entrySource != nil {
             let compiled = p.page.deletingPathExtension().appendingPathExtension("rpyc")
             for url in [compiled, p.page.appendingPathExtension("bak")] where fm.fileExists(atPath: url.path) {
                 guard url.path == url.resolvingSymlinksInPath().path, (try url.resourceValues(forKeys: [.isRegularFileKey])).isRegularFile == true else { throw AssistanceError.invalid("辅助编译文件不安全。") }
@@ -193,14 +144,14 @@ public enum NativeAssistance {
 
     static func translationFontRoot(for folder: String, dataDir: String) throws -> String? {
         guard let p = try detect(URL(fileURLWithPath: folder).standardizedFileURL.resolvingSymlinksInPath()),
-              p.engine == .rgss, try options(p)?.translation == true else { return nil }
+              AssistanceModules.module(for: p.engine).needsTranslationFont, try options(p)?.translation == true else { return nil }
         return try MkxpzTranslationFont.prepare(dataDir: dataDir)
     }
 
     public static func preload(for folder: String) throws -> String? {
-        guard let p = try detect(URL(fileURLWithPath: folder).standardizedFileURL.resolvingSymlinksInPath()), p.engine == .rgss,
+        guard let p = try detect(URL(fileURLWithPath: folder).standardizedFileURL.resolvingSymlinksInPath()), let script = AssistanceModules.module(for: p.engine).preloadScript,
               try options(p) != nil else { return nil }
-        return AssistanceInstaller.location(p).appendingPathComponent("rgss.rb").path
+        return AssistanceInstaller.location(p).appendingPathComponent(script).path
     }
 }
 

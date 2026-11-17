@@ -105,7 +105,7 @@ final class AssistanceSession: ObservableObject {
         busy = true; error = nil; message = "正在提取对话、选项和数据库文字……"
         task = Task { [weak self] in
             do {
-                let entries = try await Task.detached(priority: .userInitiated) { try RPGTextExtractor.extract(project) }.value
+                let entries = try await Task.detached(priority: .userInitiated) { try AssistanceModules.extract(project) }.value
                 guard let self, self.isCurrent, self.store?.privacy.hidesTitles == false, !Task.isCancelled else { self?.busy = false; return }
                 var next = self.catalog ?? TranslationCatalog(identity: project.identity)
                 next.merge(entries); try self.persist(next)

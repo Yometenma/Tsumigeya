@@ -13,61 +13,20 @@ public struct AssistanceProject: Sendable, Equatable {
     public let identity: String
     public let engine: AssistanceEngine
     public var displayName: String { engine == .rpgMaker || engine == .rgss ? "RPG Maker \(edition)" : engine.title }
-    public var usesFileBridge: Bool { engine == .rgss || engine == .renpy }
+    public var module: AssistanceModuleInfo { AssistanceModules.forEngine(engine) }
+    public var usesFileBridge: Bool { module.transport == .fileBridge }
 
     public static func detect(folder: String) throws -> Self {
-        let root = URL(fileURLWithPath: folder).standardizedFileURL.resolvingSymlinksInPath()
-        if let native = try NativeAssistance.detect(root) { return native }
-        let package = root.appendingPathComponent("package.json")
-        let json = try JSONDecoder().decode([String: JSONValue].self, from: Data(contentsOf: package))
-        guard let main = json["main"]?.stringValue else { throw AssistanceError.invalid("游戏缺少有效的启动页面。") }
-        let path = main.replacingOccurrences(of: "\\", with: "/").components(separatedBy: "?")[0].components(separatedBy: "#")[0]
-        guard !path.hasPrefix("/"), !path.contains(":"), !path.isEmpty else { throw AssistanceError.invalid("游戏启动页面必须是游戏目录内的文件。") }
-        let page = root.appendingPathComponent(path).standardizedFileURL.resolvingSymlinksInPath()
-        guard page.path.hasPrefix(root.path + "/"), page.pathExtension.lowercased() == "html",
-              FileManager.default.fileExists(atPath: page.path) else { throw AssistanceError.invalid("游戏启动页面不存在或越出游戏目录。") }
-        let content = page.deletingLastPathComponent()
-        let js = content.appendingPathComponent("js")
-        let mv = FileManager.default.fileExists(atPath: js.appendingPathComponent("rpg_core.js").path)
-        let mz = FileManager.default.fileExists(atPath: js.appendingPathComponent("rmmz_core.js").path)
-        if !mv && !mz, ["tyrano/plugins/kag/kag.js", "tyrano/kag/kag.js"].contains(where: { FileManager.default.fileExists(atPath: content.appendingPathComponent($0).path) }) {
-            let candidate = ["tyrano/plugins/kag/kag.js", "tyrano/kag/kag.js"].map { content.appendingPathComponent($0) }.first { FileManager.default.fileExists(atPath: $0.path) }!
-            var identityFiles = [candidate]
-            let config = content.appendingPathComponent("data/system/Config.tjs")
-            if FileManager.default.fileExists(atPath: config.path) { identityFiles.append(config) }
-            let scenario = content.appendingPathComponent("data/scenario")
-            guard scenario.path == scenario.resolvingSymlinksInPath().path else { throw AssistanceError.invalid("Tyrano 场景目录不能是符号链接。") }
-            if let enumerator = FileManager.default.enumerator(at: scenario, includingPropertiesForKeys: [.isSymbolicLinkKey, .isRegularFileKey], options: [.skipsHiddenFiles]) {
-                for case let url as URL in enumerator {
-                    let values = try url.resourceValues(forKeys: [.isSymbolicLinkKey, .isRegularFileKey])
-                    if values.isSymbolicLink == true { enumerator.skipDescendants(); continue }
-                    if values.isRegularFile == true, url.pathExtension.lowercased() == "ks" { identityFiles.append(url) }
-                    guard identityFiles.count <= 10000 else { throw AssistanceError.invalid("Tyrano 身份文件数量超出限制。") }
-                }
-            }
-            let signature = try identityFiles.sorted { $0.path < $1.path }.map {
-                String($0.path.dropFirst(root.path.count + 1)) + ":" + (try NativeAssistance.hash($0, within: root))
-            }.joined(separator: "\0")
-            return Self(root: root, page: page, content: content, edition: "TyranoScript", identity: SHA256.hex(Array((root.path + "\0" + page.path + "\0" + signature + "\0TyranoScript").utf8)), engine: .tyrano)
-        }
-        guard mv != mz, FileManager.default.fileExists(atPath: content.appendingPathComponent("data/System.json").path) else {
-            throw AssistanceError.invalid("无法确认为支持的翻译与作弊引擎。")
-        }
-        let system = content.appendingPathComponent("data/System.json").resolvingSymlinksInPath()
-        guard system.path.hasPrefix(content.path + "/"), let hash = SHA256.hexOfFile(at: system.path) else {
-            throw AssistanceError.invalid("无法验证游戏数据库身份。")
-        }
-        let identity = SHA256.hex(Array((root.path + "\0" + page.path + "\0" + hash + "\0" + (mv ? "MV" : "MZ")).utf8))
-        return Self(root: root, page: page, content: content, edition: mv ? "MV" : "MZ", identity: identity, engine: .rpgMaker)
+        try AssistanceModules.detect(URL(fileURLWithPath: folder).standardizedFileURL.resolvingSymlinksInPath())
     }
 }
 
 public typealias RPGMakerProject = AssistanceProject
 
-public enum AssistanceEngine: String, Codable, Sendable {
+public enum AssistanceEngine: String, Codable, CaseIterable, Sendable {
     case rpgMaker, rgss, renpy, tyrano
     public var title: String {
-        switch self { case .rpgMaker: "RPG Maker MV/MZ"; case .rgss: "RPG Maker XP/VX/VX Ace"; case .renpy: "Ren’Py"; case .tyrano: "TyranoScript" }
+        AssistanceModules.forEngine(self).title
     }
 }
 
@@ -90,18 +49,7 @@ public enum AssistanceProcesses {
             let parts = trimmed.split(maxSplits: 1, whereSeparator: { $0.isWhitespace })
             guard parts.count == 2, Int32(parts[0]) != ProcessInfo.processInfo.processIdentifier else { return false }
             let command = String(parts[1])
-            let canonical = URL(fileURLWithPath: project.root.path).resolvingSymlinksInPath().path
-            if project.engine == .rgss {
-                // mkxp-z 的进程参数没有游戏路径，需要核对它正在使用的 app 内配置。
-                let executable = command.components(separatedBy: ".app/").first.map { $0 + ".app/Contents/Game/mkxp.json" }
-                if command.lowercased().contains("mkxp"), let executable,
-                   let data = try? Data(contentsOf: URL(fileURLWithPath: executable)),
-                   let config = try? JSONDecoder().decode([String: JSONValue].self, from: data), let folder = config["gameFolder"]?.stringValue {
-                    return URL(fileURLWithPath: folder).resolvingSymlinksInPath().path == canonical
-                }
-                return false
-            }
-            return command.contains(project.root.path) && (project.engine == .renpy ? command.lowercased().contains("python") || command.lowercased().contains("renpy") : command.lowercased().contains("nwjs"))
+            return AssistanceModules.module(for: project.engine).matchesProcess(command, project: project)
         }
     }
 }
@@ -109,7 +57,7 @@ public enum AssistanceProcesses {
 public enum AssistanceInstaller {
     public static let directory = ".tsumigeya-assist"
     private static let tag = "<script data-tsumigeya-assist=\"1\" src=\".tsumigeya-assist/loader.js\"></script>"
-    private static let files = ["loader.js", "translation.js", "cheats.js", "panel.js"]
+    private static func files(_ project: AssistanceProject) -> [String] { AssistanceModules.module(for: project.engine).scripts.map(\.filename) }
 
     static func resource(_ name: String) throws -> Data {
         let packaged = Bundle.main.resourceURL?.appendingPathComponent("Tsumigeya_TsumigeyaCore.bundle")
@@ -120,7 +68,9 @@ public enum AssistanceInstaller {
     }
 
     private static func runtimeResource(_ name: String, project: AssistanceProject) throws -> Data {
-        let mapped = project.engine == .tyrano && name != "loader.js" ? "tyrano-" + name : name
+        guard let mapped = AssistanceModules.module(for: project.engine).scripts.first(where: { $0.filename == name })?.resource else {
+            throw AssistanceError.invalid("引擎模块未声明辅助脚本：\(name)")
+        }
         return try resource(mapped)
     }
 
@@ -144,7 +94,7 @@ public enum AssistanceInstaller {
     private static func manifest(_ project: RPGMakerProject) throws -> [String: JSONValue] {
         let dir = try checkedDirectory(project)
         let url = dir.appendingPathComponent("manifest.json")
-        for name in files + ["manifest.json", "original.html", "config.json", "translations.json"] {
+        for name in files(project) + ["manifest.json", "original.html", "config.json", "translations.json"] {
             let owned = dir.appendingPathComponent(name)
             guard owned.resolvingSymlinksInPath().path == owned.path else { throw AssistanceError.invalid("辅助文件是符号链接，拒绝访问：\(name)") }
         }
@@ -172,6 +122,7 @@ public enum AssistanceInstaller {
 
     public static func configure(_ project: RPGMakerProject, options: AssistanceOptions,
                                  translations: [String: String]? = nil, running: Bool) throws {
+        try AssistanceModules.validate(options, for: project)
         if project.usesFileBridge { try NativeAssistance.configure(project, options: options, translations: translations, running: running); return }
         guard try RPGMakerProject.detect(folder: project.root.path) == project else { throw AssistanceError.invalid("游戏目录或数据库已改变，请重新读取配置。") }
         guard !running, try !AssistanceProcesses.isRunning(project) else { throw AssistanceError.invalid("请先关闭游戏，再更改辅助功能。") }
@@ -185,7 +136,7 @@ public enum AssistanceInstaller {
             config.merge(options.json) { _, new in new }
             // 所有备份先完成，再更新脚本；失败报告具体保存范围，不假装跨文件事务。
             var updates: [(URL, Data)] = []
-            for name in files {
+            for name in files(project) {
                 let url = dir.appendingPathComponent(name)
                 let bytes = try runtimeResource(name, project: project)
                 if try Data(contentsOf: url) != bytes { updates.append((url, bytes)) }
@@ -211,7 +162,7 @@ public enum AssistanceInstaller {
         }
         let installed = Data((String(html[..<end.lowerBound]) + tag + "\n" + String(html[end.lowerBound...])).utf8)
         var payload: [String: Data] = [:]
-        for name in files {
+        for name in files(project) {
             payload[name] = try runtimeResource(name, project: project)
         }
         try fm.createDirectory(at: dir, withIntermediateDirectories: false)
@@ -258,7 +209,7 @@ public enum AssistanceInstaller {
         guard !running, try !AssistanceProcesses.isRunning(project) else { throw AssistanceError.invalid("请先关闭游戏，再恢复原始入口。") }
         _ = try manifest(project)
         let dir = try checkedDirectory(project)
-        let allowed = Set(files + files.map { $0 + ".bak" } + ["manifest.json", "original.html", "config.json", "config.json.bak", "translations.json", "translations.json.bak", "missing.json", "missing.tmp", ".DS_Store"])
+        let allowed = Set(files(project) + files(project).map { $0 + ".bak" } + ["manifest.json", "original.html", "config.json", "config.json.bak", "translations.json", "translations.json.bak", "missing.json", "missing.tmp", ".DS_Store"])
         let names = try FileManager.default.contentsOfDirectory(atPath: dir.path)
         guard names.allSatisfy({ name in
             var isDirectory: ObjCBool = false
