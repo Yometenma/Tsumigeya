@@ -99,7 +99,7 @@ struct GameDetailView: View {
                     .font(.system(size: 28, weight: .bold))
                     .foregroundStyle(.white)
                     .lineLimit(2)
-                if let description = work?.description, !description.isEmpty {
+                if !store.privacy.hidesTitles, let description = work?.description, !description.isEmpty {
                     Text(description)
                         .font(.system(size: 13))
                         .foregroundStyle(.white.opacity(0.78))
