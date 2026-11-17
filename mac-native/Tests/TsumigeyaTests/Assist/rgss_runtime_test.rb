@@ -7,10 +7,21 @@ require 'minitest/autorun'
 class Scene_Title; end
 class Scene_Map; end
 class Rect; end
+class Font
+ attr_accessor :name
+ def initialize;@name='Original';end
+ def self.exist?(name);name=='Arial Unicode MS';end
+end
+class Window_Message
+ attr_reader :rendered
+ def refresh;@rendered=$game_temp.message_text.chars;end
+ def start_message;@rendered=$game_message.texts.join("\n").chars;end
+end
 class Bitmap
-  attr_reader :last
-  def draw_text(*args);@last=args;end
-  def text_size(text);text;end
+  attr_reader :last, :draw_font, :measure_font
+  def font;@font||=Font.new;end
+  def draw_text(*args);@draw_font=font.name;@last=args;end
+  def text_size(text);@measure_font=font.name;text;end
 end
 module Graphics
  def self.update;true;end
@@ -58,6 +69,39 @@ class RGSSRuntimeTest < Minitest::Test
   assert_includes JSON.parse(File.read(File.join(@dir,'missing.json'))),'新しい台詞'
   File.write(File.join(@dir,'translations.json'),JSON.generate({'新しい台詞'=>'新的台词'}));tick
   assert_equal '新的台词',TsumigeyaRuntime.translate('新しい台詞')
+ end
+ def test_cjk_uses_same_font_for_measurement_and_draw_and_restores_game_font
+  bitmap=Bitmap.new
+  bitmap.draw_text(0,0,100,40,'こんにちは')
+  assert_equal 'Arial Unicode MS',bitmap.draw_font
+  assert_equal 'Original',bitmap.font.name
+  bitmap.text_size('こんにちは')
+  assert_equal 'Arial Unicode MS',bitmap.measure_font
+  assert_equal 'Original',bitmap.font.name
+  ['。','：'].each do |punctuation|
+   bitmap.draw_text(0,0,100,40,punctuation)
+   assert_equal 'Arial Unicode MS',bitmap.draw_font
+  end
+  bitmap.draw_text(0,0,100,40,'你');tick
+  refute_includes JSON.parse(File.read(File.join(@dir,'missing.json'))),'你'
+  bitmap.draw_text(0,0,100,40,'unchanged')
+  assert_equal 'Original',bitmap.draw_font
+  TsumigeyaRuntime.instance_variable_get(:@config)['translation']=false
+  bitmap.draw_text(0,0,100,40,'原文')
+  assert_equal 'Original',bitmap.draw_font
+ end
+ def test_dialogue_is_translated_before_character_splitting_in_xp_and_vx
+  tick
+  TsumigeyaRuntime.instance_variable_get(:@config)['edition']='XP'
+  $game_temp=OpenStruct.new(message_text:"こんにちは\n")
+  window=Window_Message.new;window.refresh
+  assert_equal "你好\n".chars,window.rendered
+  TsumigeyaRuntime.instance_variable_get(:@config)['edition']='VX'
+  $game_message=OpenStruct.new(texts:['こんにちは'])
+  window.start_message
+  assert_equal '你好'.chars,window.rendered
+ ensure
+  $game_temp=nil;$game_message=nil
  end
  def test_write_lock_load_reset_and_stale_rejection
   tick;command('set');assert_equal 30,$game_party.gold

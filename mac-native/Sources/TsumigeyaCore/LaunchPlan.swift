@@ -242,6 +242,10 @@ public enum LaunchPlanner {
                     let preload = URL(fileURLWithPath: gameFolder).appendingPathComponent(".tsumigeya-assist/rgss.rb").path
                     let prior = config["preloadScript"]?.arrayValue ?? config["preloadScript"]?.stringValue.map { [.string($0)] } ?? []
                     config["preloadScript"] = .array(prior.filter { $0.stringValue != preload } + [.string(preload)])
+                    if let fonts = try NativeAssistance.translationFontRoot(for: ctx.folder, dataDir: ctx.dataDir) {
+                        let rtps = config["RTP"]?.arrayValue ?? []
+                        config["RTP"] = .array(rtps + [.string(fonts)])
+                    }
                 }
             } catch { return .failure(.spawnFailed(message: "辅助配置检查失败：\(error.localizedDescription)")) }
             if let writeError = MkxpzConfig.write(config, to: configPath) {

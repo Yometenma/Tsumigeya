@@ -191,6 +191,12 @@ public enum NativeAssistance {
         }
     }
 
+    static func translationFontRoot(for folder: String, dataDir: String) throws -> String? {
+        guard let p = try detect(URL(fileURLWithPath: folder).standardizedFileURL.resolvingSymlinksInPath()),
+              p.engine == .rgss, try options(p)?.translation == true else { return nil }
+        return try MkxpzTranslationFont.prepare(dataDir: dataDir)
+    }
+
     public static func preload(for folder: String) throws -> String? {
         guard let p = try detect(URL(fileURLWithPath: folder).standardizedFileURL.resolvingSymlinksInPath()), p.engine == .rgss,
               try options(p) != nil else { return nil }

@@ -29,16 +29,69 @@ module TsumigeyaRuntime
     rescue EncodingError
       value.dup.force_encoding('Windows-31J').encode('UTF-8')
     end
-    def translate(value)
+    def translate(value, capture = true)
       return value unless value.is_a?(String) && @config['translation']
       key = text(value)
       return @dictionary[key] if @dictionary.key?(key)
-      if key.size.between?(1,4096) && key.match?(/[A-Za-z\p{Han}\p{Hiragana}\p{Katakana}]/) && !@missing.include?(key) && !@dictionary.value?(key)
+      if capture && key.size.between?(1,4096) && key.match?(/[A-Za-z\p{Han}\p{Hiragana}\p{Katakana}]/) && !@missing.include?(key) && !@dictionary.value?(key)
         @missing << key; @missing.shift if @missing.length > 5000
       end
       value
     rescue StandardError
       value
+    end
+    def translate_drawn(value)
+      # 逐字窗口会绘制译文的单字；不要把这些碎片重新加入待翻译队列。
+      translate(value, !(value.is_a?(String) && text(value).length == 1))
+    end
+    def with_font(bitmap, value)
+      if @config['translation'] && value.is_a?(String) && text(value).match?(/[\p{Han}\p{Hiragana}\p{Katakana}\u3000-\u303f\uff00-\uffef]/) &&
+         defined?(Font) && Font.exist?('Arial Unicode MS') && bitmap.respond_to?(:font)
+        font = bitmap.font; prior = font.name
+        begin
+          font.name = 'Arial Unicode MS'
+          yield
+        ensure
+          font.name = prior
+        end
+      else
+        yield
+      end
+    end
+    def translate_message
+      return unless @config['translation']
+      if @config['edition'] == 'XP' && defined?($game_temp) && $game_temp && $game_temp.message_text.is_a?(String)
+        original = $game_temp.message_text
+        translated = translate(original)
+        $game_temp.message_text = translated == original ? original.split("\n", -1).map { |line| translate(line) }.join("\n") : translated
+      elsif defined?($game_message) && $game_message && $game_message.respond_to?(:texts)
+        lines = $game_message.texts
+        lines.map! { |line| translate(line) } if lines.is_a?(Array)
+      end
+    end
+    def hook_messages
+      return unless @config['translation'] && defined?(Window_Message)
+      return if @message_class == Window_Message.object_id
+      @message_class = Window_Message.object_id
+      # XP/VX 常逐字绘制；必须在拆字之前翻译整句，而不是让绘制钩子只看到单个字母。
+      [:refresh, :start_message].each do |name|
+        next unless Window_Message.method_defined?(name)
+        original = Window_Message.instance_method(name)
+        flag = "@tsumigeya_message_#{name}"
+        wrapper = Module.new do
+          define_method(name) do |*args, &block|
+            return original.bind(self).call(*args, &block) if instance_variable_get(flag)
+            begin
+              instance_variable_set(flag, true)
+              TsumigeyaRuntime.translate_message
+              super(*args, &block)
+            ensure
+              instance_variable_set(flag, false)
+            end
+          end
+        end
+        Window_Message.prepend(wrapper)
+      end
     end
     def ready?
       scene = defined?(SceneManager) && SceneManager.respond_to?(:scene) ? SceneManager.scene : (defined?($scene) ? $scene : nil)
@@ -165,6 +218,7 @@ module TsumigeyaRuntime
       @last = now
       begin
         reload_dictionary
+        hook_messages
         @missing.reject! { |s| @dictionary.key?(s) || @dictionary.value?(s) }
         write('missing.json',@missing)
         if ready? && @party != $game_party.object_id
@@ -218,8 +272,8 @@ module TsumigeyaBitmap
     begin
       @tsumigeya_drawing = true
       index = arguments[0].is_a?(Rect) ? 1 : 4
-      arguments[index] = TsumigeyaRuntime.translate(arguments[index]) if arguments.size > index
-      super(*arguments)
+      arguments[index] = TsumigeyaRuntime.translate_drawn(arguments[index]) if arguments.size > index
+      TsumigeyaRuntime.with_font(self, arguments[index]) { super(*arguments) }
     ensure
       @tsumigeya_drawing = false
     end
@@ -228,7 +282,8 @@ module TsumigeyaBitmap
     return TsumigeyaRuntime::TEXT_SIZE.bind(self).call(text) if @tsumigeya_measuring
     begin
       @tsumigeya_measuring = true
-      super(TsumigeyaRuntime.translate(text))
+      translated = TsumigeyaRuntime.translate_drawn(text)
+      TsumigeyaRuntime.with_font(self, translated) { super(translated) }
     ensure
       @tsumigeya_measuring = false
     end

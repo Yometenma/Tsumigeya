@@ -158,17 +158,19 @@ public enum MkxpzConfig {
         //    但目录名本身就确定了版本（`RPGVXace` 必是 3）—— 所以这里反查一次。
         //    不反查的后果：`RTP=RPGVXace` 但没写 `Library=` 的游戏会得到 rgssVersion=0，
         //    于是我们告诉 mkxp-z「你自己判断」，它可能要试几次才知道该起哪个 RGSS 运行时。
-        let rtpName = RtpTable.normalizeRtpName(ini.rtp)
-        let versionFromRtp = rtpName.flatMap { RtpTable.versionOfRtpName($0) }
+        // XP 使用编号 RTP 键；所有非空路径都必须保留，否则已安装素材仍会缺失。
+        var rtpNames: [String] = []
+        for name in ini.rtpNames.compactMap(RtpTable.normalizeRtpName) where !rtpNames.contains(name) {
+            rtpNames.append(name)
+        }
+        let versionFromRtp = rtpNames.compactMap(RtpTable.versionOfRtpName).first
         let version = versionFromLibrary ?? versionFromRtp
 
         let dirs: [String]
         if !userRtp.isEmpty {
             dirs = userRtp
-        } else if let rtpName {
-            dirs = [BinaryPaths.mkxpzRtpDir(dataDir: ctx.dataDir, rtpName: rtpName)]
         } else {
-            dirs = []
+            dirs = rtpNames.map { BinaryPaths.mkxpzRtpDir(dataDir: ctx.dataDir, rtpName: $0) }
         }
 
         return RtpDecision(

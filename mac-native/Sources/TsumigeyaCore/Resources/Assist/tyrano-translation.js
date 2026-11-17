@@ -21,6 +21,9 @@
             var tag = tags[entry[0]]; if (!tag || typeof tag.start !== 'function' || tag.start.tsumigeyaTranslated) return;
             var start = tag.start;
             tag.start = function (parameters) {
+                // Tyrano 也通过 text 标签积累 iscript/html 原文，不能将代码送去翻译或替换。
+                var kag = this.kag || (window.TYRANO && TYRANO.kag);
+                if (entry[0] === 'text' && kag && kag.stat && (kag.stat.is_script || kag.stat.is_html)) return start.call(this, parameters);
                 var copy = Object.assign({}, parameters);
                 copy[entry[1]] = translate(copy[entry[1]]);
                 return start.call(this, copy);

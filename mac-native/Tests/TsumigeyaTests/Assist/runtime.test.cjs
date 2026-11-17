@@ -194,3 +194,25 @@ test('Tyrano template tags translate before the first polling tick',()=>{
  assert.equal(c.tyrano.plugin.kag.tag.text.start({val:'最初の台詞'}),'首句译文');
  assert.equal(c.tyrano.plugin.kag.tag.glink.start({text:'最初の台詞'}),'首句译文');
 });
+
+
+test('Tyrano script and HTML text tags are never translated or captured',()=>{
+ const dir=fs.mkdtempSync(path.join(require('node:os').tmpdir(),'tyrano-code-'));
+ const dictionary={'sf.flag = true;':'错误译文','こんにちは':'你好'};
+ fs.writeFileSync(path.join(dir,'translations.json'),JSON.stringify(dictionary));
+ const timers=[];
+ const c={console,require,setInterval(fn){timers.push(fn);},clearInterval(){},TsumigeyaAssist:{read:()=>dictionary,base:require('node:url').pathToFileURL(dir+path.sep).href}};c.window=c;vm.createContext(c);
+ vm.runInContext(`TYRANO={kag:{stat:{is_script:true,is_html:false},ftag:{master_tag:{text:{start(pm){return pm.val;}},glink:{start(pm){return pm.text;}}}}}}`,c);
+ vm.runInContext(fs.readFileSync(path.join(scripts,'tyrano-translation.js'),'utf8'),c);
+ const tag=c.TYRANO.kag.ftag.master_tag.text;
+ assert.equal(tag.start({val:'sf.flag = true;'}),'sf.flag = true;');
+ assert.equal(tag.start({val:'sf.untranslated = 1;'}),'sf.untranslated = 1;');
+ c.TYRANO.kag.stat.is_script=false;c.TYRANO.kag.stat.is_html=true;
+ assert.equal(tag.start({val:'こんにちは'}),'こんにちは');
+ assert.equal(tag.start({val:'<span>原文</span>'}),'<span>原文</span>');
+ c.TYRANO.kag.stat.is_html=false;
+ assert.equal(tag.start({val:'こんにちは'}),'你好');
+ tag.start({val:'待补译'});timers.forEach(fn=>fn());
+ assert.deepEqual(JSON.parse(fs.readFileSync(path.join(dir,'missing.json'),'utf8')),['待补译']);
+ fs.rmSync(dir,{recursive:true,force:true});
+});

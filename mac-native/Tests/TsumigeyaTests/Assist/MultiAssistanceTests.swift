@@ -156,6 +156,34 @@ struct MultiAssistanceTests {
         #expect(try Data(contentsOf: outside) == sentinel)
         #expect(try AssistanceInstaller.options(f.p) == .init(cheats: true))
     }
+    @Test("RGSS 仅开启翻译时追加本机字体，保留 RTP 和预加载且不写入游戏")
+    func launchTranslationFont() throws {
+        let f = try MultiFixture("rxdata"); defer { f.clean() }
+        let data = f.root.appendingPathComponent("launcher-data").path
+        let context = LaunchContext(folder: f.root.path, gamePath: f.root.appendingPathComponent("Game.exe").path,
+            gameArgs: ["RTP": .array([.string("/custom-rtp")]), "preloadScript": .array([.string("/custom-preload.rb")])],
+            gameTitle: "测试", dataDir: data, arch: "arm64")
+        let file = URL(fileURLWithPath: BinaryPaths.mkxpzConfigPath(data))
+        try AssistanceInstaller.configure(f.p, options: .init(translation: true), running: false)
+        guard case .success = LaunchPlanner.plan(engine: "mkxpz", context: context, fileExists: { _ in true }) else { Issue.record("翻译字体准备失败"); return }
+        let translated = try JSONDecoder().decode([String: JSONValue].self, from: Data(contentsOf: file))
+        let values = try #require(translated["RTP"]?.arrayValue)
+        let paths = values.compactMap(\.stringValue)
+        #expect(paths.count == 2)
+        #expect(paths.first == "/custom-rtp")
+        let fontRoot = try #require(paths.last)
+        #expect(fontRoot.hasPrefix(URL(fileURLWithPath: data).resolvingSymlinksInPath().path + "/assist-fonts/"))
+        #expect(FileManager.default.fileExists(atPath: fontRoot + "/Fonts/translation.ttf"))
+        #expect(translated["preloadScript"]?.arrayValue?.first == .string("/custom-preload.rb"))
+        #expect(!FileManager.default.fileExists(atPath: f.root.appendingPathComponent("Fonts").path))
+        try AssistanceInstaller.configure(f.p, options: .init(cheats: true), running: false)
+        guard case .success = LaunchPlanner.plan(engine: "mkxpz", context: context, fileExists: { _ in true }) else { Issue.record("仅作弊计划失败"); return }
+        let cheats = try JSONDecoder().decode([String: JSONValue].self, from: Data(contentsOf: file))
+        #expect(cheats["RTP"] == .array([.string("/custom-rtp")]))
+        try AssistanceInstaller.restore(f.p, running: false)
+        #expect(try NativeAssistance.translationFontRoot(for: f.root.path, dataDir: data) == nil)
+    }
+
     @Test("启动配置追加辅助且保留兼容预加载，卸载后不再加载")
     func launchPreloads() throws {
         let f = try MultiFixture("rvdata2"); defer { f.clean() }

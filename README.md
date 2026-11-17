@@ -94,7 +94,7 @@ xattr -dr com.apple.quarantine /Applications/Tsumigeya.app
 | RPG Maker XP / VX / VX Ace | mkxp-z | 有真实游戏启动记录 |
 | RPG Maker 2000 / 2003 | EasyRPG | 有真实游戏启动记录 |
 | Ren'Py | Ren'Py SDK | 有真实游戏启动记录 |
-| TyranoScript | NW.js | 官方 V5 引擎自编样本已启动并验收翻译／变量编辑；尚未实测商业游戏 |
+| TyranoScript | NW.js | 官方 V5 样本及免费作品原剧本已验收翻译／变量编辑；Electron 下载包需另行适配，不能直接运行 |
 | 吉里吉里 / KAG | krkrsdl2 | 实验性，不保证商业游戏兼容性 |
 | NScripter | ONScripter | 已接入，尚未实测游戏启动 |
 | Siglus | siglus_rs | 已接入，尚未实测游戏启动 |

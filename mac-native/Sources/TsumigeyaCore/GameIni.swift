@@ -40,10 +40,12 @@ import Foundation
 
 /// `Game.ini` 的 ASCII 结构部分。
 public struct GameIni: Sendable, Equatable {
-    /// `RTP=` 的值（已 trim）。`nil` = 明确不使用 RTP（写了空值或没有这一行）。
+    /// 首个非空 RTP 名称，兼容 XP 的 `RTP1=` / `RTP2=` / `RTP3=`。
     public var rtp: String?
-    /// `[Game]` 段里到底有没有 `RTP=` 这一行（区分「没有行」与「行存在但为空」）。
+    /// `[Game]` 段里是否有 RTP 或 XP 编号 RTP 行，包括空值。
     public var hasRtpLine: Bool
+    /// 按 RTP、RTP1、RTP2、RTP3 顺序排列的非空名称。
+    public var rtpNames: [String] = []
     /// `Scripts=` 的值（形如 `Data\\Scripts.rvdata2`）。
     public var scripts: String?
     /// `Library=` 的值（形如 `System\\RGSS300.dll`）。
@@ -65,7 +67,7 @@ public enum GameIniReader {
     /// ⚠️ **只按 latin1 语义读**（逐字节，不按 UTF-8 解码），
     /// **绝不用 `Title=`**（GBK，读出来是乱码），
     /// 也绝不尝试 UTF-8（会让中文标题变成替换字符、甚至解析错行）。
-    /// 我们只关心 `RTP=` / `Scripts=` / `Library=` 这三个纯 ASCII 键。
+    /// 我们只关心 RTP（含 XP 编号键）、Scripts、Library 这些 ASCII 键。
     ///
     /// Swift 里「按 latin1 读」= `String(data:encoding:.isoLatin1)`。
     /// 它是单字节编码，任何字节都能解码，不会抛错 —— 正是我们要的。
@@ -85,6 +87,7 @@ public enum GameIniReader {
         var result = GameIni(
             rtp: nil, hasRtpLine: false, scripts: nil, library: nil, exists: true)
         var section = ""
+        var rtpValues: [String: String] = [:]
 
         // ⚠️ **必须用 `components(separatedBy: .newlines)`，不能用 `split(separator: "\n")`。**
         //
@@ -136,9 +139,9 @@ public enum GameIniReader {
                 .trimmingCharacters(in: .whitespaces)
 
             switch key {
-            case "rtp":
+            case "rtp", "rtp1", "rtp2", "rtp3":
                 result.hasRtpLine = true
-                result.rtp = value.isEmpty ? nil : value
+                rtpValues[key] = value
             case "scripts":
                 result.scripts = value.isEmpty ? nil : value
             case "library":
@@ -147,6 +150,11 @@ public enum GameIniReader {
                 break
             }
         }
+        result.rtpNames = ["rtp", "rtp1", "rtp2", "rtp3"].compactMap { key in
+            guard let value = rtpValues[key], !value.isEmpty else { return nil }
+            return value
+        }
+        result.rtp = result.rtpNames.first
         return result
     }
 }
