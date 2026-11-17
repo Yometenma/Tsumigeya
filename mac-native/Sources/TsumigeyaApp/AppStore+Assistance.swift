@@ -17,6 +17,11 @@ final class AssistanceSession: ObservableObject {
     @Published var busy = false
     @Published var message = ""
     @Published var error: String?
+    @Published var liveState: AssistanceSnapshot?
+    @Published var liveMessage = "请应用辅助后通过启动器进入游戏。"
+    @Published var pendingCommand: String?
+    private var sentAt: Date?
+
     private var task: Task<Void, Never>?
     private var valid = true
     private var serviceRaw: [String: JSONValue] = [:]
@@ -26,13 +31,13 @@ final class AssistanceSession: ObservableObject {
     var isCurrent: Bool {
         valid && store?.dataDir == dataDirectory && store?.game(id: game.id)?.gamePath == game.gamePath && store?.game(id: game.id)?.gameEngine == game.gameEngine && store?.assistanceSessions[game.id] === self
     }
-    func invalidate() { valid = false; task?.cancel(); task = nil; busy = false }
+    func invalidate() { liveState = nil; pendingCommand = nil; valid = false; task?.cancel(); task = nil; busy = false }
     private func operation(_ body: () throws -> Void) { error = nil; do { try body() } catch { self.error = error.localizedDescription } }
     func reload() {
         guard !busy else { return }
         project = nil; catalog = nil
         operation {
-            guard game.gameEngine == "nwjs" else { throw AssistanceError.invalid("此功能支持 RPG Maker MV/MZ，不支持当前引擎。") }
+            guard ["nwjs", "mkxpz", "renpy", "tyrano"].contains(game.gameEngine) else { throw AssistanceError.invalid("当前引擎尚未接入翻译与作弊；可启动不代表可修改游戏状态。") }
             let project = try RPGMakerProject.detect(folder: DetectPath.gameDirForFiles(game.gamePath))
             let loaded = try TranslationFiles.load(project: project, dataDir: store?.dataDir ?? "")
             let installedOptions = try AssistanceInstaller.options(project)
@@ -48,6 +53,33 @@ final class AssistanceSession: ObservableObject {
             }
             key = try TranslationCredential.read(account: service.endpoint)
         }
+    }
+    func refreshLive() {
+        guard isCurrent, store?.privacy.hidesTitles == false, let project, project.usesFileBridge, installed, options.cheats else { liveState = nil; pendingCommand = nil; return }
+        do {
+            let snapshot = try AssistanceBridge.read(project)
+            liveState = snapshot
+            if let pendingCommand, snapshot.ack == pendingCommand {
+                self.pendingCommand = nil
+                liveMessage = snapshot.error ?? "游戏已确认操作。"
+            } else if pendingCommand != nil, let sentAt, Date.now.timeIntervalSince(sentAt) > 6 {
+                pendingCommand = nil; liveMessage = "游戏未确认操作，请刷新数值后核对，勿直接重复修改。"
+            } else if pendingCommand == nil { liveMessage = snapshot.ready ? (snapshot.error ?? "已连接当前游戏。") : "请先进入游戏或读取存档。" }
+        } catch {
+            liveState = nil; liveMessage = error.localizedDescription
+            if pendingCommand != nil, let sentAt, Date.now.timeIntervalSince(sentAt) > 6 {
+                pendingCommand = nil
+                liveMessage = "连接已中断，无法确认刚才的操作；重连后请先核对数值。"
+            }
+        }
+    }
+    func sendLive(action: String, key: String, value: String) {
+        guard isCurrent, store?.privacy.hidesTitles == false, let project, let liveState, pendingCommand == nil else { return }
+        do {
+            let parsed = action == "reset" || action == "unlock" ? JSONValue.null : try JSONDecoder().decode(JSONValue.self, from: Data(value.utf8))
+            pendingCommand = try AssistanceBridge.send(project, snapshot: liveState, action: action, key: key, value: parsed)
+            sentAt = .now; liveMessage = "等待游戏确认……"
+        } catch { liveMessage = error.localizedDescription }
     }
     private var serviceURL: URL { URL(fileURLWithPath: store?.dataDir ?? "").appendingPathComponent("translation-service.json") }
     func endpointChanged() {
@@ -181,14 +213,16 @@ final class AssistanceSession: ObservableObject {
             guard isCurrent, let project, let store else { return }
             store.refreshRunning()
             try AssistanceInstaller.configure(project, options: options, translations: catalog?.dictionary ?? [:], running: running)
-            installed = true; message = "辅助功能已应用，下次启动游戏生效。作弊面板可在游戏右上角或按 ⇧F8 打开。"
+            installed = true
+            message = project.usesFileBridge ? "辅助功能已应用，下次启动游戏生效。进入游戏后，在下方作弊工具中搜索和编辑数值。" : "辅助功能已应用，下次启动游戏生效。作弊面板可在游戏右上角或按 ⇧F8 打开。"
         }
     }
     func restore() {
         operation {
             guard isCurrent, let project, let store else { return }
             store.refreshRunning(); try AssistanceInstaller.restore(project, running: running)
-            installed = false; options = .init(); message = "游戏入口已恢复；译文目录仍保留。存档里的修改不会因此撤销。"
+            installed = false; options = .init(); liveState = nil; pendingCommand = nil
+            message = "辅助功能已移除；译文目录仍保留。存档里的修改不会因此撤销。"
         }
     }
 }

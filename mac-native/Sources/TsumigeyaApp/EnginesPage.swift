@@ -96,6 +96,13 @@ struct EngineRow: View {
                 actionArea
             }
 
+            let capabilities = EngineCapabilities.forEngine(entry.id)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("启动：\(capabilities.launch)")
+                Text("翻译：\(capabilities.translation)")
+                Text("作弊：\(capabilities.cheats)")
+            }.font(.caption).foregroundStyle(.secondary)
+
             // 警告（两种语义分开显示，见 EngineStatus.Warning 的注释）
             if let warning = entry.warning {
                 warningView(warning)

@@ -234,9 +234,16 @@ public enum LaunchPlanner {
             // ③ 写配置到 app 包内
             let configPath = BinaryPaths.mkxpzConfigPath(ctx.dataDir)
             let rtp = MkxpzConfig.resolveRtp(context: ctx)
-            let config = MkxpzConfig.build(
+            var config = MkxpzConfig.build(
                 context: ctx, folder: gameFolder,
                 rgssVersion: rtp.rgssVersion, rtpDirs: rtp.rtpDirs)
+            do {
+                if let _ = try NativeAssistance.preload(for: ctx.folder) {
+                    let preload = URL(fileURLWithPath: gameFolder).appendingPathComponent(".tsumigeya-assist/rgss.rb").path
+                    let prior = config["preloadScript"]?.arrayValue ?? config["preloadScript"]?.stringValue.map { [.string($0)] } ?? []
+                    config["preloadScript"] = .array(prior.filter { $0.stringValue != preload } + [.string(preload)])
+                }
+            } catch { return .failure(.spawnFailed(message: "辅助配置检查失败：\(error.localizedDescription)")) }
             if let writeError = MkxpzConfig.write(config, to: configPath) {
                 // 写配置失败 → **不启动**。没有配置它必然弹错误框，比不启动更糟。
                 return .failure(.spawnFailed(message: "写 mkxp.json 失败：\(writeError)"))

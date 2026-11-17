@@ -31,7 +31,7 @@ let package = Package(
             name: "TsumigeyaTests",
             dependencies: ["TsumigeyaCore", "TsumigeyaApp"],
             path: "Tests/TsumigeyaTests",
-            exclude: ["Assist/runtime.test.cjs"],
+            exclude: ["Assist/runtime.test.cjs", "Assist/renpy_runtime_test.py", "Assist/rgss_runtime_test.rb"],
             // 真实页面样本必须打包，测试通过 Bundle.module 读取。
             resources: [.process("Fixtures")]
         ),

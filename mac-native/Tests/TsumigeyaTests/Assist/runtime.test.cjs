@@ -164,3 +164,33 @@ test('battle actions reject busy engines without mutation and release input for 
     g.c.BattleManager._phase='input';
     g.c.SceneManager._scene=new g.c.Scene_Map();assert.throws(()=>api.battle('win'),/场景准备/);assert.equal(requested,2);
 });
+
+test('Tyrano scalar paths are bounded, prototype-safe, lockable and reset on load',()=>{
+ const timers=[],c={console,setInterval(fn){timers.push(fn);},TsumigeyaAssist:{errors:[]}};c.window=c;vm.createContext(c);
+ vm.runInContext(`TYRANO={kag:{stat:{f:{money:10,nested:{flag:false},text:'勇者'}},variable:{sf:{seen:2}}}}`,c);
+ vm.runInContext(fs.readFileSync(path.join(scripts,'tyrano-cheats.js'),'utf8'),c);
+ const api=c.TsumigeyaAssist.cheats;timers[0]();assert(api.list().some(r=>r.key==='f.nested.flag'));
+ api.set('f.money',20);assert.equal(c.TYRANO.kag.stat.f.money,20);assert.throws(()=>api.set('f.money',true));
+ assert.throws(()=>api.set('f.__proto__.polluted',1));assert.equal({}.polluted,undefined);
+ api.lock('f.money',30);c.TYRANO.kag.stat.f.money=1;timers[0]();assert.equal(c.TYRANO.kag.stat.f.money,30);
+ api.set('f.money',40);timers[0]();assert.equal(c.TYRANO.kag.stat.f.money,40);assert(api.list().every(r=>!r.locked));
+ api.scan('unknown');c.TYRANO.kag.stat.f.money=15;assert.equal(api.scan('decreased')[0].key,'f.money');
+ vm.runInContext(`TYRANO.kag.stat.f={money:5}`,c);timers[0]();assert.equal(c.TYRANO.kag.stat.f.money,5);
+ assert(api.list().every(r=>!r.locked));assert.throws(()=>api.scan('changed'));
+});
+test('Tyrano tag translation clones parameters, captures displayed strings and preserves engine context',()=>{
+ const timers=[],c={console,setInterval(fn){timers.push(fn);return timers.length;},clearInterval(){},TsumigeyaAssist:{read:()=>({'こんにちは':'你好'}),base:'https://fixture/.tsumigeya-assist/'}};c.window=c;vm.createContext(c);
+ vm.runInContext(`TYRANO={kag:{ftag:{master_tag:{text:{start(pm){this.received=pm;return pm.val;}},glink:{start(pm){return pm.text;}}}}}}`,c);
+ vm.runInContext(fs.readFileSync(path.join(scripts,'tyrano-translation.js'),'utf8'),c);timers[0]();
+ const original={val:'こんにちは',speed:12};assert.equal(c.TYRANO.kag.ftag.master_tag.text.start(original),'你好');assert.equal(original.val,'こんにちは');assert.equal(c.TYRANO.kag.ftag.master_tag.text.received.speed,12);
+ assert.equal(c.TsumigeyaAssist.translate('新しい台詞'),'新しい台詞');
+ assert.equal(c.TYRANO.kag.ftag.master_tag.glink.start({text:'こんにちは'}),'你好');
+});
+
+test('Tyrano template tags translate before the first polling tick',()=>{
+ const c={console,setInterval(){},clearInterval(){},TsumigeyaAssist:{read:()=>({'最初の台詞':'首句译文'}),base:'https://fixture/.tsumigeya-assist/'}};c.window=c;vm.createContext(c);
+ vm.runInContext(`tyrano={plugin:{kag:{tag:{text:{start(pm){return pm.val;}},glink:{start(pm){return pm.text;}}}}}}`,c);
+ vm.runInContext(fs.readFileSync(path.join(scripts,'tyrano-translation.js'),'utf8'),c);
+ assert.equal(c.tyrano.plugin.kag.tag.text.start({val:'最初の台詞'}),'首句译文');
+ assert.equal(c.tyrano.plugin.kag.tag.glink.start({text:'最初の台詞'}),'首句译文');
+});

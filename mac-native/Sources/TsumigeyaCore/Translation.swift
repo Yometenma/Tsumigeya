@@ -116,7 +116,7 @@ public enum TranslationFiles {
 
 public enum TranslationTokens {
     // 控制符、格式占位和 HTML 标签必须原样保留，不能交给模型自行重建。
-    private static let pattern = #"\\(?:[A-Za-z]+(?:\[[^\]\r\n]*\])?|[{}.!|><^$\\])|%\d+|\{\{[^}\r\n]*\}\}|<[^>\r\n]+>"#
+    private static let pattern = #"\\(?:[A-Za-z]+(?:\[[^\]\r\n]*\])?|[{}.!|><^$\\])|%(?:\d+\$)?[-+0 #]*\d*(?:\.\d+)?[sdif]|%\d+|\[[A-Za-z_][^\]\r\n]*\]|\{\{[^}\r\n]*\}\}|\{[^{}\r\n]*\}|<[^>\r\n]+>"#
     public static func tokens(_ text: String) -> [String] {
         let re = try! NSRegularExpression(pattern: pattern)
         let ns = text as NSString
@@ -150,6 +150,7 @@ public enum TranslationTokens {
 
 public enum RPGTextExtractor {
     public static func extract(_ project: RPGMakerProject) throws -> [TranslationEntry] {
+        if project.engine != .rpgMaker { return try AdditionalTextExtractor.extract(project) }
         let dir = project.content.appendingPathComponent("data")
         let urls = try FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.isRegularFileKey])
             .filter { $0.pathExtension.lowercased() == "json" }.sorted { $0.lastPathComponent < $1.lastPathComponent }

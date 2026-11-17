@@ -22,6 +22,7 @@ private struct AssistanceContent: View {
     @ObservedObject var session: AssistanceSession
     @EnvironmentObject private var store: AppStore
     private var running: Bool { store.runningGames[session.game.id] != nil }
+    private var restoreTitle: String { session.project?.usesFileBridge == true ? "移除辅助功能" : "恢复原始入口" }
     @State private var query = ""
     @State private var onlyMissing = false
     @State private var selected: TranslationEntry?
@@ -41,7 +42,8 @@ private struct AssistanceContent: View {
             if let error = session.error { Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.red).textSelection(.enabled) }
             if !session.message.isEmpty { Text(session.message).foregroundStyle(.secondary).textSelection(.enabled) }
             if let project = session.project {
-                Label("已识别 RPG Maker \(project.edition)", systemImage: "checkmark.circle")
+                Label("已识别 \(project.displayName)", systemImage: "checkmark.circle")
+                Text("启动能力与辅助能力分别判断；已识别当前游戏的文字翻译和状态编辑接入。").font(.caption).foregroundStyle(.secondary)
                 installation
                 translation
                 cheats
@@ -60,22 +62,22 @@ private struct AssistanceContent: View {
         .confirmationDialog("开始自动翻译？", isPresented: $confirmTranslate) {
             Button("发送文本并开始翻译") { session.translate(onlyFailures: onlyFailures, followGame: followGame) }
         } message: { Text("待翻译游戏文本将发送到你填写的接口，可能产生费用。已完成的译文不会重复请求；可随时暂停。游戏文本仅作为数据处理，不执行其中的指令。") }
-        .confirmationDialog("恢复游戏原始入口？", isPresented: $confirmRestore) {
-            Button("恢复原始入口", role: .destructive) { session.restore() }
-        } message: { Text("移除辅助加载入口和辅助文件，保留启动器中的译文。此操作不会撤销已写入存档的作弊修改。") }
+        .confirmationDialog("确认\(restoreTitle)？", isPresented: $confirmRestore) {
+            Button(restoreTitle, role: .destructive) { session.restore() }
+        } message: { Text("移除辅助入口和辅助文件，保留启动器中的译文，不修改原始剧本或数据库。此操作不会撤销已写入存档的作弊修改。") }
     }
     private var installation: some View {
         GroupBox("游戏接入") {
             VStack(alignment: .leading, spacing: 12) {
                 Toggle("启用游戏文字翻译", isOn: $session.options.translation)
-                Toggle("启用游戏内作弊面板", isOn: $session.options.cheats)
-                Text("两项独立启用。应用前需退出游戏；会备份原始页面，仅添加辅助加载入口，不替换 main.js。译文修订完成后也需重新应用。").font(.callout).foregroundStyle(.secondary)
+                Toggle(session.project?.usesFileBridge == true ? "启用游戏状态编辑" : "启用游戏内作弊面板", isOn: $session.options.cheats)
+                Text(session.project?.usesFileBridge == true ? "两项独立启用。应用前需退出游戏；不替换原始剧本或数据库。RGSS 必须通过本启动器启动；Ren’Py 添加独立辅助剧本。译文修订完成后需重新应用。" : "两项独立启用。应用前需退出游戏；会备份原始页面，仅添加辅助加载入口，不替换 main.js。译文修订完成后也需重新应用。").font(.callout).foregroundStyle(.secondary)
                 HStack {
                     Button("应用到游戏") { session.apply() }.buttonStyle(.borderedProminent)
-                    if session.installed { Button("恢复原始入口") { confirmRestore = true } }
+                    if session.installed { Button(restoreTitle) { confirmRestore = true } }
                     Button("重新读取配置") { session.reload() }
                 }.disabled(running || session.busy)
-                if running { Text("游戏正在运行，不能修改辅助安装。游戏内作弊仍可操作。").foregroundStyle(.orange) }
+                if running { Text("游戏正在运行，不能修改辅助安装；已启用的作弊工具仍可操作。").foregroundStyle(.orange) }
             }.frame(maxWidth: .infinity, alignment: .leading).padding(8)
         }
     }
@@ -131,9 +133,15 @@ private struct AssistanceContent: View {
     private var cheats: some View {
         GroupBox("作弊工具") {
             VStack(alignment: .leading, spacing: 10) {
+                if session.project?.usesFileBridge == true {
+                    LiveAssistanceView(session: session)
+                } else if session.project?.engine == .tyrano {
+                    Text("启用后启动游戏，点击右上角「游戏辅助」或按 ⇧F8。支持游戏变量 f、系统变量 sf 的搜索、修改、锁定及数值逐次筛选；不提供 RPG 专用的角色和战斗操作。")
+                } else {
                 Text("启用后启动游戏，在游戏右上角点击「游戏辅助」或按 ⇧F8。进入游戏或读档后可操作，不需要启动器保持开启。")
                 Text("• 金钱、物品、防具、武器、角色属性和恢复\n• 变量／开关搜索与编辑、持续锁定与解除\n• 已知／未知数值查找，按增加、减少、改变和未改变逐次筛选\n• 游戏／移动速度、随机遇敌控制、穿墙\n• 地图搜索与坐标传送、地图事件和公共事件查看及执行")
-                Label("作弊修改可能写入存档；移除辅助功能不能撤销。地图传送和事件执行可能破坏剧情，请先备份存档。", systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
+                }
+                Label("作弊修改可能写入存档并破坏剧情；移除辅助功能不能撤销，请先备份存档。", systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
                 Text("数值搜索针对引擎公开的变量与角色状态，不是任意进程内存扫描。游戏自定义插件可能改变这些行为，不能保证所有作品完全兼容。").font(.caption).foregroundStyle(.secondary)
             }.frame(maxWidth: .infinity, alignment: .leading).padding(8)
         }
