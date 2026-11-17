@@ -39,12 +39,21 @@ struct RootView: View {
             HStack(spacing: 0) {
                 // 保持侧边栏视图挂载，只收缩宽度；如果直接用 if 移除整个子树，
                 // macOS 窗口在切换详情／欢迎页时偶尔会吞掉下一次“显示侧边栏”点击。
-                librarySidebar
-                    .frame(width: sidebarVisible ? 248 : 0, maxHeight: .infinity)
-                    .clipped()
-                    .opacity(sidebarVisible ? 1 : 0)
-                    .allowsHitTesting(sidebarVisible)
+                // 侧边栏始终保留在层级中，但由外层容器真正收缩到 0；
+                // 这样收起后不会留下窄条，也不会让内部固定宽度挤占内容区。
+                ZStack(alignment: .leading) {
+                    librarySidebar
+                        .frame(width: 248)
+                        .frame(maxHeight: .infinity)
+                }
+                .frame(width: sidebarVisible ? 248 : 0)
+                .frame(maxHeight: .infinity)
+                .clipped()
+                .opacity(sidebarVisible ? 1 : 0)
+                .allowsHitTesting(sidebarVisible)
+
                 Divider()
+                    .frame(width: sidebarVisible ? 1 : 0)
                     .opacity(sidebarVisible ? 1 : 0)
                 content
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -194,7 +203,7 @@ struct RootView: View {
             }
             .padding(8)
         }
-        .frame(width: 248)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: .controlBackgroundColor))
     }
 
@@ -593,67 +602,101 @@ struct WelcomeView: View {
     @EnvironmentObject private var store: AppStore
 
     var body: some View {
-        ZStack(alignment: .leading) {
-            welcomeArtwork
+        GeometryReader { proxy in
+            let compact = proxy.size.width < 680
 
-            LinearGradient(
-                colors: [Color(nsColor: .windowBackgroundColor).opacity(0.96), Color(nsColor: .windowBackgroundColor).opacity(0.78), .clear],
-                startPoint: .leading,
-                endPoint: .trailing
-            )
+            HStack(spacing: 0) {
+                welcomeCopy(compact: compact)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                    .padding(.leading, compact ? 28 : 44)
+                    .padding(.trailing, compact ? 18 : 32)
 
-            VStack(alignment: .leading, spacing: 16) {
-                Text("Tsumigeya")
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
-                    .tracking(2.4)
-                    .foregroundStyle(Color.tsumigeyaAccent.opacity(0.78))
-                    .textCase(.uppercase)
-
-                Text("今天想玩哪一部？")
-                    .font(.system(size: 30, weight: .bold, design: .rounded))
-                    .foregroundStyle(Color(nsColor: .labelColor))
-                    .fixedSize(horizontal: false, vertical: true)
-
-                Text("你的作品，都在这里。")
-                    .font(.system(size: 14, weight: .regular))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                if store.games.isEmpty {
-                    Button {
-                        store.openAddGame()
-                    } label: {
-                        Label("添加第一部作品", systemImage: "plus")
-                            .font(.system(size: 13, weight: .semibold))
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 9)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(Color.tsumigeyaAccent)
-                    .controlSize(.large)
-                }
+                welcomePlaceholder(compact: compact)
+                    .frame(width: compact ? proxy.size.width * 0.42 : proxy.size.width * 0.52)
+                    .frame(maxHeight: .infinity)
+                    .clipped()
             }
-            .frame(maxWidth: 360, alignment: .leading)
-            .padding(.leading, 42)
-            .padding(.vertical, 36)
+            .frame(width: proxy.size.width, height: proxy.size.height)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: .textBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .padding(22)
     }
+
     @ViewBuilder
-    private var welcomeArtwork: some View {
-        if let url = Bundle.module.url(forResource: "welcome-wide", withExtension: "png"),
-           let image = NSImage(contentsOf: url) {
-            Image(nsImage: image)
-                .resizable()
-                .scaledToFill()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .clipped()
-        } else {
-            Color.clear
+    private func welcomeCopy(compact: Bool) -> some View {
+        VStack(alignment: .leading, spacing: compact ? 12 : 16) {
+            Text("Tsumigeya")
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .tracking(2.4)
+                .foregroundStyle(Color.tsumigeyaAccent.opacity(0.78))
+                .textCase(.uppercase)
+
+            Text("今天想玩哪一部？")
+                .font(.system(size: compact ? 26 : 30, weight: .bold, design: .rounded))
+                .foregroundStyle(Color(nsColor: .labelColor))
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text("你的作品，都在这里。")
+                .font(.system(size: 14, weight: .regular))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if store.games.isEmpty {
+                Button {
+                    store.openAddGame()
+                } label: {
+                    Label("添加第一部作品", systemImage: "plus")
+                        .font(.system(size: 13, weight: .semibold))
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 9)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(Color.tsumigeyaAccent)
+                .controlSize(.large)
+            }
         }
+        .frame(maxWidth: compact ? 300 : 380, alignment: .leading)
+    }
+
+    // 正式看板娘素材准备好前使用中性占位，不再把带底色的临时原图放进欢迎页。
+    @ViewBuilder
+    private func welcomePlaceholder(compact: Bool) -> some View {
+        ZStack {
+            LinearGradient(
+                colors: [
+                    Color.tsumigeyaAccent.opacity(0.08),
+                    Color(nsColor: .windowBackgroundColor).opacity(0.04),
+                    Color.tsumigeyaAccent.opacity(0.16)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+
+            Circle()
+                .fill(Color.tsumigeyaAccent.opacity(0.12))
+                .frame(width: compact ? 170 : 260, height: compact ? 170 : 260)
+                .blur(radius: 2)
+                .offset(x: compact ? 36 : 60, y: compact ? -46 : -72)
+
+            Circle()
+                .stroke(Color.tsumigeyaAccent.opacity(0.18), lineWidth: 1)
+                .frame(width: compact ? 130 : 190, height: compact ? 130 : 190)
+                .offset(x: compact ? -28 : -44, y: compact ? 48 : 72)
+
+            Image(systemName: "sparkles")
+                .font(.system(size: compact ? 48 : 72, weight: .light))
+                .foregroundStyle(Color.tsumigeyaAccent.opacity(0.48))
+                .symbolRenderingMode(.hierarchical)
+        }
+        .overlay(alignment: .topTrailing) {
+            Image(systemName: "gamecontroller.fill")
+                .font(.system(size: compact ? 18 : 24, weight: .medium))
+                .foregroundStyle(Color.tsumigeyaAccent.opacity(0.32))
+                .padding(compact ? 22 : 34)
+        }
+        .accessibilityLabel("欢迎页插画占位")
     }
 }
 /// 游戏 id 是字符串，而模态表单需要稳定的 Identifiable 目标。
