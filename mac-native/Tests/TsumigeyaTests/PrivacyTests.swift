@@ -163,7 +163,7 @@ struct AppPrivacyTests {
         #expect(fixture.store.game(id: fixture.game.id) == fixture.game)
     }
 
-    @Test("实际窗口在切换后移除敏感文字，关闭后恢复", arguments: ["列表", "卡片", "详情", "编辑", "搜索结果"])
+    @Test("实际窗口在切换后移除敏感文字，关闭后恢复", arguments: ["列表", "卡片", "详情", "编辑", "搜索结果", "辅助"])
     func renderedTextRespectsPrivacy(surface: String) async throws {
         let fixture = try PrivacyFixture()
         defer { fixture.cleanup() }
@@ -176,13 +176,16 @@ struct AppPrivacyTests {
         case "列表": view = AnyView(GameListRow(game: game, isRunning: false))
         case "卡片": view = AnyView(GameCardTile(game: game, isRunning: false, isSelected: false, onSelect: {}))
         case "编辑": view = AnyView(GameEditView(game: game))
+        case "辅助": view = AnyView(GameDetailView(game: game, initialTab: .assistance))
         case "搜索结果": view = AnyView(DLsiteSearchResults(hits: [DLsiteSearch.Hit(
             rj: "RJ123456", title: fixture.marker, circle: fixture.marker, coverUrl: nil, order: 0)],
             onSelect: { _ in }, onCancel: {}))
         default: view = AnyView(GameDetailView(game: game))
         }
         _ = NSApplication.shared
-        let hosting = NSHostingView(rootView: view.environmentObject(store))
+        // NSView 缓存不包含 NSWindow 底色，透明底上的文字不能直接交给 OCR。
+        let hosting = NSHostingView(rootView: view.environmentObject(store)
+            .background(Color(nsColor: .windowBackgroundColor)))
         let window = NSWindow(contentRect: NSRect(x: -10000, y: -10000, width: 900, height: 760),
                               styleMask: [.titled, .closable], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false

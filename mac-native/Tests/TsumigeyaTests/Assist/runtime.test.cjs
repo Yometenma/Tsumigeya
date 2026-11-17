@@ -86,9 +86,13 @@ test('NW extension paths capture missing text and hot reload the dictionary with
         assert.equal(api.errors.length,0);assert.equal(api.translate('こんにちは'),'你好');
         api.translate('新しい文章');api.translate('你好');g.tick();
         const missing=JSON.parse(fs.readFileSync(path.join(data,'missing.json'),'utf8'));
-        assert(missing.includes('新しい文章'));assert(!missing.includes('你好'));
+        assert(missing.includes('新しい文章'));assert(!missing.includes('你好'));assert(!missing.includes('好感度'));assert(!missing.includes('村'));
         fs.writeFileSync(dictionary,JSON.stringify({'こんにちは':'你好','新しい文章':'新的句子'}));g.tick();
         assert.equal(api.translate('新しい文章'),'新的句子');
+        assert(!JSON.parse(fs.readFileSync(path.join(data,'missing.json'),'utf8')).includes('新しい文章'));
+        const unseen={id:2,name:'まだ表示していない物品'};g.c.$dataItems.push(unseen);g.c.DataManager.onLoad(g.c.$dataItems);g.tick();
+        assert(!JSON.parse(fs.readFileSync(path.join(data,'missing.json'),'utf8')).includes(unseen.name));
+        new g.c.Bitmap().drawText(unseen.name);g.tick();assert(JSON.parse(fs.readFileSync(path.join(data,'missing.json'),'utf8')).includes(unseen.name));
         assert(!fs.existsSync(path.join(data,'missing.tmp')));
     } finally { fs.rmSync(directory,{recursive:true,force:true}); }
 });
@@ -117,4 +121,18 @@ test('attribute edits respect engine caps and multipliers instead of creating an
     assert.throws(()=>api.lock('actor:1:param0',0));assert.equal(api.locks().length,0);
     api.lock('actor:1:param2',50);g.tick();assert.equal(a.param(2),50);
     a.paramRate=()=>0;assert.throws(()=>api.set('actor:1:param2',40));
+});
+
+test('a full capture queue keeps newly displayed text instead of permanently starving it',()=>{
+    const os=require('node:os');const directory=fs.mkdtempSync(path.join(os.tmpdir(),'tsumigeya-capture-'));
+    try {
+        const data=path.join(directory,'.tsumigeya-assist');fs.mkdirSync(data);
+        fs.writeFileSync(path.join(data,'translations.json'),'{}');
+        fs.writeFileSync(path.join(data,'missing.json'),JSON.stringify(Array.from({length:5000},(_,i)=>'古い文章'+i)));
+        const g=game();g.c.require=require;g.c.URL=URL;g.c.nw={App:{startPath:directory}};
+        g.c.TsumigeyaAssist.base='chrome-extension://example/.tsumigeya-assist/';g.c.TsumigeyaAssist.read=()=>({});
+        g.load('translation.js');new g.c.Bitmap().drawText('今表示した新しい文章');g.tick();
+        const missing=JSON.parse(fs.readFileSync(path.join(data,'missing.json'),'utf8'));
+        assert.equal(missing.length,5000);assert(missing.includes('今表示した新しい文章'));assert(!missing.includes('古い文章0'));
+    } finally { fs.rmSync(directory,{recursive:true,force:true}); }
 });

@@ -5,7 +5,7 @@
         var dictionary = assist.read('translations.json');
         if (!dictionary || Array.isArray(dictionary) || typeof dictionary !== 'object') throw new Error('译文不是字典');
         var has = Object.prototype.hasOwnProperty;
-        var targets = Object.create(null), missing = Object.create(null), dirty = false, fileSystem = null, directory = null;
+        var targets = Object.create(null), missing = Object.create(null), dirty = false, fileSystem = null, directory = null, captureSuppressed = 0;
         function indexTargets() { targets = Object.create(null); Object.keys(dictionary).forEach(function (key) { if (typeof dictionary[key] === 'string') targets[dictionary[key]] = true; }); }
         indexTargets();
         try {
@@ -25,7 +25,10 @@
             }
         } catch (ignored) { fileSystem = null; }
         function capture(text) {
-            if (!missing[text] && !targets[text] && text.length > 0 && text.length <= 4096 && /[\u3040-\u30ff\u3400-\u9fffA-Za-z]/.test(text) && Object.keys(missing).length < 5000) { missing[text] = true; dirty = true; }
+            if (captureSuppressed || missing[text] || targets[text] || !text.length || text.length > 4096 || !/[\u3040-\u30ff\u3400-\u9fffA-Za-z]/.test(text)) return;
+            var keys = Object.keys(missing);
+            if (keys.length >= 5000) delete missing[keys[0]];
+            missing[text] = true; dirty = true;
         }
         setInterval(function () {
             if (!fileSystem || !directory) return;
@@ -34,7 +37,12 @@
                 var dictionaryFile = directory + 'translations.json';
                 if (fileSystem.lstatSync(dictionaryFile).isSymbolicLink()) return;
                 var next = JSON.parse(fileSystem.readFileSync(dictionaryFile, 'utf8'));
-                if (next && !Array.isArray(next) && typeof next === 'object') { dictionary = next; indexTargets(); }
+                if (next && !Array.isArray(next) && typeof next === 'object') {
+                    dictionary = next; indexTargets();
+                    Object.keys(missing).forEach(function (text) {
+                        if (has.call(dictionary, text) || targets[text]) { delete missing[text]; dirty = true; }
+                    });
+                }
                 if (dirty) {
                     var destination = directory + 'missing.json', temp = directory + 'missing.tmp';
                     if ((fileSystem.existsSync(destination) && fileSystem.lstatSync(destination).isSymbolicLink()) || (fileSystem.existsSync(temp) && fileSystem.lstatSync(temp).isSymbolicLink())) return;
@@ -52,6 +60,11 @@
         assist.translate = translate;
         var fields = ['name', 'nickname', 'profile', 'description', 'message1', 'message2', 'message3', 'message4'];
         function database(object) {
+            // 预加载数据库不代表文字已经显示，不能挤占动态文字的捕获范围。
+            captureSuppressed++;
+            try { translateDatabase(object); } finally { captureSuppressed--; }
+        }
+        function translateDatabase(object) {
             var knownDatabase = ['$dataActors', '$dataClasses', '$dataSkills', '$dataItems', '$dataWeapons', '$dataArmors', '$dataEnemies', '$dataStates', '$dataMapInfos'].some(function (name) { return window[name] === object; });
             if (knownDatabase && Array.isArray(object)) object.forEach(function (row) {
                 if (!row || typeof row !== 'object') return;
