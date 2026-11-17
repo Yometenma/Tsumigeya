@@ -131,7 +131,7 @@ public enum LaunchDiagnostics {
 
         let context = LaunchContext(
             folder: folder, gamePath: game.gamePath, gameArgs: args,
-            gameTitle: game.gameTitle, dataDir: dataDir, arch: arch)
+            gameTitle: game.gameTitle, dataDir: dataDir, arch: arch, gameID: game.wineEnvironmentIdentity)
         switch LaunchPlanner.plan(
             engine: game.gameEngine, context: context,
             fileExists: fileExists, listDir: listDir, performPreparation: false
@@ -154,6 +154,15 @@ public enum LaunchDiagnostics {
             }
         }
 
+        if game.gameEngine == "wine" {
+            add("wine-prefix", .notice, "独立 Windows 环境",
+                WineRuntime.prefix(dataDir: dataDir, folder: folder, gameID: game.wineEnvironmentIdentity))
+            add("wine-compatibility", .notice, "Windows 兼容运行",
+                "支持通过 Wine 运行 Windows 程序；具体游戏兼容性取决于程序及其依赖，不支持 Windows 专用驱动。首次启动会初始化环境。")
+            if arch == "arm64" && !WineRuntime.rosettaAvailable() {
+                add("wine-rosetta", .blocking, "需要 Rosetta 2", "此 Wine 运行时使用 Intel 架构。", action: "在运行时页面重新安装 Wine，按提示安装 Rosetta 2。")
+            }
+        }
         if let runningPID {
             add("already-running", .notice, "游戏已经在运行", "进程 PID \(runningPID)",
                 action: "如需重新启动，请先停止当前游戏。")

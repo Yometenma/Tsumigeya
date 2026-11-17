@@ -52,7 +52,7 @@ struct LaunchDiagnosticsTests {
         #expect(result.items.contains { $0.id == "runtime-executable" && $0.level == .blocking })
     }
 
-    @Test("只识别引擎不会因为有二进制路径而显示可启动")
+    @Test("旧 Unity 记录走 Wine，并检查真实启动入口")
     func detectOnly() throws {
         let folder = try fixture()
         defer { try? FileManager.default.removeItem(at: folder.deletingLastPathComponent()) }
@@ -60,7 +60,8 @@ struct LaunchDiagnosticsTests {
         let result = LaunchDiagnostics.inspect(
             game: game, dataDir: "/data", arch: "arm64",
             fileExists: { _ in true }, isExecutable: { _ in true }, listDir: { _ in [] })
-        #expect(result.items.contains { $0.id == "engine-launchable" && $0.level == .blocking })
+        #expect(result.items.contains { $0.id == "engine-known" && $0.level == .good })
+        #expect(result.items.contains { $0.id == "wine-prefix" })
         #expect(result.hasBlockingIssues)
     }
 

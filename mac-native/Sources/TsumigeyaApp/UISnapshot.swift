@@ -277,7 +277,7 @@ enum UISnapshot {
             }
             let intakeCandidates = [
                 LibraryIntake.Candidate(folder: "/示例游戏/很长的目录名称与中文路径/魔女的故事 完整版", title: "魔女的故事 完整版", engine: "kirikiri"),
-                LibraryIntake.Candidate(folder: "/示例游戏/另一部游戏", title: "另一部游戏", engine: "unity")
+                LibraryIntake.Candidate(folder: "/示例游戏/另一部游戏", title: "另一部游戏", engine: "wine", entryPath: "/示例游戏/另一部游戏/启动.exe")
             ]
             previewStore.setSetting(.privacyMode, .bool(false))
             failures += captureWindow(

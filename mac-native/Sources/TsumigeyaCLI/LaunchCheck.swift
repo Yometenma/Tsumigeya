@@ -56,8 +56,7 @@ func runLaunchPlanPreview() -> Int {
             gameArgs: gameArgs,
             gameTitle: game.gameTitle,
             dataDir: dir.path,
-            arch: arch
-        )
+            arch: arch, gameID: game.wineEnvironmentIdentity)
 
         switch LaunchPlanner.plan(engine: game.gameEngine, context: ctx) {
         case .success(let plan):
@@ -168,8 +167,7 @@ func runLaunchVerify(gameId: String?) -> Int {
         let folder = DetectPath.gameDirForFiles(game.gamePath)
         let ctx = LaunchContext(
             folder: folder, gamePath: game.gamePath, gameArgs: gameArgs,
-            gameTitle: game.gameTitle, dataDir: dir.path, arch: arch
-        )
+            gameTitle: game.gameTitle, dataDir: dir.path, arch: arch, gameID: game.wineEnvironmentIdentity)
 
         guard case .success(let plan) = LaunchPlanner.plan(
             engine: game.gameEngine, context: ctx) else {

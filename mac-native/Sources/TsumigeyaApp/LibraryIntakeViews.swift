@@ -68,6 +68,15 @@ struct BatchImportView: View {
                                     .disabled(scanToken != nil || conflict != nil)
                                 Text(candidate.folder).font(.caption).foregroundStyle(.secondary)
                                     .lineLimit(2).textSelection(.enabled)
+                                if candidate.engine == "wine" {
+                                    Picker("Windows 启动文件", selection: $candidate.entryPath) {
+                                        Text("请选择启动文件").tag("")
+                                        ForEach(WineRuntime.executables(in: candidate.folder), id: \.self) { file in
+                                            Text((file as NSString).lastPathComponent).tag(file)
+                                        }
+                                    }
+                                    .disabled(scanToken != nil || conflict != nil)
+                                }
                                 if let conflict { Text(conflict).font(.caption).foregroundStyle(.orange) }
                             }
                             let definition = EngineRegistry.find(folder: candidate.engine)

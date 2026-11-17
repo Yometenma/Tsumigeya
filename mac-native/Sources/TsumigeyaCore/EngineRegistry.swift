@@ -1,44 +1,3 @@
-// 引擎注册表（9 个可启动 + 3 个只识别）。
-//
-// 对应 Electron 版：src/main/engines/registry.ts（967 行）
-// 契约：docs/M1-实施方案.md §2，D60 / D87 / D88 / D91
-//
-// ===== 这里是**数据**，不是逻辑 =====
-//
-// Electron 版那 967 行里，真正是数据的是：folder / name / autodetect 规则 /
-// 下载 URL / 参数 schema。其余是注释（讲为什么这么设计）与参数默认值。
-//
-// 本文件只搬**识别要用**的那部分：folder + name + autodetect 规则 + 是否可启动。
-// 下载 URL 与参数 schema 等 P3 再搬（那时才用得上，现在搬了也验证不了）。
-//
-// ===== 判据（D87/D88，别改）=====
-//
-// · **可启动的 9 个**：判据是「资源跨平台 + 有 macOS 运行时」，**不是**
-//   「DLsite 标没标支持 Mac」。这个启动器的存在理由就是
-//   「游戏只发 Windows 包、我们用自己装的 mac 运行时跑它的资源」。
-//
-// · **只识别的 3 个**（Unity / RPGBakin / ウディタ）：用户要「范围尽可能广」，
-//   但**「认得出」和「跑得动」是两件事**。塞进可启动表 → 引擎页列成「可安装」
-//   但下载地址空 → 点了必失败（D60 的「不起作用的开关」教训）。
-//   完全不认 → 用户得到「未知引擎」，而「未知」与「需要 Windows 兼容层」
-//   是**两种不同处境**（前者像程序坏了）。
-//
-// ===== ⚠️ 三条规则背后的实测教训（写规则时别踩回去）=====
-//
-// ① **Unity 绝不能加 `extensions: ['exe']`**
-//    实测抓到过：加了之后，一个只有 readme 的空目录都被判成 Unity。
-//    于是「一个我们完全不认识的 exe 游戏」被判成 Unity，报「需要 Windows 兼容层」
-//    —— 而它也许其实是我们认识的某个引擎（只是强命中没匹配上）。
-//    判据必须**只靠专有文件名**，宁可认不出（返回 nil）也不能乱认。
-//
-// ② **Tyrano 用两个目录当判据**（`tyrano` + `data`），**不用 index.html** ——
-//    后者在任何网页项目里都有，会误伤。
-//    也**不写** `resources/app` —— 那个路径在很多 Electron 应用里都有，
-//    写了会把任何 Electron 打包的程序都认成 Tyrano。
-//
-// ③ **吉里吉里只认 `data.xp3`**（最标志性的归档产物）。
-//    不认 `startup.tjs` + 散文件那种形态：认了会把「一堆 .tjs」的项目误判，
-//    而那些散文件布局没有统一约定。
 import Foundation
 
 /// 一个引擎（识别用部分）。
@@ -95,7 +54,7 @@ extension DependencySpec {
 
 public enum EngineRegistry {
 
-    /// **可启动的 9 个引擎**（D87 / D91）。顺序即引擎页顺序，**同分时靠它定序**。
+    /// 专用运行时优先识别，Wine 仅在真实 Windows 入口没有匹配时兜底。
     public static let launchable: [EngineDefinition] = [
         EngineDefinition(
             folder: "nwjs", name: "NW.js",
@@ -131,49 +90,20 @@ public enum EngineRegistry {
             folder: "siglus", name: "Siglus",
             autodetect: DetectRule(files: ["Scene.pck", "Gameexe.dat"], allRequired: false)),
 
+        EngineDefinition(folder: "wine", name: "Wine（Windows 兼容）", autodetect: nil),
+
         EngineDefinition(
             folder: "godot", name: "Godot",
             autodetect: DetectRule(extensions: ["pck"], allRequired: false)),
     ]
 
-    /// **只识别、不启动的 3 个**（D88）。
-    ///
-    /// ⚠️ 它们的 `allRequired` **一律 false（走打分）**，因为靠「强命中」去抢
-    /// 会挤掉可启动引擎（`pickBestRule` 的「强命中永远压过打分命中」保证了
-    /// 可启动引擎一旦强命中就赢）。实测见 `test/detect-priority.test.ts` 的 12 条。
-    public static let detectOnly: [EngineDefinition] = [
-        EngineDefinition(
-            folder: "unity", name: "Unity",
-            autodetect: DetectRule(
-                files: ["UnityPlayer.dll", "unity default resources"], allRequired: false),
-            launchable: false, detectOnlyReasonKey: "detectOnly.unity"),
-
-        EngineDefinition(
-            folder: "rpgbakin", name: "RPG Developer Bakin",
-            autodetect: DetectRule(files: ["BakinData"], allRequired: false),
-            launchable: false, detectOnlyReasonKey: "detectOnly.rpgbakin"),
-
-        EngineDefinition(
-            folder: "wolfrpg", name: "WOLF RPG Editor (ウディタ)",
-            autodetect: DetectRule(files: ["Data.wolf"], allRequired: false),
-            launchable: false, detectOnlyReasonKey: "detectOnly.wolfrpg"),
-    ]
-
-    /// 合并两张表（参与识别打分用）。
-    ///
-    /// ⚠️ 顺序：**可启动的在前**。这很关键 —— 同分时 `pickBestRule` 保持传入顺序，
-    /// 把可启动的放前面，可启动引擎在同分时天然赢过只识别的。
-    ///
-    /// ⚠️ `pickBestRule` 的「强命中永远压过打分命中」还保证了另一条：
-    /// 只识别条目一律 `allRequired: false`（只能走打分），所以它们**绝不可能**
-    /// 强命中去抢走一个本该属于可启动引擎的游戏。
-    public static var all: [EngineDefinition] {
-        launchable + detectOnly
-    }
+    /// 旧标识只在读取已有游戏记录时解析，不再出现在运行时和引擎选择列表。
+    public static let detectOnly: [EngineDefinition] = []
+    public static var all: [EngineDefinition] { launchable }
 
     /// 按 folder 查引擎。
     public static func find(folder: String) -> EngineDefinition? {
-        all.first { $0.folder == folder }
+        all.first { $0.folder == WineRuntime.canonicalEngine(folder) }
     }
 
     /// 取某个引擎的依赖表（**P3 的接线点**）。
@@ -193,16 +123,17 @@ extension EngineRegistry {
     /// 用**registry 规则**认引擎（未安装也能认）。
     ///
     /// 对应 Electron 版 `detectEngineFromAutodetectMap`。
-    /// 返回 `nil` 表示「没有已知引擎能认领」—— **不猜、不回退**（D57 的精神）。
+    /// 没有专用运行时匹配时检查实际 PE 文件，不能仅凭 .exe 扩展名认领。
     public static func detect(
         exe: String,
         fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
     ) -> EngineDefinition? {
         guard !exe.isEmpty else { return nil }
-        let rules: [(key: String, rule: DetectRule?)] = all.map { ($0.folder, $0.autodetect) }
-        guard let folder = EngineDetector.pickBestRule(
-            exe: exe, rules: rules, fileExists: fileExists) else { return nil }
-        return find(folder: folder)
+        let rules: [(key: String, rule: DetectRule?)] = all.filter { $0.folder != "wine" }.map { ($0.folder, $0.autodetect) }
+        if let folder = EngineDetector.pickBestRule(exe: exe, rules: rules, fileExists: fileExists) {
+            return find(folder: folder)
+        }
+        return fileExists(exe) && WineRuntime.isExecutable(exe) ? find(folder: "wine") : nil
     }
 
     /// 用**已装模块的 manifest** 认引擎。
@@ -215,8 +146,10 @@ extension EngineRegistry {
         fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
     ) -> String? {
         guard !exe.isEmpty else { return nil }
-        return EngineDetector.pickBestRule(
-            exe: exe, rules: magazines(manifests), fileExists: fileExists)
+        if let found = EngineDetector.pickBestRule(exe: exe, rules: magazines(manifests.filter { WineRuntime.canonicalEngine($0.key) != "wine" }), fileExists: fileExists) {
+            return WineRuntime.canonicalEngine(found)
+        }
+        return manifests.keys.contains("wine") && fileExists(exe) && WineRuntime.isExecutable(exe) ? "wine" : nil
     }
 
     /// 把 manifest 字典转成有序规则表（保持键的插入顺序对稳定性不重要，

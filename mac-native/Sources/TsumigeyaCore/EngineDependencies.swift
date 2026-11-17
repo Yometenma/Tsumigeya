@@ -26,7 +26,11 @@ public enum EngineDependencies {
     /// —— 用户看到进度条先动主二进制，心理上「它在装引擎」，
     /// 而不是先下 244MB 的 RTP 却不知道在装什么。
     public static func dependencies(for engine: String) -> [(name: String, spec: DependencySpec)] {
-        switch engine {
+        switch WineRuntime.canonicalEngine(engine) {
+        case "wine":
+            return [("wine", DependencySpec(builds: ["universal": DependencyBuild(
+                link: "https://github.com/Gcenx/macOS_Wine_builds/releases/download/11.21/wine-devel-11.21-osx64.tar.xz",
+                unzip: true, sha256: "9909b486657e10ab66c7279371ae1f990345b596b3b1b3a0cf21f28af24fa0ce")]))]
         // ---- NW.js（RPG Maker MV / MZ）----
         //
         // ⚠️ 分架构包：arm64 与 x86_64 是两个完全不同的下载。
@@ -126,10 +130,9 @@ public enum EngineDependencies {
         for (name, spec) in dependencies(for: definition.folder) {
             var builds: [String: JSONValue] = [:]
             for (arch, build) in spec.builds {
-                builds[arch] = .object([
-                    "link": .string(build.link),
-                    "unzip": .bool(build.unzip),
-                ])
+                var value: [String: JSONValue] = ["link": .string(build.link), "unzip": .bool(build.unzip)]
+                if let hash = build.sha256 { value["sha256"] = .string(hash) }
+                builds[arch] = .object(value)
             }
             var depObj = builds
             if spec.optional { depObj["optional"] = .bool(true) }
@@ -150,12 +153,12 @@ public enum EngineDependencies {
 
         return [
             "name": .string(definition.name),
-            "version": .string("1.0.0"),
+            "version": .string(definition.folder == "wine" ? "11.21" : "1.0.0"),
             "description": .string("Managed by Tsumigeya."),
-            "author": .string("Tsumigeya"),
-            "license": .string("GPL-3.0"),
+            "author": .string(definition.folder == "wine" ? "Wine 项目／Gcenx" : "Tsumigeya"),
+            "license": .string(definition.folder == "wine" ? "LGPL-2.1-or-later" : "GPL-3.0"),
             "autodetect": autodetect,
-            "gameArgs": .object([:]),
+            "gameArgs": .object(definition.folder == "wine" ? WineRuntime.argumentSchema : [:]),
             "dependencies": .object(deps),
         ]
     }

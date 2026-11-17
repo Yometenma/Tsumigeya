@@ -52,6 +52,11 @@ public enum EngineArgsOptions {
     /// 所以「自动」必须是下拉的**默认选中项**，否则一进来就是「XP」，
     /// 用户不改的话等于**替所有游戏强制选了 XP**（对 VX Ace 游戏是错的）。
     public static let builtin: [String: [String: [Option]]] = [
+        "wine": ["locale": [
+            Option(value: "zh_CN.UTF-8", label: "简体中文"),
+            Option(value: "ja_JP.UTF-8", label: "日文"),
+            Option(value: "en_US.UTF-8", label: "英文"),
+        ]],
         "mkxpz": [
             "rgssVersion": [
                 Option(value: "0", label: "自动（按游戏文件判断）"),

@@ -189,6 +189,14 @@ public enum GameImport {
             }
             if let found = EngineRegistry.detect(exe: probe, fileExists: fileExists) {
                 // ✅ 用 gameDirForFiles 确定真正的目录（这是识别器实际看的地方）
+                if found.folder == "wine" {
+                    if engine == nil {
+                        folder = DetectPath.gameDirForFiles(probe)
+                        level = attempt.level
+                        engine = found
+                    }
+                    continue
+                }
                 folder = DetectPath.gameDirForFiles(probe)
                 level = attempt.level
                 engine = found
@@ -210,7 +218,7 @@ public enum GameImport {
             resolvedFolder: folder,
             ascendLevel: level,
             engine: engine,
-            entryPath: (folder as NSString).appendingPathComponent("Game.exe")
+            entryPath: engine?.folder == "wine" && WineRuntime.isExecutable(base) ? base : (folder as NSString).appendingPathComponent("Game.exe")
         )
     }
 }

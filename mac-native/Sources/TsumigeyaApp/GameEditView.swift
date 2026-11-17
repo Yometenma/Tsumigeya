@@ -365,6 +365,26 @@ struct GameEditView: View {
         Section {
             // ⚠️ 按 `argsOpen` 显隐（同 `localSection` 的注释：只改图标不改内容 = 假折叠）
             if argsOpen {
+            if engine == "wine" {
+                Button("选择 Windows 启动文件…") {
+                    let panel = NSOpenPanel()
+                    panel.canChooseDirectories = false
+                    panel.canChooseFiles = true
+                    panel.allowsMultipleSelection = false
+                    panel.directoryURL = URL(fileURLWithPath: DetectPath.gameDirForFiles(game.gamePath))
+                    panel.begin { response in
+                        guard response == .OK, let url = panel.url else { return }
+                        guard WineRuntime.isExecutable(url.path) else {
+                            saveError = "请选择有效的 Windows EXE。"
+                            return
+                        }
+                        gameArgs["executable"] = .string(url.path)
+                    }
+                }
+                .disabled(store.runningGames[game.id] != nil)
+                Text("Wine 为每个游戏保留独立的 Windows 环境。依赖 Windows 专用驱动或反作弊的程序可能无法运行。")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             if let manifest = store.manifest(for: engine),
                !manifest.gameArgs.isEmpty {
                 ForEach(manifest.orderedGameArgs, id: \.name) { pair in

@@ -53,6 +53,7 @@ public enum EngineArgsLabels {
     ///    `integerScalingActive` / `fixedAspectRatio` 是 D61 砍掉的（参数表单精简），
     ///    但翻译留着 —— 用户在旧数据里可能还有这些值，展示时不该显示英文。
     static let table: [String: [String: String]] = [
+        "wine": ["executable": "Windows 启动文件", "arguments": "启动参数（每行一项）", "locale": "Windows 语言环境"],
         "nwjs": [
             "version": "NW.js 版本",
             "fullscreen": "全屏启动",

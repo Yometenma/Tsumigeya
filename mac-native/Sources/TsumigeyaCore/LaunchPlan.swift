@@ -33,6 +33,7 @@ public struct LaunchContext: Sendable {
     public let gameArgs: [String: JSONValue]
     /// 游戏标题（Ren'Py 拿它当存档目录名）。
     public let gameTitle: String
+    public let gameID: String
     /// 数据目录（引擎模块所在处）。
     public let dataDir: String
     /// 架构（`arm64` / `x64`）。**由调用方传，不自己读**（单测要覆盖两种）。
@@ -40,12 +41,13 @@ public struct LaunchContext: Sendable {
 
     public init(
         folder: String, gamePath: String, gameArgs: [String: JSONValue],
-        gameTitle: String, dataDir: String, arch: String
+        gameTitle: String, dataDir: String, arch: String, gameID: String = ""
     ) {
         self.folder = folder
         self.gamePath = gamePath
         self.gameArgs = gameArgs
         self.gameTitle = gameTitle
+        self.gameID = gameID
         self.dataDir = dataDir
         self.arch = arch
     }
@@ -61,12 +63,14 @@ public struct LaunchPlan: Sendable {
     public let cwd: String?
     /// 哪个引擎（诊断与日志用）。
     public let engine: String
+    public let environment: [String: String]
 
-    public init(binary: String, args: [String], cwd: String? = nil, engine: String) {
+    public init(binary: String, args: [String], cwd: String? = nil, engine: String, environment: [String: String] = [:]) {
         self.binary = binary
         self.args = args
         self.cwd = cwd
         self.engine = engine
+        self.environment = environment
     }
 }
 
@@ -125,7 +129,9 @@ public enum LaunchPlanner {
         performPreparation: Bool = true
     ) -> Result<LaunchPlan, LaunchFailure> {
 
-        switch engine {
+        switch WineRuntime.canonicalEngine(engine) {
+        case "wine":
+            return WineRuntime.plan(ctx, fileExists: fileExists, listDir: listDir)
         case "nwjs", "tyrano":
             return nwjsPlan(ctx, engine: engine, fileExists: fileExists)
         case "mkxpz":

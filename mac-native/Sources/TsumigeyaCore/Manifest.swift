@@ -214,7 +214,7 @@ extension Manifest: Codable {
                     }
                     builds[archKey] = DependencyBuild(
                         link: link,
-                        unzip: archObj["unzip"]?.boolValue == true)
+                        unzip: archObj["unzip"]?.boolValue == true, sha256: archObj["sha256"]?.stringValue)
                 }
                 guard !builds.isEmpty else { continue }
                 deps[name] = DependencySpec(
@@ -248,6 +248,10 @@ public enum ManifestStore {
     ) -> Manifest? {
         let path = manifestPath(dataDir: dataDir, engine: engine)
         guard let data = fileManager.contents(atPath: path), !data.isEmpty else {
+            if WineRuntime.canonicalEngine(engine) == "wine", let definition = EngineRegistry.find(folder: "wine"),
+               let data = try? JSONStore.defaultEncoder.encode(JSONValue.object(EngineDependencies.buildManifest(for: definition))) {
+                return try? JSONDecoder().decode(Manifest.self, from: data)
+            }
             return nil
         }
         return try? JSONDecoder().decode(Manifest.self, from: data)

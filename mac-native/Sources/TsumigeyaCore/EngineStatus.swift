@@ -129,20 +129,6 @@ public enum EngineStatus {
     ///    `detectOnlyReasonKey` → 那条理由的 key
     ///    `experimental` → D90 的上游限制
     private static func warningFor(_ definition: EngineDefinition) -> Warning? {
-        // 只识别引擎（D88）
-        //
-        // ⚠️ **不能把 i18n key 直接显示给用户**。
-        //    本鱼第一版写的是 `reason: definition.detectOnlyReasonKey`，
-        //    界面上真的画出了 `detectOnly.unity` 这种字符串（快照截图可见）。
-        //    key 是给翻译表用的，用户看到的必须是人话。
-        //
-        //    ⚠️ 而且这里的文案**必须说明「不代跑」而不是「不支持」**：
-        //    D89 的取向是「识别仍要做，但跑交给 CrossOver」——
-        //    用户该得到「需要 Windows 兼容层」而不是「未知引擎」。
-        if !definition.launchable {
-            return .upstreamGate(reason: detectOnlyReason(for: definition.folder))
-        }
-
         // 吉里吉里（D90）：上游 krkrsdl2 官方页明写「不支持跑未修改的商业游戏」
         //
         // ⚠️ 我们是**如实转达**，不替用户挡 —— 它并不会真的拦住。
@@ -172,24 +158,6 @@ public enum EngineStatus {
         }
 
         return nil
-    }
-
-    /// 只识别引擎的中文说明（人话，不是 i18n key）。
-    ///
-    /// ⚠️ 这里是唯一一处「把 key 翻成人话」的地方 —— 本该进 locales，
-    ///    但 Swift 版还没有 i18n 层（P5 只做中文单语言）。
-    ///    将来加 i18n 时，**这三条要从这里搬进 locales**，别留两份。
-    private static func detectOnlyReason(for folder: String) -> String {
-        switch folder {
-        case "unity":
-            return "Unity 游戏需要 Windows 兼容层（不做，见 D89）。Tsumigeya 只识别、不代跑 —— 可以用 CrossOver。"
-        case "rpgbakin":
-            return "RPG Developer Bakin 官方只发 Windows 版，没有 macOS 运行时。"
-        case "wolfrpg":
-            return "WOLF RPG Editor（ウディタ）是 Windows 专属引擎，需要 Windows 兼容层。"
-        default:
-            return "这个引擎需要 Windows 兼容层，Tsumigeya 不代跑。"
-        }
     }
 
     /// 已装数量（引擎页标题用）。

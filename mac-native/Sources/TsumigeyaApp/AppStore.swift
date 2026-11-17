@@ -230,6 +230,10 @@ final class AppStore: ObservableObject {
         refreshRunning()
         guard runningGames[game.id] == nil, !stoppingGames.contains(game.id) else { return }
         lastLaunchFailure.removeValue(forKey: game.id)
+        if game.gameEngine == "wine", installTasks["wine"] != nil {
+            lastLaunchFailure[game.id] = "Wine 正在安装，请等待安装结束后再启动。"
+            return
+        }
 
         // ① 补缺省值 + 展开占位符（**顺序不能反**，见 GameArgs 的注释）
         var args = GameArgs.prepare(
@@ -250,7 +254,7 @@ final class AppStore: ObservableObject {
             gameArgs: args,
             gameTitle: game.gameTitle,
             dataDir: dataDir,
-            arch: Arch.current().rawValue
+            arch: Arch.current().rawValue, gameID: game.wineEnvironmentIdentity
         )
 
         switch LaunchPlanner.plan(engine: game.gameEngine, context: ctx) {
@@ -266,6 +270,23 @@ final class AppStore: ObservableObject {
                 lastLaunchFailure[game.id] = outcome.detail
             }
         }
+    }
+
+    func configureWine(game: GameRecord) {
+        guard !privacy.hidesTitles, game.gameEngine == "wine", runningGames[game.id] == nil, self.game(id: game.id) == game else { return }
+        if installTasks["wine"] != nil {
+            lastLaunchFailure[game.id] = "Wine 正在安装，请等待安装结束后再打开环境设置。"
+            return
+        }
+        lastLaunchFailure.removeValue(forKey: game.id)
+        let binary = WineRuntime.binary(dataDir)
+        let prefix = WineRuntime.prefix(dataDir: dataDir, folder: DetectPath.gameDirForFiles(game.gamePath), gameID: game.wineEnvironmentIdentity)
+        let locale = game.gameArgs?["locale"]?.stringValue ?? "zh_CN.UTF-8"
+        let plan = LaunchPlan(binary: binary, args: ["winecfg"], cwd: DetectPath.gameDirForFiles(game.gamePath), engine: "wine",
+                              environment: ["WINEPREFIX": prefix, "WINEDEBUG": "-all", "LANG": locale, "LC_ALL": locale, "WINEDLLOVERRIDES": "winemenubuilder.exe=d"])
+        let outcome = Launcher.launch(plan)
+        if outcome.ok, let pid = outcome.pid { runningGames[game.id] = pid; startRunningPoll() }
+        else { lastLaunchFailure[game.id] = outcome.detail }
     }
 
     /// 只读检查游戏、引擎运行时和启动计划，不执行 mkxp-z 的准备写入。
@@ -307,6 +328,13 @@ final class AppStore: ObservableObject {
             alive[id] = pid
         }
         if alive != runningGames {
+            for id in runningGames.keys where alive[id] == nil {
+                if let game = game(id: id), game.gameEngine == "wine",
+                   let code = WineRuntime.lastExit(dataDir: dataDir, folder: DetectPath.gameDirForFiles(game.gamePath), gameID: game.wineEnvironmentIdentity),
+                   code != 0 && code != 143 {
+                    lastLaunchFailure[id] = "Windows 程序已退出（退出码 \(code)）。请检查启动文件、语言环境及游戏所需依赖。"
+                }
+            }
             runningGames = alive
         }
     }
@@ -433,7 +461,7 @@ final class AppStore: ObservableObject {
     /// ⚠️ **四处旁挂数据**（D18/D31 的取向）：
     ///    新增时不涉及删除，所以只需要写 `games.json`。
     ///    但**保存后要重新加载分类**（新游戏 id 可能影响归属视图）。
-    func addGame(title: String, folder: String, engine: String) -> Bool {
+    func addGame(title: String, folder: String, engine: String, entryPath: String? = nil) -> Bool {
         lastAddGameError = nil
 
         // 读当前 games.json（**不能用内存里的 games** —— 可能已被外部改动）
@@ -460,7 +488,13 @@ final class AppStore: ObservableObject {
             lastAddGameError = "此目录已入库（游戏 \(id)）"
             return false
         }
-        let entry = (folder as NSString).appendingPathComponent("Game.exe")
+        let entry: String
+        if engine == "wine" {
+            switch WineRuntime.resolveEntry(folder: folder, selected: entryPath) {
+            case .success(let resolved): entry = resolved
+            case .failure(let error): lastAddGameError = error.message; return false
+            }
+        } else { entry = (folder as NSString).appendingPathComponent("Game.exe") }
         let draft = GameRecord(
             id: "", gameTitle: title, gamePath: entry, gameEngine: engine,
             gameArgs: [:]   // 空 = 用 manifest 的缺省值（补缺省值在启动时做）

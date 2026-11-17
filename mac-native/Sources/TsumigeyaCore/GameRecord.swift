@@ -23,7 +23,17 @@ public struct GameRecord: Sendable, Equatable {
     public var id: String
     public var gameTitle: String
     public var gamePath: String
-    public var gameEngine: String
+    private var storedEngine: String
+    public var gameEngine: String {
+        get { WineRuntime.canonicalEngine(storedEngine) }
+        set {
+            let previousIdentity = WineRuntime.canonicalEngine(storedEngine) == "wine" ? wineEnvironmentIdentity : nil
+            storedEngine = newValue
+            if WineRuntime.canonicalEngine(newValue) == "wine", unknownFields["tsumigeyaWineEnvironment"] == nil {
+                unknownFields["tsumigeyaWineEnvironment"] = .string(previousIdentity ?? UUID().uuidString)
+            }
+        }
+    }
     public var iconPath: String?
     public var tags: [String]?
     /// 引擎参数。用 `JSONValue` 因为它的形状由各引擎的 manifest 决定，
@@ -46,11 +56,15 @@ public struct GameRecord: Sendable, Equatable {
         self.id = id
         self.gameTitle = gameTitle
         self.gamePath = gamePath
-        self.gameEngine = gameEngine
+        self.storedEngine = gameEngine
         self.iconPath = iconPath
         self.tags = tags
         self.gameArgs = gameArgs
         self.unknownFields = unknownFields
+        if WineRuntime.canonicalEngine(gameEngine) == "wine", id.isEmpty,
+           self.unknownFields["tsumigeyaWineEnvironment"] == nil {
+            self.unknownFields["tsumigeyaWineEnvironment"] = .string(UUID().uuidString)
+        }
     }
 }
 
@@ -79,6 +93,11 @@ public struct GameMap: Sendable, Equatable {
 // MARK: - Codable（手写，带未知字段保留）
 
 extension GameRecord {
+    public var wineEnvironmentIdentity: String {
+        unknownFields["tsumigeyaWineEnvironment"]?.stringValue
+            ?? id + ":" + URL(fileURLWithPath: DetectPath.gameDirForFiles(gamePath)).standardizedFileURL.resolvingSymlinksInPath().path
+    }
+
     /// 用户明确选择的存档目录。放在未知字段中，避免破坏旧版 games.json 的兼容性。
     public var saveDirectoryOverride: String? {
         unknownFields["tsumigeyaSaveDirectory"]?.stringValue
@@ -104,7 +123,7 @@ extension GameRecord: Codable {
         // 必填字段：缺失就是真的坏了（不是「未知字段」那种兼容问题）
         self.gameTitle = try container.decode(String.self, forKey: AnyCodingKey("gameTitle"))
         self.gamePath = try container.decode(String.self, forKey: AnyCodingKey("gamePath"))
-        self.gameEngine = try container.decode(String.self, forKey: AnyCodingKey("gameEngine"))
+        self.storedEngine = try container.decode(String.self, forKey: AnyCodingKey("gameEngine"))
         self.iconPath = try container.decodeIfPresent(String.self, forKey: AnyCodingKey("iconPath"))
         self.tags = try container.decodeIfPresent([String].self, forKey: AnyCodingKey("tags"))
         self.gameArgs = try container.decodeIfPresent(
@@ -128,7 +147,7 @@ extension GameRecord: Codable {
         var container = encoder.container(keyedBy: AnyCodingKey.self)
         try container.encode(gameTitle, forKey: AnyCodingKey("gameTitle"))
         try container.encode(gamePath, forKey: AnyCodingKey("gamePath"))
-        try container.encode(gameEngine, forKey: AnyCodingKey("gameEngine"))
+        try container.encode(storedEngine, forKey: AnyCodingKey("gameEngine"))
         try container.encodeIfPresent(iconPath, forKey: AnyCodingKey("iconPath"))
         try container.encodeIfPresent(tags, forKey: AnyCodingKey("tags"))
         try container.encodeIfPresent(gameArgs, forKey: AnyCodingKey("gameArgs"))

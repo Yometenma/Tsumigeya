@@ -238,6 +238,16 @@ struct GameDetailView: View {
                     Button("管理运行时", action: onManageEngines)
                 }
             }
+            if game.gameEngine == "wine" {
+                HStack {
+                    Button("Windows 环境设置…") { store.configureWine(game: game) }
+                        .disabled(store.runningGames[game.id] != nil)
+                    Text("可调整 Windows 版本、显示、音频及 DLL 设置。")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Text("Wine 不是安全沙盒，只运行可信来源的程序。游戏可能把存档保存在游戏目录或独立 Windows 环境中；无法自动定位时请手动指定。")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             Divider()
             infoRows
             engineArgsSection

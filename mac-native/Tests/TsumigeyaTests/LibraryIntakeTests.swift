@@ -13,7 +13,10 @@ private struct IntakeFixture {
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         if engine == "kirikiri" { try Data().write(to: url.appendingPathComponent("data.xp3")) }
         if engine == "godot" { try Data().write(to: url.appendingPathComponent("game.pck")) }
-        if engine == "unity" { try Data().write(to: url.appendingPathComponent("UnityPlayer.dll")) }
+        if engine == "unity" {
+            try Data().write(to: url.appendingPathComponent("UnityPlayer.dll"))
+            try wineTestPE().write(to: url.appendingPathComponent("Actual.exe"))
+        }
         return url
     }
     func clean() { try? FileManager.default.removeItem(at: root) }
@@ -33,12 +36,12 @@ struct LibraryIntakeTests {
         #expect(report.visited == 2)
     }
 
-    @Test("识别仅扩展名游戏，并保留只能识别的引擎")
+    @Test("识别原生资源及 Wine Windows 入口")
     func extensionsAndDetectOnly() throws {
         let f = try IntakeFixture(); defer { f.clean() }
         _ = try f.folder("乙", engine: "godot"); _ = try f.folder("甲", engine: "unity")
         let report = try LibraryIntake.scan(root: f.root.path)
-        #expect(Set(report.candidates.map(\.engine)) == ["godot", "unity"])
+        #expect(Set(report.candidates.map(\.engine)) == ["godot", "wine"])
         #expect(report.warnings.isEmpty)
     }
 

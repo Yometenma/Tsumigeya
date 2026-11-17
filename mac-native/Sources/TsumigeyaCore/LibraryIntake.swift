@@ -7,8 +7,9 @@ public enum LibraryIntake {
         public let folder: String
         public var title: String
         public let engine: String
-        public init(folder: String, title: String, engine: String) {
-            self.folder = folder; self.title = title; self.engine = engine
+        public var entryPath: String
+        public init(folder: String, title: String, engine: String, entryPath: String = "") {
+            self.folder = folder; self.title = title; self.engine = engine; self.entryPath = entryPath
         }
     }
 
@@ -61,7 +62,7 @@ public enum LibraryIntake {
         }
         guard let engine else { return nil }
         return Candidate(folder: url.path, title: DetectPath.isAppBundle(url.path) ? url.deletingPathExtension().lastPathComponent : url.lastPathComponent,
-                         engine: engine.folder)
+                         engine: engine.folder, entryPath: engine.folder == "wine" && WineRuntime.executables(in: url.path).count == 1 ? WineRuntime.executables(in: url.path)[0] : "")
     }
 
     /// 命中后不进入资源子目录；不跟随子目录符号链接，限制深度及目录总量。
@@ -115,8 +116,15 @@ public enum LibraryIntake {
             if let id = duplicateFolder(candidate.folder, in: result) {
                 throw Failure("此目录已入库（游戏 \(id)），未添加任何游戏。")
             }
+            let entry: String
+            if candidate.engine == "wine" {
+                switch WineRuntime.resolveEntry(folder: candidate.folder, selected: candidate.entryPath) {
+                case .success(let path): entry = path
+                case .failure(let error): throw Failure(error.message)
+                }
+            } else { entry = (candidate.folder as NSString).appendingPathComponent("Game.exe") }
             let draft = GameRecord(id: "", gameTitle: candidate.title,
-                                   gamePath: (candidate.folder as NSString).appendingPathComponent("Game.exe"),
+                                   gamePath: entry,
                                    gameEngine: candidate.engine, gameArgs: [:])
             switch GameLibrary.save(into: result, draft: draft) {
             case .success(let saved): result = saved.map
@@ -137,7 +145,20 @@ public enum LibraryIntake {
         }
         var result = map
         var game = expected
-        game.gamePath = (folder as NSString).appendingPathComponent("Game.exe")
+        if expected.gameEngine == "wine" {
+            game.unknownFields["tsumigeyaWineEnvironment"] = .string(expected.wineEnvironmentIdentity)
+            let previousName = (expected.gamePath as NSString).lastPathComponent
+            let proposed = (folder as NSString).appendingPathComponent(previousName)
+            switch WineRuntime.resolveEntry(folder: folder, selected: proposed) {
+            case .success(let entry): game.gamePath = entry
+            case .failure(let error): throw Failure(error.message)
+            }
+            if let override = game.gameArgs?["executable"]?.stringValue,
+               override.hasPrefix(DetectPath.gameDirForFiles(expected.gamePath) + "/") {
+                let relative = String(override.dropFirst(DetectPath.gameDirForFiles(expected.gamePath).count + 1))
+                game.gameArgs?["executable"] = .string((folder as NSString).appendingPathComponent(relative))
+            }
+        } else { game.gamePath = (folder as NSString).appendingPathComponent("Game.exe") }
         result.games[game.id] = game
         return result
     }

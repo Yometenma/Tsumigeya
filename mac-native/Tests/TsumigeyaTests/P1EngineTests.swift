@@ -194,14 +194,13 @@ struct EngineDetectionTests {
     }
 
     /// Unity 有专有文件时才认得出（且标为不可启动）。
-    @Test("有 UnityPlayer.dll 才判成 Unity（不可启动）")
+    @Test("Unity 标记不再产生不可启动条目")
     func unityDetected() {
         let dir = "/games/unity"
         let fake = fakeFS(dir, ["UnityPlayer.dll", "Game.exe"])
         let result = EngineRegistry.detect(exe: "\(dir)/Game.exe", fileExists: fake.exists)
-        #expect(result?.folder == "unity")
-        #expect(result?.launchable == false)
-        #expect(result?.detectOnlyReasonKey == "detectOnly.unity")
+        #expect(result == nil)
+        #expect(EngineRegistry.find(folder: "unity")?.folder == "wine")
     }
 
     /// NW.js 强命中（nw.dll + package.json 都在）。
@@ -327,11 +326,11 @@ struct EngineDetectionTests {
 struct RegistryTests {
 
     /// 9 个可启动 + 3 个只识别（D87/D91/D88）。
-    @Test("引擎数量：9 可启动 + 3 只识别")
+    @Test("十个可启动运行时，不保留仅识别条目")
     func counts() {
-        #expect(EngineRegistry.launchable.count == 9)
-        #expect(EngineRegistry.detectOnly.count == 3)
-        #expect(EngineRegistry.all.count == 12)
+        #expect(EngineRegistry.launchable.count == 10)
+        #expect(EngineRegistry.detectOnly.isEmpty)
+        #expect(EngineRegistry.all.count == 10)
     }
 
     /// folder 唯一。
@@ -343,20 +342,19 @@ struct RegistryTests {
 
     /// ⚠️ 只识别引擎**一律 allRequired = false**（走打分）。
     /// 守的是：设成 true 就会强命中去抢走可启动引擎的游戏。
-    @Test("只识别引擎一律走打分")
+    @Test("旧引擎标识解析到 Wine，不重复列出")
     func detectOnlyNeverStrong() {
-        for engine in EngineRegistry.detectOnly {
-            #expect(engine.autodetect?.allRequired == false,
-                    "\(engine.folder) 的 all_required 必须是 false")
-            #expect(engine.launchable == false)
-            #expect(engine.detectOnlyReasonKey != nil)
+        #expect(EngineRegistry.detectOnly.isEmpty)
+        for key in ["unity", "rpgbakin", "wolfrpg"] {
+            #expect(EngineRegistry.find(folder: key)?.folder == "wine")
+            #expect(!EngineRegistry.all.contains { $0.folder == key })
         }
     }
 
     /// 可启动引擎至少有一条识别规则（否则它永远认不出来 = 摆设）。
     @Test("可启动引擎都有识别规则")
     func launchableHaveRules() {
-        for engine in EngineRegistry.launchable {
+        for engine in EngineRegistry.launchable where engine.folder != "wine" {
             let hasRule = engine.autodetect.map {
                 !($0.files ?? []).isEmpty || !($0.collectedExtensions).isEmpty
             } ?? false

@@ -15,7 +15,7 @@ let package = Package(
         .target(
             name: "TsumigeyaCore",
             path: "Sources/TsumigeyaCore",
-            resources: [.copy("Resources/Assist")]
+            resources: [.copy("Resources/Assist"), .copy("Resources/Wine")]
         ),
         .executableTarget(
             name: "TsumigeyaCLI",

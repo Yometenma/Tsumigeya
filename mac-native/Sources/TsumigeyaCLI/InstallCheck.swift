@@ -11,7 +11,7 @@ func runInstall(engine: String?, dryRun: Bool) -> Int {
 
     guard let engine, !engine.isEmpty else {
         print("")
-        print("用法：tsumigeya-cli install <引擎名> [--dry-run]")
+        print("用法：tsumigeya-cli install <引擎名> [--dry-run] [--accept-rosetta-license]")
         print("可装引擎：")
         for e in EngineRegistry.launchable {
             let p = BinaryPaths.moduleDir(dir.path, e.folder)
@@ -219,6 +219,7 @@ func await_install(
                 dependencies: deps,
                 env: env,
                 arch: currentArch(),
+                acceptRosettaLicense: CommandLine.arguments.contains("--accept-rosetta-license"),
                 onProgress: { event in
                     switch event {
                     case .step(let key, let label, _):

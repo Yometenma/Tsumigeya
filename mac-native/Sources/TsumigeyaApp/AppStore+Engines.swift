@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 import TsumigeyaCore
 
 @MainActor
@@ -30,6 +31,20 @@ extension AppStore {
             engineErrors[folder] = "「\(definition.name)」已经装了。要重装请点「重装」。"
             return
         }
+        if !runningGames.isEmpty {
+            engineErrors[folder] = "请先停止游戏，再安装或重新安装运行时。"
+            return
+        }
+        var acceptRosettaLicense = false
+        if folder == "wine", Arch.current().rawValue == "arm64", !WineRuntime.rosettaAvailable() {
+            let alert = NSAlert()
+            alert.messageText = "安装 Wine 所需的 Rosetta 2？"
+            alert.informativeText = "此 Wine 运行时需要 Rosetta 2。继续即表示同意 Apple 的 Rosetta 2 软件许可，启动器将调用系统安装程序。取消不会安装。"
+            alert.addButton(withTitle: "同意并安装")
+            alert.addButton(withTitle: "取消")
+            guard alert.runModal() == .alertFirstButtonReturn else { return }
+            acceptRosettaLicense = true
+        }
         engineErrors.removeValue(forKey: folder)
         let token = UUID()
         installTokens[folder] = token
@@ -39,7 +54,7 @@ extension AppStore {
 
         let task = Task { [weak self] in
             guard let self else { return }
-            await self.runInstall(folder: folder, root: root, deps: deps, token: token)
+            await self.runInstall(folder: folder, root: root, deps: deps, token: token, acceptRosettaLicense: acceptRosettaLicense)
         }
         installTasks[folder] = task
     }
@@ -49,7 +64,7 @@ extension AppStore {
     /// ⚠️ **整个流程在 `Task` 里跑**（不是阻塞主线程）：
     ///    RTP 有 244MB，阻塞主线程会把 UI 冻住 —— 用户会以为卡死然后强杀。
     private func runInstall(
-        folder: String, root: String, deps: [(name: String, spec: DependencySpec)], token: UUID
+        folder: String, root: String, deps: [(name: String, spec: DependencySpec)], token: UUID, acceptRosettaLicense: Bool
     ) async {
         defer {
             if installTokens[folder] == token {
@@ -91,6 +106,7 @@ extension AppStore {
                 dependencies: deps,
                 env: env,
                 arch: Arch.current().rawValue,
+                acceptRosettaLicense: acceptRosettaLicense,
                 onProgress: { [weak self] event in
                     // ⚠️ 进度回调在**后台线程** → 必须切回 MainActor 才能改 @Published
                     Task { @MainActor in
@@ -143,6 +159,11 @@ extension AppStore {
 
     /// 卸载引擎（删掉整个模块目录）。
     func uninstallEngine(_ folder: String) {
+        refreshRunning()
+        guard runningGames.isEmpty, installTasks[folder] == nil else {
+            engineErrors[folder] = "请先停止游戏并等待安装结束，再卸载运行时。"
+            return
+        }
         let root = BinaryPaths.moduleDir(dataDir, folder)
         EngineInstaller.uninstall(root: root)
         refreshEngineEntries()

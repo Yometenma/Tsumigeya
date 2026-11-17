@@ -35,7 +35,7 @@ struct EnginesPage: View {
                     Text("已就绪 \(EngineStatus.installedCount(store.engineEntries)) / \(EngineRegistry.launchable.count)")
                         .font(.callout).foregroundStyle(.secondary)
                 }
-                Text("安装游戏所需的引擎即可，无需全部安装。重装与卸载位于每行的更多菜单中。")
+                Text("安装游戏所需的运行时即可，无需全部安装。Windows 程序可选择 Wine；重装与卸载位于更多菜单中。")
                     .font(.callout).foregroundStyle(.secondary)
             }
             .padding(24)
@@ -47,11 +47,6 @@ struct EnginesPage: View {
                     }
                 } header: {
                     Text("可安装的运行时")
-                }
-                Section("仅识别 · 暂不支持直接启动") {
-                    ForEach(store.engineEntries.filter { !$0.definition.launchable }) { entry in
-                        EngineRow(entry: entry)
-                    }
                 }
             }
             .listStyle(.inset)

@@ -80,8 +80,22 @@ public enum Launcher {
 
         // ---- 2. 组装 Process ----
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: plan.binary)
-        process.arguments = plan.args
+        if plan.engine == "wine" {
+            guard let prefix = plan.environment["WINEPREFIX"] else {
+                return .failure(.spawnFailed(message: "Wine 运行环境缺失。"))
+            }
+            do {
+                try FileManager.default.createDirectory(atPath: (prefix as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
+                try WineRuntime.prepareFonts(prefix: prefix)
+                let status = URL(fileURLWithPath: prefix + ".exit")
+                if FileManager.default.fileExists(atPath: status.path) { try FileManager.default.removeItem(at: status) }
+            } catch { return .failure(.spawnFailed(message: "无法准备 Wine 运行环境：\(error.localizedDescription)")) }
+            process.executableURL = URL(fileURLWithPath: "/bin/sh")
+            process.arguments = [WineRuntime.supervisor, plan.binary] + plan.args
+        } else {
+            process.executableURL = URL(fileURLWithPath: plan.binary)
+            process.arguments = plan.args
+        }
         if let cwd = plan.cwd {
             process.currentDirectoryURL = URL(fileURLWithPath: cwd)
         }
@@ -125,7 +139,7 @@ public enum Launcher {
             env["LANG"] = "en_US.UTF-8"
         }
         env["TSUMIGEYA_LAUNCHED_BY"] = "native"
-        process.environment = env
+        process.environment = env.merging(plan.environment) { _, value in value }
 
         // ---- 4. 跑 ----
         do {

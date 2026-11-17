@@ -79,7 +79,7 @@ xattr -dr com.apple.quarantine /Applications/Tsumigeya.app
 
 ### 批量入库与移动后的游戏
 
-游戏库顶栏提供「批量操作 → 批量入库」：选择已解压的游戏集合目录，扫描后核对引擎、修改重名标题并逐项勾选，再一次保存。不会自动全选、下载运行时或关联 DLsite 作品。相同目录不能重复入库；仅识别引擎仍不能直接启动。
+游戏库顶栏提供「批量操作 → 批量入库」：选择已解压的游戏集合目录，扫描后核对引擎、修改重名标题并逐项勾选，再一次保存。不会自动全选、下载运行时或关联 DLsite 作品。相同目录不能重复入库；Windows 程序需确认实际启动文件。
 
 扫描最多向下三层、2000 个目录、200 个候选，不跟随子目录符号链接；识别到游戏后不再深入资源目录。达到范围上限或遇到不可读目录会提示，不能把候选列表当作完整磁盘索引。漏掉的游戏可缩小扫描范围，或使用「添加游戏」。
 
@@ -87,7 +87,7 @@ xattr -dr com.apple.quarantine /Applications/Tsumigeya.app
 
 ## 游戏兼容性
 
-下表区分**项目中已有真实启动记录**和**尚未验证的启动路径**。已有实测也只代表测试过的样本，不是对同一引擎全部作品的保证。
+下表说明当前可用的启动路径。真实实测只代表测试过的样本，不是对同一引擎全部作品的保证。
 
 | 游戏引擎 | 使用的运行时 | 当前验证范围 |
 |---|---|---|
@@ -100,8 +100,9 @@ xattr -dr com.apple.quarantine /Applications/Tsumigeya.app
 | NScripter | ONScripter | 已接入，尚未实测游戏启动 |
 | Siglus | siglus_rs | 已接入，尚未实测游戏启动 |
 | Godot | Godot 编辑器 | 已接入，尚未实测游戏启动 |
+| Windows 程序（PE `.exe`） | Wine | 已实测 32／64 位扫雷窗口及控制台程序；具体作品仍需实测 |
 
-**Unity、RPG Developer Bakin、WOLF RPG Editor 目前只识别，不代为启动。** 项目没有集成 Wine 或 CrossOver 作为通用 Windows 兼容层。
+Windows 程序通过 Wine 在独立环境中运行。它不是安全沙盒，也不保证所有程序兼容；驱动、反作弊、DRM、特殊图形接口和缺失依赖可能失败。每个游戏的 Windows 环境与运行时分开保存，卸载 Wine 不会删除这些环境。Unity、RPG Developer Bakin、WOLF RPG Editor 的旧记录会按 Wine 读取，不再作为单独的“仅识别”引擎展示。
 
 另外请留意：
 

@@ -100,4 +100,29 @@ struct AppRunningStateTests {
         try await fixture.exitGame()
         try await waitForState { fixture.store.runningGames[fixture.game.id] == nil }
     }
+    @Test("Wine 安装期间拒绝启动、环境设置与卸载")
+    func wineInstallProtectsRuntime() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("wine-install-guard-" + UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let game = GameRecord(id: "1", gameTitle: "测试", gamePath: directory.appendingPathComponent("Game.exe").path, gameEngine: "wine")
+        let map = GameMap(games: [game.id: game])
+        try JSONStore.defaultEncoder.encode(map).write(to: directory.appendingPathComponent("games.json"))
+        let store = AppStore()
+        await store.load(dataDirectory: directory.path)
+        store.installTasks["wine"] = Task { }
+        defer { store.installTasks.removeValue(forKey: "wine"); store.stopRunningPoll() }
+        let module = URL(fileURLWithPath: BinaryPaths.moduleDir(directory.path, "wine"))
+        try FileManager.default.createDirectory(at: module, withIntermediateDirectories: true)
+        store.launch(game: game)
+        #expect(store.runningGames.isEmpty)
+        #expect(store.lastLaunchFailure[game.id]?.contains("正在安装") == true)
+        store.configureWine(game: game)
+        #expect(store.runningGames.isEmpty)
+        #expect(store.lastLaunchFailure[game.id]?.contains("再打开环境设置") == true)
+        store.uninstallEngine("wine")
+        #expect(store.engineErrors["wine"]?.contains("等待安装结束") == true)
+        #expect(FileManager.default.fileExists(atPath: module.path))
+    }
+
 }

@@ -36,6 +36,7 @@
 //    easyrpg 的音源站有 Cloudflare 人机验证，程序化请求**恒 403**。
 //    可容忍失败的依赖（`optional: true`）失败时记一条警告、跳过。
 import Foundation
+import CryptoKit
 
 // MARK: - 依赖描述
 
@@ -63,10 +64,12 @@ public struct DependencyBuild: Sendable {
     public var link: String
     /// 下完是否要解压（zip / tar.gz 类要，裸二进制不要）。
     public var unzip: Bool
+    public var sha256: String?
 
-    public init(link: String, unzip: Bool) {
+    public init(link: String, unzip: Bool, sha256: String? = nil) {
         self.link = link
         self.unzip = unzip
+        self.sha256 = sha256
     }
 }
 
@@ -217,8 +220,12 @@ public enum EngineInstaller {
         dependencies: [(name: String, spec: DependencySpec)],
         env: InstallEnvironment,
         arch: String,
+        acceptRosettaLicense: Bool = false,
         onProgress: (@Sendable (InstallProgress) -> Void)? = nil
     ) async throws -> [String] {
+        if (root as NSString).lastPathComponent == "wine" {
+            try await Task.detached { try WineRuntime.prepareHost(arch: arch, acceptRosettaLicense: acceptRosettaLicense) }.value
+        }
         let depsRoot = (root as NSString).appendingPathComponent("deps")
         var installed: [String] = []
 
@@ -229,7 +236,10 @@ public enum EngineInstaller {
             } catch {
                 throw error
             }
-            let depDir = (depsRoot as NSString).appendingPathComponent(depRelative)
+            let finalDir = (depsRoot as NSString).appendingPathComponent(depRelative)
+            let managedWine = (root as NSString).lastPathComponent == "wine" && name == "wine"
+            let depDir = managedWine ? depsRoot + "/.wine-install-" + UUID().uuidString : finalDir
+            defer { if managedWine { try? env.fileManager.removeItem(atPath: depDir) } }
 
             // 建目录
             do {
@@ -267,6 +277,20 @@ public enum EngineInstaller {
                     reason: (error as? InstallError)?.message ?? error.localizedDescription)
             }
 
+            if let expected = build.sha256 {
+                let handle = try FileHandle(forReadingFrom: URL(fileURLWithPath: archivePath))
+                defer { try? handle.close() }
+                var hash = CryptoKit.SHA256()
+                while let chunk = try handle.read(upToCount: 1024 * 1024), !chunk.isEmpty {
+                    try Task.checkCancellation()
+                    hash.update(data: chunk)
+                }
+                let actual = hash.finalize().map { String(format: "%02x", $0) }.joined()
+                guard actual == expected.lowercased() else {
+                    throw InstallError.download(dependency: name, url: build.link, reason: "下载文件的 SHA-256 校验失败，未解压或运行。请重新安装。")
+                }
+            }
+
             // ---- 解压 ----
             if build.unzip, env.fileManager.fileExists(atPath: archivePath) {
                 safeProgress(onProgress, .step(key: "progress.extracting", label: name, phase: "extracting"))
@@ -279,6 +303,37 @@ public enum EngineInstaller {
                 }
             }
 
+            if managedWine {
+                try Task.checkCancellation()
+                let wine = depDir + "/Wine Devel.app/Contents/Resources/wine/bin/wine"
+                let server = WineRuntime.server(for: wine)
+                guard env.fileManager.isExecutableFile(atPath: wine), env.fileManager.isExecutableFile(atPath: server) else {
+                    throw InstallError.extract(dependency: name, reason: "Wine 包缺少可执行的 wine 或 wineserver，原有运行时未替换。")
+                }
+                try await Task.detached {
+                    let process = Process()
+                    process.executableURL = URL(fileURLWithPath: wine)
+                    process.arguments = ["--version"]
+                    process.standardInput = FileHandle.nullDevice
+                    process.standardOutput = FileHandle.nullDevice
+                    process.standardError = FileHandle.nullDevice
+                    try process.run()
+                    process.waitUntilExit()
+                    guard process.terminationStatus == 0 else {
+                        throw InstallError.extract(dependency: "wine", reason: "Wine 无法运行，请检查系统许可或 Rosetta 2。原有运行时未替换。")
+                    }
+                }.value
+                try Task.checkCancellation()
+                let backup = depsRoot + "/.wine-previous-" + UUID().uuidString
+                let existed = env.fileManager.fileExists(atPath: finalDir)
+                if existed { try env.fileManager.moveItem(atPath: finalDir, toPath: backup) }
+                do { try env.fileManager.moveItem(atPath: depDir, toPath: finalDir) }
+                catch {
+                    if existed { try env.fileManager.moveItem(atPath: backup, toPath: finalDir) }
+                    throw error
+                }
+                if existed { try? env.fileManager.removeItem(atPath: backup) }
+            }
             installed.append(name)
         }
 
@@ -380,6 +435,12 @@ extension EngineInstaller {
         onProgress: (@Sendable (InstallProgress) -> Void)? = nil
     ) async throws -> UpdateEngineResult {
         let depsRoot = (root as NSString).appendingPathComponent("deps")
+        // Wine 自身使用暂存、验证后替换；不能先清空仍可用的旧运行时。
+        if (root as NSString).lastPathComponent == "wine" {
+            let installed = try await install(root: root, dependencies: newDependencies,
+                                              env: env, arch: arch, onProgress: onProgress)
+            return UpdateEngineResult(kept: [], installed: installed)
+        }
         let preserveRoot = (root as NSString).appendingPathComponent(".update-preserve")
 
         // ① 找出多版本依赖并搬走

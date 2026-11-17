@@ -36,6 +36,7 @@ struct AddGameWizard: View {
     @State private var pickedPath: String = ""
     @State private var outcome: GameImport.Outcome?
     @State private var selectedEngine: String = ""
+    @State private var windowsEntry = ""
     @State private var gameTitle: String = ""
     @State private var errorMessage: String?
 
@@ -201,7 +202,16 @@ struct AddGameWizard: View {
                     .frame(maxWidth: 240)
                 }
 
-                // 引擎是否已装
+                if selectedEngine == "wine" {
+                    Picker("Windows 启动文件", selection: $windowsEntry) {
+                        Text("请选择启动文件").tag("")
+                        ForEach(WineRuntime.executables(in: outcome.resolvedFolder), id: \.self) { file in
+                            Text((file as NSString).lastPathComponent).tag(file)
+                        }
+                    }
+                    Text("请选择游戏本体的 EXE，不要选择安装、卸载或配置程序。首次启动需要初始化独立的 Windows 环境。")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 engineStatus
             }
         }
@@ -320,6 +330,10 @@ struct AddGameWizard: View {
         outcome = GameImport.inspect(selectedPath: pickedPath)
         // 识别出来了就预填（但**仍然让用户确认**）
         selectedEngine = outcome?.engine?.folder ?? ""
+        if WineRuntime.isExecutable(pickedPath) { windowsEntry = pickedPath }
+        else if let folder = outcome?.resolvedFolder, WineRuntime.executables(in: folder).count == 1 {
+            windowsEntry = WineRuntime.executables(in: folder)[0]
+        } else { windowsEntry = "" }
         // 用目录名预填游戏名（用户可以改）
         gameTitle = (outcome?.resolvedFolder as NSString?)?.lastPathComponent ?? ""
     }
@@ -339,6 +353,10 @@ struct AddGameWizard: View {
             errorMessage = "请选择一个引擎"
             return
         }
+        if selectedEngine == "wine" && windowsEntry.isEmpty {
+            errorMessage = "请选择 Windows 启动文件"
+            return
+        }
         step = .nameAndSave
     }
 
@@ -349,7 +367,7 @@ struct AddGameWizard: View {
         let ok = store.addGame(
             title: gameTitle,
             folder: outcome.resolvedFolder,
-            engine: selectedEngine
+            engine: selectedEngine, entryPath: windowsEntry
         )
         if ok {
             store.closeAddGame()

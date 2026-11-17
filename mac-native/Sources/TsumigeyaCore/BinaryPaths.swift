@@ -29,7 +29,7 @@ public enum BinaryPaths {
     /// ⚠️ 有测试逐个核对它和注册表一致 —— 这里多一个少一个都会红。
     public static let engineIDs: [String] = [
         "nwjs", "mkxpz", "easyrpg", "renpy",
-        "tyrano", "kirikiri", "nscripter", "siglus", "godot",
+        "tyrano", "kirikiri", "nscripter", "siglus", "godot", "wine",
     ]
 
     // MARK: - 基础拼法
@@ -378,7 +378,10 @@ public enum BinaryPaths {
             (try? FileManager.default.contentsOfDirectory(atPath: dir)) ?? []
         }
     ) -> String? {
-        switch engine {
+        switch WineRuntime.canonicalEngine(engine) {
+        case "wine":
+            let p = WineRuntime.binary(dataDir)
+            return fileExists(p) && fileExists(WineRuntime.server(for: p)) ? p : nil
         case "nwjs", "tyrano":
             let p = nwjsBinary(dataDir, version: version, arch: arch)
             return fileExists(p) ? p : nil
