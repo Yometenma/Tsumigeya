@@ -83,9 +83,22 @@
     api.recover = function () { ready(); $gameParty.members().forEach(function (a) { a.recoverAll(); }); };
     api.battle = function (mode) {
         ready(); if (!$gameParty.inBattle()) throw new Error('当前不在战斗中。');
+        if (mode !== 'win' && mode !== 'escape') throw new Error('战斗操作无效。');
+        var scene = SceneManager._scene;
+        if (!(scene instanceof Scene_Battle)) throw new Error('请等战斗场景准备完成。');
+        if (BattleManager._phase === 'battleEnd' || BattleManager._phase === 'aborting') throw new Error('战斗正在结束，请勿重复操作。');
+        if ((window.$gameTroop && $gameTroop.isEventRunning()) || (window.$gameMessage && $gameMessage.isBusy()) ||
+            (typeof BattleManager.isBusy === 'function' && BattleManager.isBusy())) throw new Error('请等战斗事件、对话或动画结束后再操作。');
         if (mode === 'win') BattleManager.processVictory();
-        else if (mode === 'escape') BattleManager.abort();
-        else throw new Error('战斗操作无效。');
+        else BattleManager.abort();
+        // 部分插件将结算改为公共事件却保留输入阶段；让事件继续，不重新开放战斗指令。
+        if (BattleManager._phase === 'input' && window.$gameTroop && $gameTroop.isEventRunning()) BattleManager._phase = 'turn';
+        if (typeof scene.endCommandSelection === 'function') scene.endCommandSelection();
+        ['_partyCommandWindow', '_actorCommandWindow', '_skillWindow', '_itemWindow', '_actorWindow', '_enemyWindow'].forEach(function (name) {
+            var control = scene[name]; if (!control) return;
+            if (typeof control.deactivate === 'function') control.deactivate();
+            if (typeof control.hide === 'function') control.hide();
+        });
     };
     api.toggle = function (kind, enabled) {
         ready(); if (kind === 'clip') noClip = !!enabled;

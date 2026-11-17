@@ -106,6 +106,7 @@ test('map transfer validates map bounds and refuses battle, event execution resp
     g.c.$gameMap.event=()=>({_pageIndex:0,start(){eventStarted=true;}});api.event('map',1);assert(eventStarted);
     g.c.$gameMap.isEventRunning=()=>true;assert.throws(()=>api.event('common',1));
     g.c.$gameParty.inBattle=()=>true;assert.throws(()=>api.teleport(1,0,0));
+    g.c.SceneManager._scene=new g.c.Scene_Battle();
     let battle;g.c.BattleManager={processVictory(){battle='win';},abort(){battle='escape';}};
     api.battle('win');assert.equal(battle,'win');api.battle('escape');assert.equal(battle,'escape');
 });
@@ -135,4 +136,31 @@ test('a full capture queue keeps newly displayed text instead of permanently sta
         const missing=JSON.parse(fs.readFileSync(path.join(data,'missing.json'),'utf8'));
         assert.equal(missing.length,5000);assert(missing.includes('今表示した新しい文章'));assert(!missing.includes('古い文章0'));
     } finally { fs.rmSync(directory,{recursive:true,force:true}); }
+});
+
+test('battle actions reject busy engines without mutation and release input for plugin ending events',()=>{
+    const g=game();g.load('cheats.js');const api=g.c.TsumigeyaAssist.cheats;
+    let event=false,message=false,animation=false,requested=0,ended=0;
+    g.c.$gameParty.inBattle=()=>true;
+    g.c.$gameTroop={isEventRunning:()=>event};g.c.$gameMessage={isBusy:()=>message};
+    g.c.BattleManager={_phase:'input',isBusy:()=>animation,processVictory(){requested++;event=true;},abort(){requested++;this._phase='aborting';}};
+    const scene=new g.c.Scene_Battle();g.c.SceneManager._scene=scene;
+    scene.endCommandSelection=()=>{ended++;};
+    for(const key of ['_partyCommandWindow','_actorCommandWindow','_skillWindow','_itemWindow','_actorWindow','_enemyWindow']){
+        scene[key]={active:true,visible:true,deactivate(){this.active=false;},hide(){this.visible=false;}};
+    }
+    event=true;assert.throws(()=>api.battle('win'),/战斗事件/);event=false;
+    message=true;assert.throws(()=>api.battle('escape'),/对话/);message=false;
+    animation=true;assert.throws(()=>api.battle('win'),/动画/);animation=false;
+    assert.throws(()=>api.battle('invalid'));assert.equal(requested,0);assert.equal(ended,0);
+    assert.equal(g.c.BattleManager._phase,'input');assert.equal(scene._skillWindow.active,true);
+    api.battle('win');assert.equal(requested,1);assert.equal(ended,1);assert.equal(g.c.BattleManager._phase,'turn');
+    for(const key of ['_partyCommandWindow','_actorCommandWindow','_skillWindow','_itemWindow','_actorWindow','_enemyWindow']){
+        assert.equal(scene[key].active,false);assert.equal(scene[key].visible,false);
+    }
+    event=false;api.battle('escape');assert.equal(requested,2);assert.equal(g.c.BattleManager._phase,'aborting');
+    assert.throws(()=>api.battle('win'),/正在结束/);assert.equal(requested,2);
+    g.c.BattleManager._phase='battleEnd';assert.throws(()=>api.battle('escape'),/正在结束/);assert.equal(requested,2);
+    g.c.BattleManager._phase='input';
+    g.c.SceneManager._scene=new g.c.Scene_Map();assert.throws(()=>api.battle('win'),/场景准备/);assert.equal(requested,2);
 });
