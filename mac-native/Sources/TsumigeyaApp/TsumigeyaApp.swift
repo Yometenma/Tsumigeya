@@ -95,9 +95,10 @@ struct TsumigeyaApp: App {
             RootView()
                 .environmentObject(store)
                 // 窗口最小尺寸：两栏布局至少要这么宽才不挤
-                .frame(minWidth: 900, minHeight: 600)
+                .frame(minWidth: 1100, minHeight: 700)
         }
         // 单窗口（mac 惯例：启动器是一个工具，不需要多窗口）
+        .defaultSize(width: 1180, height: 760)
         .windowResizability(.contentMinSize)
         .commands {
             CommandMenu("隐私") {

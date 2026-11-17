@@ -59,7 +59,7 @@ struct RootView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .frame(minWidth: 980, maxWidth: .infinity, minHeight: 660, maxHeight: .infinity)
+        .frame(minWidth: 1100, maxWidth: .infinity, minHeight: 700, maxHeight: .infinity)
         .background(Color(nsColor: .windowBackgroundColor))
         .tint(Color.tsumigeyaAccent)
         .task {
