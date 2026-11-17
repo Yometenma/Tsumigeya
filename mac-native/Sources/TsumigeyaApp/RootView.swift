@@ -37,10 +37,15 @@ struct RootView: View {
             Divider()
             dataDirectoryNotice
             HStack(spacing: 0) {
-                if sidebarVisible {
-                    librarySidebar
-                    Divider()
-                }
+                // 保持侧边栏视图挂载，只收缩宽度；如果直接用 if 移除整个子树，
+                // macOS 窗口在切换详情／欢迎页时偶尔会吞掉下一次“显示侧边栏”点击。
+                librarySidebar
+                    .frame(width: sidebarVisible ? 248 : 0, maxHeight: .infinity)
+                    .clipped()
+                    .opacity(sidebarVisible ? 1 : 0)
+                    .allowsHitTesting(sidebarVisible)
+                Divider()
+                    .opacity(sidebarVisible ? 1 : 0)
                 content
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -82,13 +87,19 @@ struct RootView: View {
 
     private var topBar: some View {
         HStack(spacing: 12) {
-            Button { sidebarVisible.toggle() } label: {
+            Button {
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    sidebarVisible.toggle()
+                }
+            } label: {
                 Image(systemName: sidebarVisible ? "sidebar.leading" : "sidebar.trailing")
-                    .frame(width: 22, height: 22)
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .keyboardShortcut("s", modifiers: [.command, .option])
             .accessibilityLabel(sidebarVisible ? "收起侧边栏" : "显示侧边栏")
-            .help(sidebarVisible ? "收起侧边栏" : "显示侧边栏")
+            .help(sidebarVisible ? "收起侧边栏（⌘⌥S）" : "显示侧边栏（⌘⌥S）")
 
             Label("Tsumigeya", systemImage: "gamecontroller.fill")
                 .font(.system(size: 15, weight: .bold))
