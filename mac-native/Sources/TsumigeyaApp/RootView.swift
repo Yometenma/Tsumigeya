@@ -150,6 +150,7 @@ struct RootView: View {
                                 }
                             }
                             .padding(.top, 2)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                         } label: {
                             HStack(spacing: 6) {
                                 Text(group.title)
@@ -315,7 +316,10 @@ struct SidebarGameRow: View {
             .padding(.vertical, 6)
             .background(isSelected ? Color.secondary.opacity(0.16) : .clear,
                         in: RoundedRectangle(cornerRadius: 9))
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .buttonStyle(.plain)
         .help(store.privacy.text(game.gamePath, replacement: "游戏路径已隐藏"))
     }
@@ -594,12 +598,12 @@ struct WelcomeView: View {
                     .foregroundStyle(Color.tsumigeyaAccent.opacity(0.78))
                     .textCase(.uppercase)
 
-                Text("把喜欢的故事，留在这里。")
+                Text("今天想玩哪一部？")
                     .font(.system(size: 30, weight: .bold, design: .rounded))
                     .foregroundStyle(Color(nsColor: .labelColor))
                     .fixedSize(horizontal: false, vertical: true)
 
-                Text("从一部作品开始，慢慢整理成属于你的游戏库。")
+                Text("你的作品，都在这里。")
                     .font(.system(size: 14, weight: .regular))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

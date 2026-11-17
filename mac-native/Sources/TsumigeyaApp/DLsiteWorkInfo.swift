@@ -36,7 +36,6 @@ struct WorkRemoteImage: View {
 struct DLsiteWorkInfo: View {
     let work: DlsiteWork
     @EnvironmentObject private var store: AppStore
-    @State private var expanded = false
     @State private var selectedImage: String?
 
     var body: some View {
@@ -63,11 +62,7 @@ struct DLsiteWorkInfo: View {
                 if let description = work.description, !description.isEmpty {
                     Text("作品介绍").font(.subheadline.weight(.medium))
                     Text(description).font(.callout).foregroundStyle(.secondary)
-                        .lineSpacing(5).lineLimit(expanded ? nil : 12).textSelection(.enabled)
-                    if description.count > 350 || description.components(separatedBy: .newlines).count > 12 {
-                        Button(expanded ? "收起介绍" : "展开完整介绍") { expanded.toggle() }
-                            .buttonStyle(.link)
-                    }
+                        .lineSpacing(5).textSelection(.enabled)
                 }
                 if !work.sampleImageURLs.isEmpty && !store.privacy.isEnabled {
                     Text("预览截图").font(.subheadline.weight(.medium))
@@ -97,7 +92,7 @@ struct DLsiteWorkInfo: View {
                     Button("关闭") { selectedImage = nil }.keyboardShortcut(.cancelAction)
                 }.padding(20)
             }
-            .onChange(of: work.rj) { _, _ in expanded = false; selectedImage = nil }
+            .onChange(of: work.rj) { _, _ in selectedImage = nil }
             .onChange(of: store.privacy.isEnabled) { _, enabled in if enabled { selectedImage = nil } }
         }
     }

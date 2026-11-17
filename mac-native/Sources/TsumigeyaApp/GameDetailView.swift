@@ -37,38 +37,43 @@ struct GameDetailView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            header
-            launchSection
-                .padding(.horizontal, 24)
-                .padding(.bottom, 20)
-
-            Picker("游戏信息", selection: $tab) {
-                ForEach(DetailTab.allCases) { item in Text(item.title).tag(item) }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .frame(maxWidth: 480)
-            .padding(.horizontal, 24)
-            .padding(.bottom, 16)
-
-            Divider()
-            // 保持标签内容挂载，切页不能丢掉进行中的存档任务状态而允许重复操作。
-            ZStack(alignment: .topLeading) {
-                ForEach(DetailTab.allCases) { item in
-                    ScrollView {
-                        bodyContent(for: item)
-                            .frame(maxWidth: 860, alignment: .leading)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(24)
-                    }
-                    .opacity(tab == item ? 1 : 0)
-                    .allowsHitTesting(tab == item)
-                    .disabled(tab != item)
-                    .accessibilityHidden(tab != item)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                header
+                if tab != .overview {
+                    Text(store.displayTitle(for: game))
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(Color(nsColor: .labelColor))
+                        .textSelection(.enabled)
+                        .padding(.horizontal, 24)
+                        .padding(.top, 18)
                 }
+                HStack(alignment: .center, spacing: 16) {
+                    Picker("游戏信息", selection: $tab) {
+                        ForEach(DetailTab.allCases) { item in Text(item.title).tag(item) }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .frame(maxWidth: 480)
+
+                    Spacer(minLength: 16)
+                    launchControls
+                }
+                .padding(.horizontal, 24)
+                .padding(.vertical, 16)
+
+                launchFailure
+                    .padding(.horizontal, 24)
+
+                Divider()
+                bodyContent(for: tab)
+                    .frame(maxWidth: 860, alignment: .leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(24)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .scrollIndicators(.automatic)
         .background(Color(nsColor: .windowBackgroundColor))
         .sheet(isPresented: $showsDiagnostics) {
             LaunchDiagnosticsView(game: game, onManageEngines: onManageEngines)
@@ -77,61 +82,13 @@ struct GameDetailView: View {
     }
 
     private var header: some View {
-        let work = store.meta(for: game.id)?.work
-        let tags = Array((work?.tags ?? []).prefix(3))
-        return ZStack(alignment: .bottomLeading) {
-            GameArtwork(game: game, contentMode: .fit, preferPreview: true)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .overlay(
-                    LinearGradient(
-                        colors: [Color.black.opacity(0.82), Color.black.opacity(0.38), .clear],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                )
-
-            VStack(alignment: .leading, spacing: 10) {
-                Text("DLsite · 作品详情")
-                    .font(.system(size: 11, weight: .semibold))
-                    .tracking(1.1)
-                    .foregroundStyle(.white.opacity(0.72))
-                Text(store.displayTitle(for: game))
-                    .font(.system(size: 28, weight: .bold))
-                    .foregroundStyle(.white)
-                    .lineLimit(2)
-                if !store.privacy.hidesTitles, let description = work?.description, !description.isEmpty {
-                    Text(description)
-                        .font(.system(size: 13))
-                        .foregroundStyle(.white.opacity(0.78))
-                        .lineLimit(2)
-                        .frame(maxWidth: 460, alignment: .leading)
-                }
-                HStack(spacing: 7) {
-                    if store.runningGames[game.id] != nil {
-                        heroPill("正在游玩", tint: .green)
-                    }
-                    ForEach(tags, id: \.self) { tag in
-                        heroPill(tag)
-                    }
-                }
-            }
-            .padding(28)
-        }
-        // DLsite 展示图通常是宽幅图；用 16:9 保留原构图，避免之前 3:1 容器把人物和文字裁掉。
-        .aspectRatio(16 / 9, contentMode: .fit)
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .padding(.horizontal, 24)
-        .padding(.top, 24)
-    }
-
-    private func heroPill(_ title: String, tint: Color? = nil) -> some View {
-        Text(title)
-            .font(.system(size: 11, weight: .medium))
-            .foregroundStyle(tint ?? .white.opacity(0.9))
-            .padding(.horizontal, 9)
-            .padding(.vertical, 5)
-            .background(.white.opacity(0.12), in: Capsule())
-            .overlay(Capsule().stroke(.white.opacity(0.24), lineWidth: 1))
+        return GameArtwork(game: game, contentMode: .fit, preferPreview: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .aspectRatio(16 / 9, contentMode: .fit)
+            .background(Color(nsColor: .controlBackgroundColor))
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .padding(.horizontal, 24)
+            .padding(.top, 24)
     }
 
     // MARK: - DLsite 元数据
@@ -284,69 +241,71 @@ struct GameDetailView: View {
 
     // MARK: 启动
 
-    private var launchSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 10) {
-                let isRunning = store.runningGames[game.id] != nil
-                let isStopping = store.stoppingGames.contains(game.id)
-                Button {
-                    if isRunning { store.stop(game: game) }
-                    else { store.launch(game: game) }
-                } label: {
-                    Label(isStopping ? "正在停止…" : (isRunning ? "停止游戏" : "开始游戏"),
-                          systemImage: isRunning ? "stop.fill" : "play.fill")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .frame(minWidth: 108)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 11)
-                        .background(isRunning ? Color.red : Color.tsumigeyaAccent,
-                                    in: RoundedRectangle(cornerRadius: 9))
-                        .opacity(isStopping ? 0.55 : 1)
-                }
-                .buttonStyle(.plain)
-                .disabled(isStopping)
-                .keyboardShortcut(.defaultAction)
+    private var launchControls: some View {
+        HStack(spacing: 10) {
+            let isRunning = store.runningGames[game.id] != nil
+            let isStopping = store.stoppingGames.contains(game.id)
+            Button {
+                if isRunning { store.stop(game: game) }
+                else { store.launch(game: game) }
+            } label: {
+                Label(isStopping ? "正在停止…" : (isRunning ? "停止游戏" : "开始游戏"),
+                      systemImage: isRunning ? "stop.fill" : "play.fill")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(minWidth: 108)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 11)
+                    .background(isRunning ? Color.red : Color.tsumigeyaAccent,
+                                in: RoundedRectangle(cornerRadius: 9))
+                    .opacity(isStopping ? 0.55 : 1)
+            }
+            .buttonStyle(.plain)
+            .disabled(isStopping)
+            .keyboardShortcut(.defaultAction)
 
+            if let onEdit {
+                Button(action: onEdit) { Label("编辑游戏", systemImage: "slider.horizontal.3") }
+            }
+            Menu {
+                Button("检查启动条件…") { showsDiagnostics = true }
+                Divider()
+                Button("重新定位游戏目录…") { showsRelocation = true }
+                    .disabled(store.privacy.hidesTitles || store.runningGames[game.id] != nil)
+                Button("在访达中显示") { store.revealInFinder(game: game) }
+                Button("查找并关联作品…") { store.beginManualRJ(gameId: game.id) }
+                Divider()
+                Button("从游戏库移除…", role: .destructive) { store.confirmDelete(game: game) }
+            } label: {
+                Image(systemName: "ellipsis")
+                    .frame(width: 20, height: 20)
+            }
+            .sheet(isPresented: $showsRelocation) {
+                RelocateGameView(game: game).environmentObject(store)
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .accessibilityLabel("更多游戏操作")
+            .help("更多游戏操作")
+        }
+    }
+
+    @ViewBuilder
+    private var launchFailure: some View {
+        if let failure = store.lastLaunchFailure[game.id] {
+            HStack(alignment: .top, spacing: 10) {
+                Label(store.privacy.text(failure, replacement: "启动未完成，详细信息已隐藏。"), systemImage: "exclamationmark.triangle.fill")
+                    .font(.callout)
+                    .foregroundStyle(.orange)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 8)
-                if let onEdit {
-                    Button(action: onEdit) { Label("编辑游戏", systemImage: "slider.horizontal.3") }
-                }
-                Menu {
-                    Button("检查启动条件…") { showsDiagnostics = true }
-                    Divider()
-                    Button("重新定位游戏目录…") { showsRelocation = true }
-                        .disabled(store.privacy.hidesTitles || store.runningGames[game.id] != nil)
-                    Button("在访达中显示") { store.revealInFinder(game: game) }
-                    Button("查找并关联作品…") { store.beginManualRJ(gameId: game.id) }
-                    Divider()
-                    Button("从游戏库移除…", role: .destructive) { store.confirmDelete(game: game) }
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .frame(width: 20, height: 20)
-                }
-                .sheet(isPresented: $showsRelocation) {
-                    RelocateGameView(game: game).environmentObject(store)
-                }
-                .menuStyle(.borderlessButton)
-                .menuIndicator(.hidden)
-                .fixedSize()
-                .accessibilityLabel("更多游戏操作")
-                .help("更多游戏操作")
+                Button("检查启动条件") { showsDiagnostics = true }
+                    .buttonStyle(.bordered)
+                    .disabled(store.privacy.hidesTitles)
             }
-            if let failure = store.lastLaunchFailure[game.id] {
-                HStack(alignment: .top, spacing: 10) {
-                    Label(store.privacy.text(failure, replacement: "启动未完成，详细信息已隐藏。"), systemImage: "exclamationmark.triangle.fill")
-                        .font(.callout)
-                        .foregroundStyle(.orange)
-                        .textSelection(.enabled)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Spacer(minLength: 8)
-                    Button("检查启动条件") { showsDiagnostics = true }
-                        .buttonStyle(.bordered)
-                        .disabled(store.privacy.hidesTitles)
-                }
-            }
+            .padding(.bottom, 8)
         }
     }
 
