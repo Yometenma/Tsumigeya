@@ -6,6 +6,7 @@
   <a href="https://github.com/Yometenma/Tsumigeya/releases/latest">下载最新版</a> ·
   <a href="#游戏兼容性">游戏兼容性</a> ·
   <a href="docs/常见问题.md">常见问题</a> ·
+  <a href="更新日志.md">更新日志</a> ·
   <a href="CONTRIBUTING.md">参与贡献</a>
 </p>
 
