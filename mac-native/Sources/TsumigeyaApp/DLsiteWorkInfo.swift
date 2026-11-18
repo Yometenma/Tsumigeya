@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import TsumigeyaCore
 
@@ -17,6 +18,46 @@ struct WorkRemoteImage: View {
             }
         }
         .clipped()
+    }
+}
+
+/// 长正文使用 AppKit 原生文本布局，避免 SwiftUI 在详情切换时反复执行昂贵的最优换行计算。
+private struct LongDescriptionView: NSViewRepresentable {
+    let text: String
+
+    func makeNSView(context: Context) -> NSScrollView {
+        let scrollView = NSScrollView()
+        scrollView.drawsBackground = false
+        scrollView.borderType = .noBorder
+        scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = false
+        scrollView.autohidesScrollers = true
+        scrollView.scrollerStyle = .overlay
+
+        let textView = NSTextView()
+        textView.isEditable = false
+        textView.isSelectable = true
+        textView.isRichText = false
+        textView.importsGraphics = false
+        textView.drawsBackground = false
+        textView.textColor = .secondaryLabelColor
+        textView.font = .systemFont(ofSize: NSFont.systemFontSize)
+        textView.textContainerInset = NSSize(width: 0, height: 6)
+        textView.textContainer?.lineFragmentPadding = 0
+        textView.isHorizontallyResizable = false
+        textView.isVerticallyResizable = true
+        textView.autoresizingMask = [.width]
+        textView.minSize = NSSize(width: 0, height: 0)
+        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        textView.string = text
+        scrollView.documentView = textView
+        return scrollView
+    }
+
+    func updateNSView(_ scrollView: NSScrollView, context: Context) {
+        guard let textView = scrollView.documentView as? NSTextView, textView.string != text else { return }
+        textView.string = text
+        textView.scrollToBeginningOfDocument(nil)
     }
 }
 
@@ -46,8 +87,9 @@ struct DLsiteWorkInfo: View {
             }
             if let description = work.description, !description.isEmpty {
                 Text("作品介绍").font(.subheadline.weight(.medium))
-                Text(description).font(.callout).foregroundStyle(.secondary)
-                    .lineSpacing(5).textSelection(.enabled)
+                LongDescriptionView(text: description)
+                    .frame(maxWidth: .infinity, minHeight: 180, idealHeight: 300, maxHeight: 360)
+                    .accessibilityLabel("作品介绍正文")
             }
             if !work.sampleImageURLs.isEmpty {
                 Text("预览截图").font(.subheadline.weight(.medium))
