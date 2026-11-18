@@ -29,6 +29,7 @@ public enum SettingsGroups {
         case languageSwitchPrompt
         case diagnoseBeforeLaunch
         case saveSyncMode
+        case metadataPreferredLanguage, metadataFallbackLanguage, metadataEndpoint, metadataModel, metadataMode
     }
 
     /// 全部设置项的唯一清单。
@@ -57,6 +58,7 @@ public enum SettingsGroups {
         case language
         case launch
         case data
+        case metadata
 
         /// 分组标题（**中文写在这里**）。
         ///
@@ -70,6 +72,7 @@ public enum SettingsGroups {
             case .language: return "语言"
             case .launch: return "启动与引擎"
             case .data: return "数据与版本"
+            case .metadata: return "作品信息"
             }
         }
 
@@ -81,6 +84,7 @@ public enum SettingsGroups {
             case .language: return "界面语言与多语言版本偏好"
             case .launch: return "与「游戏能不能起来」相关的开关"
             case .data: return "数据目录与版本信息"
+            case .metadata: return "刮削语言与独立 AI 接口"
             }
         }
     }
@@ -123,6 +127,9 @@ public enum SettingsGroups {
         Group(id: .language,
               keys: [.language, .preferredLanguage, .fallbackLanguage, .languageSwitchPrompt],
               defaultOpen: false),
+        Group(id: .metadata,
+              keys: [.metadataPreferredLanguage, .metadataFallbackLanguage, .metadataEndpoint, .metadataModel, .metadataMode],
+              defaultOpen: true),
         Group(id: .launch,
               keys: [.nonInstalledAutodetect, .diagnoseBeforeLaunch,
                      .checkModuleUpdatesOnStartup],
@@ -228,6 +235,8 @@ public enum SettingsDefaults {
         .fallbackLanguage: "ja",
         // 存档同步：none（不接任何云，D83）
         .saveSyncMode: "none",
+        .metadataPreferredLanguage: "zh_CN", .metadataFallbackLanguage: "ja_JP",
+        .metadataMode: "chat",
     ]
 
     /// 读一个字符串设置。

@@ -33,11 +33,18 @@ struct SettingsGroupsIntegrityTests {
         #expect(dup.isEmpty, "这些设置项被多个分组重复列：\(dup.map(\.rawValue))")
     }
 
-    /// 分组数量与 id 都对（5 组）。
-    @Test("5 个分组")
+    /// 分组数量与 id 都对（含独立作品信息组）。
+    @Test("6 个分组，作品信息不混入游戏语言版本偏好")
     func groupCount() {
-        #expect(SettingsGroups.groups.count == 5)
-        #expect(Set(SettingsGroups.groups.map(\.id)).count == 5, "id 不能重复")
+        #expect(SettingsGroups.groups.count == 6)
+        #expect(Set(SettingsGroups.groups.map(\.id)).count == 6, "id 不能重复")
+    }
+
+    @Test("作品信息设置集中归组，与游戏翻译及版本偏好独立")
+    func metadataSettings() {
+        #expect(SettingsGroups.group(.metadata)?.keys == [.metadataPreferredLanguage, .metadataFallbackLanguage, .metadataEndpoint, .metadataModel, .metadataMode])
+        #expect(SettingsDefaults.string(.metadataPreferredLanguage, from: [:]) == "zh_CN")
+        #expect(SettingsDefaults.string(.metadataFallbackLanguage, from: [:]) == "ja_JP")
     }
 
     /// 每个分组都有标题与说明（否则界面上是个没名字的盒子）。

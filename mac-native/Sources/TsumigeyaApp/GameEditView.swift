@@ -222,7 +222,7 @@ struct GameEditView: View {
                 if let meta = metaDraft {
                     metaEditFields(meta)
                 } else {
-                    Label("还没有作品信息。先到详情页抓取 DLsite 元数据，回来才能改。",
+                    Label("还没有作品信息。可先到详情页查找 DLsite，或选择其他游戏进行 AI 补全／手动填写。",
                           systemImage: "info.circle")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -301,7 +301,7 @@ struct GameEditView: View {
             Text("RJ")
                 .font(.callout).foregroundStyle(.secondary)
                 .frame(width: 44, alignment: .leading)
-            Text(meta.work.rj)
+            Text(meta.work.isExternal ? meta.work.sourceLabel : meta.work.rj)
                 .font(.system(size: 12, design: .monospaced))
                 .textSelection(.enabled)
             Spacer()

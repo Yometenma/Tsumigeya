@@ -9,7 +9,7 @@
 import Foundation
 import TsumigeyaCore
 
-func runDlsiteFetch(rj: String, category: String) async -> Int {
+func runDlsiteFetch(rj: String, category: String, language: MetadataLanguage? = nil) async -> Int {
     let dataDir = DataDir.resolve().path
     print("数据目录: \(dataDir)")
     print("抓取 \(rj)（分类 \(category)）")
@@ -19,7 +19,7 @@ func runDlsiteFetch(rj: String, category: String) async -> Int {
 
     // ① 第一次（真实网络）
     let start1 = Date()
-    let first = await service.fetchWork(rj: rj, category: category, refresh: true)
+    let first = await service.fetchWork(rj: rj, category: category, refresh: true, language: language)
     let elapsed1 = Date().timeIntervalSince(start1)
 
     switch first {
@@ -27,6 +27,7 @@ func runDlsiteFetch(rj: String, category: String) async -> Int {
         print("✅ 第一次抓取成功（\(String(format: "%.2f", elapsed1))s）")
         print("   rj        = \(work.rj)")
         print("   title     = \(work.title ?? "(无)")")
+        print("   页面语言 = \(work.metadataLanguage ?? "未标明")")
         print("   circle    = \(work.circle ?? "(无)")")
         print("   coverUrl  = \(work.coverUrl ?? "(无)")")
         print("   workType  = \(work.workType ?? "(无)")")
@@ -46,7 +47,7 @@ func runDlsiteFetch(rj: String, category: String) async -> Int {
     // 调度器自动等待，不要求用户在限速后再次操作。
     print("")
     print("=== 连续请求（自动遵守至少 800ms 的发起间隔）===")
-    let second = await service.fetchWork(rj: rj, category: category, refresh: true)
+    let second = await service.fetchWork(rj: rj, category: category, refresh: true, language: language)
     guard case .success = second else {
         if case .failure(let error) = second { print("❌ 连续请求失败：\(error.message)") }
         return 1
@@ -58,7 +59,7 @@ func runDlsiteFetch(rj: String, category: String) async -> Int {
     print("=== 等 1 秒后再请求（应该走缓存）===")
     try? await Task.sleep(nanoseconds: 1_000_000_000)
     let start3 = Date()
-    let third = await service.fetchWork(rj: rj, category: category)
+    let third = await service.fetchWork(rj: rj, category: category, language: language)
     let elapsed3 = Date().timeIntervalSince(start3)
     switch third {
     case .success:
@@ -73,7 +74,7 @@ func runDlsiteFetch(rj: String, category: String) async -> Int {
     // ④ 缓存文件
     print("")
     print("=== 缓存文件 ===")
-    let cachePath = service.cachePath(rj: RJNumber.normalize(rj) ?? rj)
+    let cachePath = service.cachePath(rj: RJNumber.normalize(rj) ?? rj, language: language)
     print("   \(cachePath)")
     if let size = try? FileManager.default.attributesOfItem(atPath: cachePath)[.size] {
         print("   大小 \(size) 字节")

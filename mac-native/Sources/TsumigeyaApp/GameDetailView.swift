@@ -99,8 +99,7 @@ struct GameDetailView: View {
             HStack(spacing: 8) {
                 Text("作品信息")
                     .font(.system(size: 15, weight: .semibold))
-                if let rj = store.meta(for: game.id)?.work.rj
-                    ?? store.detectRJ(for: game).first {
+                if let rj = store.meta(for: game.id)?.work.rj ?? store.detectRJ(for: game).first, !rj.isEmpty {
                     Text(rj)
                         .font(.system(size: 10, design: .monospaced))
                         .foregroundStyle(.tertiary)
@@ -160,10 +159,12 @@ struct GameDetailView: View {
     private var dlsiteActions: some View {
         let busy = store.fetchingMeta.contains(game.id)
         if let meta = store.meta(for: game.id) {
+            if !meta.work.isExternal {
             Button("刷新信息") {
                 store.fetchMeta(gameId: game.id, rj: meta.work.rj, refresh: true, category: meta.work.category)
             }.controlSize(.small).disabled(busy)
-            Button("更换关联…") { store.beginManualRJ(gameId: game.id) }
+            }
+            Button(meta.work.isExternal ? "补全／更换资料…" : "更换关联…") { store.beginManualRJ(gameId: game.id) }
                 .controlSize(.small).disabled(busy)
         } else {
             Button("查找作品…") { store.beginManualRJ(gameId: game.id) }

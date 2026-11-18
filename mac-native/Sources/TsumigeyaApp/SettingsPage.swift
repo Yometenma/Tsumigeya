@@ -31,7 +31,7 @@ struct SettingsPage: View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 8) {
                 Text("设置").font(.system(size: 24, weight: .bold))
-                Text("更改后自动保存，无需另外确认。")
+                Text(selectedGroup == .metadata ? "语言、地址和模型自动保存；接口密钥需单独保存。" : "更改后自动保存，无需另外确认。")
                     .font(.callout).foregroundStyle(.secondary)
                 Picker("设置分组", selection: $selectedGroup) {
                     ForEach(SettingsGroups.groups, id: \.id) { group in
@@ -53,6 +53,7 @@ struct SettingsPage: View {
                             ForEach(group.keys.filter { SettingRow(key: $0).isAvailable }, id: \.self) { key in
                                 SettingRow(key: key)
                             }
+                            if group.id == .metadata { MetadataCredentialView() }
                             if group.id == .language {
                                 LabeledContent("界面语言", value: "简体中文")
                                 Text("目前仅提供简体中文，不会自动切换游戏的语言版本。")
@@ -143,6 +144,24 @@ struct SettingRow: View {
             }
 
             switch key {
+            case .metadataPreferredLanguage, .metadataFallbackLanguage:
+                Picker(key == .metadataPreferredLanguage ? "作品信息优先语言" : "缺失时回退语言", selection: Binding(
+                    get: { store.settingString(key) }, set: { store.setSetting(key, .string($0)) }
+                )) {
+                    if key == .metadataFallbackLanguage { Text("不回退").tag("none") }
+                    ForEach(MetadataLanguage.allCases, id: \.rawValue) { Text($0.name).tag($0.rawValue) }
+                }
+                Text("只选择商品页面语言，不代表游戏支持该语言；未翻译的字段可能保留原文。已有资料请手动刷新。")
+                    .font(.caption).foregroundStyle(.secondary)
+            case .metadataEndpoint, .metadataModel:
+                TextField(key == .metadataEndpoint ? "AI 接口完整地址" : "模型名称", text: Binding(
+                    get: { store.settingString(key) }, set: { store.setSetting(key, .string($0)) }
+                ))
+            case .metadataMode:
+                Picker("AI 接口协议", selection: Binding(get: { store.settingString(key) }, set: { store.setSetting(key, .string($0)) })) {
+                    Text("兼容聊天接口 · 页面整理").tag("chat")
+                    Text("Responses · 联网查找与整理").tag("responses")
+                }
             case .appearance:
                 Picker("外观", selection: Binding(
                     get: { store.settingString(.appearance) },
@@ -273,7 +292,7 @@ struct SettingRow: View {
 
     private var pendingNote: Note? {
         switch key {
-        case .appearance, .listView, .deletionConfirmation:
+        case .appearance, .listView, .deletionConfirmation, .metadataPreferredLanguage, .metadataFallbackLanguage, .metadataEndpoint, .metadataModel, .metadataMode:
             return nil
         case .saveSyncMode:
             // ⚠️ **P6 做完后 manual 模式真的能用** → caveat 而不是 notImplemented。

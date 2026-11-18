@@ -23,6 +23,8 @@ actor ArtworkImageCache {
     typealias Fetcher = @Sendable (URL) async throws -> FetchResponse
 
     static let shared = ArtworkImageCache()
+    static let external = ArtworkImageCache(allowsExternal: true, fetcher: fetchExternal)
+    private let allowsExternal: Bool
     static let defaultMaxBytes = 32 * 1024 * 1024
     private static let logger = Logger(subsystem: "Tsumigeya", category: "图片缓存")
 
@@ -32,10 +34,11 @@ actor ArtworkImageCache {
     private let memory = NSCache<NSString, NSData>()
     private var inFlight: [String: (id: UUID, task: Task<Data, Error>)] = [:]
 
-    init(directory: URL? = nil, maxBytes: Int = ArtworkImageCache.defaultMaxBytes,
+    init(directory: URL? = nil, allowsExternal: Bool = false, maxBytes: Int = ArtworkImageCache.defaultMaxBytes,
          fetcher: @escaping Fetcher = ArtworkImageCache.fetchRemote) {
         let requested = directory ?? FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Tsumigeya/Artwork", isDirectory: true)
+        self.allowsExternal = allowsExternal
         self.directory = URL(fileURLWithPath: requested.standardizedFileURL.path, isDirectory: true)
         self.fetcher = fetcher
         self.maxBytes = max(1, maxBytes)
@@ -54,7 +57,7 @@ actor ArtworkImageCache {
     }
 
     func imageData(for source: URL, refreshing: Bool = false) async throws -> Data {
-        guard let url = Self.normalizedURL(source.absoluteString) else { throw URLError(.unsupportedURL) }
+        guard let url = allowsExternal ? MetadataNetwork.publicURL(source.absoluteString) : Self.normalizedURL(source.absoluteString) else { throw URLError(.unsupportedURL) }
         let key = SHA256.hash(data: Data(url.absoluteString.utf8)).map { String(format: "%02x", $0) }.joined()
         if !refreshing, let cached = memory.object(forKey: key as NSString) { return cached as Data }
 
@@ -74,11 +77,12 @@ actor ArtworkImageCache {
         } else {
             let fetcher = self.fetcher
             let limit = maxBytes
+            let external = allowsExternal
             request = (UUID(), Task.detached(priority: .utility) {
                 let response = try await fetcher(url)
                 guard response.statusCode == 200,
                       response.expectedContentLength <= Int64(limit),
-                      Self.allowsRedirect(to: response.finalURL) else { throw URLError(.badServerResponse) }
+                      (external ? MetadataNetwork.publicURL(response.finalURL.absoluteString) != nil : Self.allowsRedirect(to: response.finalURL)) else { throw URLError(.badServerResponse) }
                 guard Self.isValidImage(response.data, maxBytes: limit) else {
                     throw URLError(.cannotDecodeContentData)
                 }
@@ -130,6 +134,13 @@ actor ArtworkImageCache {
         return true
     }
 
+    nonisolated static func fetchExternal(_ url: URL) async throws -> FetchResponse {
+        try await MetadataNetwork.checkPublicHost(url)
+        let (data, response) = try await MetadataNetwork.request(URLRequest(url: url, timeoutInterval: 30), maxBytes: defaultMaxBytes)
+        // 图片不跟随重定向，避免第三方来源借图片请求访问其他地址。
+        return FetchResponse(statusCode: response.statusCode, finalURL: url, data: data)
+    }
+
     nonisolated static func fetchRemote(_ url: URL) async throws -> FetchResponse {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = 30
@@ -162,6 +173,7 @@ private final class ArtworkRedirectGuard: NSObject, URLSessionTaskDelegate, Send
 struct CachedRemoteImage: View {
     let url: URL
     var contentMode: ContentMode = .fit
+    var external = false
     var retryLabel = "重试图片"
     @State private var image: NSImage?
     @State private var failed = false
@@ -187,7 +199,8 @@ struct CachedRemoteImage: View {
             image = nil
             failed = false
             do {
-                let data = try await ArtworkImageCache.shared.imageData(for: url, refreshing: attempt > 0)
+                let cache = external ? ArtworkImageCache.external : ArtworkImageCache.shared
+                let data = try await cache.imageData(for: url, refreshing: attempt > 0)
                 guard !Task.isCancelled else { return }
                 guard let decoded = NSImage(data: data) else { failed = true; return }
                 image = decoded

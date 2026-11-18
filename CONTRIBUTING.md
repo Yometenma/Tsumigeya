@@ -86,12 +86,16 @@ swift run Tsumigeya
 | `data-dir` / `list-games` / `roundtrip-games` | 查看数据目录和游戏列表，验证游戏库读写保真 |
 | `detect` / `deps` / `install <引擎> [--dry-run]` | 引擎识别、依赖检查与安装 |
 | `plan` / `launch [id]` / `saves` | 检查启动计划、真实启动和存档位置 |
-| `dlsite-fetch <RJ> [category]` / `dlsite-probe <html>` | 真实网络抓取与本地页面解析 |
+| `dlsite-fetch <RJ> [category] [locale]` / `dlsite-probe <html>` | 真实网络抓取与本地页面解析 |
 | `dlsite-search <关键词> [category]` | 真实网络搜索，核对成人向／一般向候选与失败提示 |
+| `metadata-page <HTTPS地址>` | 真实外部页面读取，仅输出正文长度与封面有无，不写游戏库 |
+| `metadata-ai <HTTPS地址>` / `metadata-search <名称>` | AI 页面整理／联网来源候选，只输出预览；必须显式配置接口与凭据 |
 | `search-probe <html>` / `rj-probe <路径…>` | 搜索结果解析与 RJ 编号提取 |
 | `meta-probe [目录]` / `zip-probe [目录]` | 元数据读写与 ZIP 格式检查 |
 | `scan-games <目录>` | 受限批量扫描，只预览，不写入；不可读或达到范围上限时非零退出 |
 | `relocate-probe <编号> <新目录>` | 按真实游戏记录校验定位并预览，不写入；实际保存需在应用确认 |
+
+资料获取界面与兼容限制见 [作品信息获取](docs/作品信息获取.md)。CLI 的 `locale` 使用 `zh_CN`、`zh_TW`、`ja_JP`、`en_US` 或 `ko_KR`。外部 AI 验收通过 `TSUMIGEYA_METADATA_ENDPOINT`、`TSUMIGEYA_METADATA_MODEL`、`TSUMIGEYA_METADATA_MODE`（`chat`／`responses`）、`TSUMIGEYA_METADATA_LANGUAGE` 和 `TSUMIGEYA_METADATA_KEY` 显式提供配置；不要把密钥写入提交或日志。测试使用可注入传输覆盖协议、预览和取消，不能把模拟接口描述为真实模型联网验收。
 
 真实游戏验收前，确认目标游戏没有正在运行；验收结束后只清理本次启动的测试进程，不要按引擎名称批量结束进程。验证读写时使用临时副本，不把测试结果写回用户的游戏库或存档。
 

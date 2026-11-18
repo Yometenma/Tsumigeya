@@ -27,6 +27,13 @@ public struct GameDlsiteMeta: Sendable, Equatable, Codable {
         self.editedFields = editedFields
     }
 
+    public mutating func removeEditedEvidence() {
+        let edited = Set(editedFields)
+        work.fieldEvidence = work.fieldEvidence.filter { key, _ in
+            !edited.contains(String(key.split(separator: ".").first ?? ""))
+        }
+    }
+
     // ⚠️ 手写 Codable：`DlsiteWork` 本身不是 Codable（它刻意不带，
     //    只有 `CachedWork` 需要磁盘格式）。这里显式展开，
     //    加字段时不会静默改掉磁盘结构。
@@ -34,10 +41,17 @@ public struct GameDlsiteMeta: Sendable, Equatable, Codable {
         case rj, title, titleSub, circle, coverUrl, workType, ageRating
         case description, fetchedAt, editedFields
         case category, releaseDate, series, tags, languages, sampleImageURLs, creators, voiceActors, supportedSystems
+        case source, externalID, sourceURLs, metadataLanguage, requestedLanguage, fieldEvidence
     }
 
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encodeIfPresent(work.externalID, forKey: .externalID)
+        try c.encodeIfPresent(work.source, forKey: .source)
+        try c.encode(work.sourceURLs, forKey: .sourceURLs)
+        try c.encodeIfPresent(work.metadataLanguage, forKey: .metadataLanguage)
+        try c.encodeIfPresent(work.requestedLanguage, forKey: .requestedLanguage)
+        try c.encode(work.fieldEvidence, forKey: .fieldEvidence)
         try c.encode(work.rj, forKey: .rj)
         try c.encodeIfPresent(work.title, forKey: .title)
         try c.encodeIfPresent(work.titleSub, forKey: .titleSub)
@@ -80,6 +94,12 @@ public struct GameDlsiteMeta: Sendable, Equatable, Codable {
             creators: try c.decodeIfPresent([String].self, forKey: .creators) ?? [],
             voiceActors: try c.decodeIfPresent([String].self, forKey: .voiceActors) ?? [],
             supportedSystems: try c.decodeIfPresent(String.self, forKey: .supportedSystems))
+        self.work.externalID = try c.decodeIfPresent(String.self, forKey: .externalID)
+        self.work.source = try c.decodeIfPresent(String.self, forKey: .source)
+        self.work.sourceURLs = try c.decodeIfPresent([String].self, forKey: .sourceURLs) ?? []
+        self.work.metadataLanguage = try c.decodeIfPresent(String.self, forKey: .metadataLanguage)
+        self.work.requestedLanguage = try c.decodeIfPresent(String.self, forKey: .requestedLanguage)
+        self.work.fieldEvidence = try c.decodeIfPresent([String: String].self, forKey: .fieldEvidence) ?? [:]
         self.editedFields = try c.decodeIfPresent(
             [String].self, forKey: .editedFields) ?? []
     }
@@ -89,10 +109,14 @@ public enum GameMetaStore {
 
     static let fileName = "library-meta.json"
 
+    public static func activeWorkJSON(_ entry: [String: JSONValue]) -> JSONValue? {
+        entry[entry["metadataSource"]?.stringValue == "external" ? "workInfo" : "dlsite"]
+    }
+
     /// 本地搜索一次读完整旁挂文件，避免每个候选都重复读同一个文件。
     public static func loadAll(dataDir: String) -> [String: GameDlsiteMeta] {
         readRaw(dataDir: dataDir).compactMapValues { entry in
-            guard let dlsite = entry.objectValue?["dlsite"],
+            guard let object = entry.objectValue, let dlsite = activeWorkJSON(object),
                   let data = try? JSONEncoder().encode(dlsite) else { return nil }
             return try? JSONDecoder().decode(GameDlsiteMeta.self, from: data)
         }
@@ -106,7 +130,7 @@ public enum GameMetaStore {
     ) -> GameDlsiteMeta? {
         let raw = readRaw(dataDir: dataDir, fileManager: fileManager)
         guard let entry = raw[gameId]?.objectValue,
-              let dlsiteRaw = entry["dlsite"]?.objectValue else {
+              let dlsiteRaw = activeWorkJSON(entry)?.objectValue else {
             return nil
         }
         // 把 `[String: JSONValue]` 转成 JSON 再解码（复用 Codable 的健壮性）
@@ -136,20 +160,24 @@ public enum GameMetaStore {
         // 拿到这个游戏条目（可能是新的）
         var entry = raw[gameId]?.objectValue ?? [:]
 
-        // 序列化 dlsite 部分
+        var meta = meta
+        meta.removeEditedEvidence()
+        // 保留旧版 DLsite 存储格式；外部作品使用独立的 workInfo。
         guard let data = try? JSONEncoder().encode(meta),
               let json = try? JSONDecoder().decode(JSONValue.self, from: data) else {
             return "序列化元数据失败"
         }
         // 保留新旧版本扩展字段，同时允许本次清空已知的可选字段。
-        var dlsite = entry["dlsite"]?.objectValue ?? [:]
+        let key = meta.work.isExternal ? "workInfo" : "dlsite"
+        var dlsite = entry[key]?.objectValue ?? [:]
         for key in ["rj", "title", "titleSub", "circle", "coverUrl", "workType",
                     "ageRating", "description", "fetchedAt", "editedFields",
-                    "category", "releaseDate", "series", "tags", "languages", "sampleImageURLs", "creators", "voiceActors", "supportedSystems"] {
+                    "category", "releaseDate", "series", "tags", "languages", "sampleImageURLs", "creators", "voiceActors", "supportedSystems", "source", "externalID", "sourceURLs", "metadataLanguage", "requestedLanguage", "fieldEvidence"] {
             dlsite.removeValue(forKey: key)
         }
         dlsite.merge(json.objectValue ?? [:]) { _, new in new }
-        entry["dlsite"] = .object(dlsite)
+        entry[key] = .object(dlsite)
+        entry["metadataSource"] = .string(meta.work.isExternal ? "external" : "dlsite")
         raw[gameId] = .object(entry)
         // 资料与自动分类共用一次原子写入，不能出现资料已保存但分类未更新。
         LibraryClassification.synchronize(&raw, gameIDs: [gameId])

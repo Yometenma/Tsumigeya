@@ -3,12 +3,13 @@ import TsumigeyaCore
 
 struct WorkRemoteImage: View {
     let address: String?
+    var external = false
 
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 7).fill(.quaternary)
-            if let url = address.flatMap(DLsiteParser.normalizeCoverUrl).flatMap(URL.init(string:)) {
-                CachedRemoteImage(url: url).id(url)
+            if let url = (external ? address.flatMap(MetadataNetwork.publicURL) : address.flatMap(DLsiteParser.normalizeCoverUrl).flatMap(URL.init(string:))) {
+                CachedRemoteImage(url: url, external: external).id(url)
             } else {
                 Image(systemName: "photo")
                     .foregroundStyle(.secondary)
@@ -26,7 +27,9 @@ struct DLsiteWorkInfo: View {
         VStack(alignment: .leading, spacing: 14) {
             if let title = work.title { Text(title).font(.headline).textSelection(.enabled) }
             Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 8) {
-                row("社团", work.circle)
+                row(work.isExternal ? "开发商／发行商" : "社团", work.circle)
+                row("资料来源", work.sourceLabel)
+                row("页面／整理语言", work.metadataLanguage.flatMap(MetadataLanguage.init(rawValue:))?.name ?? "未标明")
                 row("发售日期", work.releaseDate)
                 row("系列", work.series)
                 row("作品类型", work.workType.map(typeName))
@@ -51,29 +54,40 @@ struct DLsiteWorkInfo: View {
                     HStack(spacing: 10) {
                         ForEach(work.sampleImageURLs, id: \.self) { address in
                             Button { selectedImage = address } label: {
-                                WorkRemoteImage(address: address).frame(width: 180, height: 126)
+                                WorkRemoteImage(address: address, external: work.isExternal).frame(width: 180, height: 126)
                             }.buttonStyle(.plain).accessibilityLabel("放大预览截图")
                         }
                     }
                 }
             }
             HStack {
-                Text(work.rj).font(.caption.monospaced()).foregroundStyle(.secondary)
-                if let url = URL(string: DLsiteService.pageURL(category: work.category ?? "maniax", rj: work.rj)) {
+                if !work.rj.isEmpty { Text(work.rj).font(.caption.monospaced()).foregroundStyle(.secondary) }
+                if let address = work.pageURL, let url = URL(string: address) {
                     Link("查看作品页", destination: url).font(.caption)
                 }
                 Spacer()
+            }
+            if !work.isExternal {
+                Text("页面语言不等于游戏语言；未翻译的字段可能保留原文。")
+                    .font(.caption2).foregroundStyle(.secondary)
+            }
+            if !work.fieldEvidence.isEmpty {
+                DisclosureGroup("核对资料来源引文") {
+                    ForEach(work.fieldEvidence.keys.sorted(), id: \.self) { key in
+                        Text(work.fieldEvidence[key] ?? "").font(.caption).textSelection(.enabled)
+                    }
+                }
             }
             Text("信息获取时间：\(work.fetchedAt)")
                 .font(.caption2).foregroundStyle(.tertiary)
         }
         .sheet(isPresented: Binding(get: { selectedImage != nil }, set: { if !$0 { selectedImage = nil } })) {
             VStack(spacing: 12) {
-                WorkRemoteImage(address: selectedImage).frame(minWidth: 640, minHeight: 440)
+                WorkRemoteImage(address: selectedImage, external: work.isExternal).frame(minWidth: 640, minHeight: 440)
                 Button("关闭") { selectedImage = nil }.keyboardShortcut(.cancelAction)
             }.padding(20)
         }
-        .onChange(of: work.rj) { _, _ in selectedImage = nil }
+        .onChange(of: work.identity) { _, _ in selectedImage = nil }
     }
 
     @ViewBuilder private func row(_ title: String, _ value: String?) -> some View {

@@ -16,6 +16,11 @@ func main() {
         exit(runRelocationProbe(id: rest[0], folder: rest[1]) == 0 ? 0 : 1)
     case "assist":
         exit(runAssistCommand(Array(args.dropFirst())))
+    case "metadata-page", "metadata-ai", "metadata-search":
+        guard let input = args.dropFirst().first else { print("用法：\(cmd) <公开页面地址或游戏名>"); exit(2) }
+        let box = ExitCodeBox(); let sem = DispatchSemaphore(value: 0)
+        Task { box.value = Int32(await runExternalMetadata(command: cmd, input: input)); sem.signal() }
+        sem.wait(); exit(box.value)
     case "data-dir":
         printDataDir()
     case "list-games":
@@ -58,7 +63,7 @@ func main() {
         let sem = DispatchSemaphore(value: 0)
         let box = ExitCodeBox()
         Task {
-            box.value = Int32(await runDlsiteFetch(rj: rj, category: cat))
+            box.value = Int32(await runDlsiteFetch(rj: rj, category: cat, language: args.dropFirst(3).first.flatMap(MetadataLanguage.init(rawValue:))))
             sem.signal()
         }
         sem.wait()

@@ -42,7 +42,7 @@ public enum DLsiteSearch {
     ///
     /// ⚠️ `category` **必须是纯小写字母**（注入别的字符会拼出非法 URL）。
     public static func searchURL(
-        keyword: String, category: String = "maniax"
+        keyword: String, category: String = "maniax", language: MetadataLanguage? = nil
     ) -> String? {
         let trimmed = keyword.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
@@ -54,9 +54,9 @@ public enum DLsiteSearch {
 
         // ⚠️ 用 `addingPercentEncoding` 而不是手拼 —— 日文关键词必须编码
         guard let encoded = trimmed.addingPercentEncoding(
-            withAllowedCharacters: .urlQueryAllowed) else { return nil }
+            withAllowedCharacters: .urlPathAllowed.subtracting(CharacterSet(charactersIn: "/?#%"))) else { return nil }
 
-        return "https://www.dlsite.com/\(safeCategory)/fsr/=/keyword/\(encoded)"
+        return "https://www.dlsite.com/\(safeCategory)/fsr/=/keyword/\(encoded)" + (language.map { "?locale=" + $0.rawValue } ?? "")
     }
 
     /// 搜索结果页判据：`<title>` 含「検索結果」。
@@ -65,7 +65,7 @@ public enum DLsiteSearch {
     ///    直接解析会得到空结果，而用户分不清「没有这个作品」与「解析失败」。
     public static func isResultPage(_ html: String) -> Bool {
         guard let title = extractTitle(html) else { return false }
-        return title.contains("検索結果")
+        return ["検索結果", "搜索结果", "搜尋結果", "search results", "검색결과", "검색 결과"].contains { title.lowercased().contains($0) }
     }
 
     /// 提取 `<title>` 内容。

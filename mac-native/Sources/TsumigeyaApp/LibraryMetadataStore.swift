@@ -6,6 +6,14 @@ import TsumigeyaCore
 @MainActor
 final class LibraryMetadataStore: ObservableObject {
     private(set) var dataDir = ""
+    var languagePreference: () -> MetadataLanguagePreference? = { nil }
+    var externalPage: @Sendable (URL) async throws -> MetadataPage = { url in
+        let (finalURL, html) = try await MetadataNetwork.page(url)
+        return MetadataPage(url: finalURL, html: html)
+    }
+    var aiService: () throws -> MetadataAIService = { throw MetadataFailure("请先配置作品信息接口。") }
+    @Published private(set) var externalCandidates: [String: [MetadataCandidate]] = [:]
+    private var previewGames: [String: GameRecord] = [:]
     var currentGame: (String) -> GameRecord? = { _ in nil }
     var readMeta: (String) -> GameDlsiteMeta? = { _ in nil }
     var didSave: (String, GameDlsiteMeta, [String: JSONValue]) -> Void = { _, _, _ in }
@@ -39,12 +47,16 @@ final class LibraryMetadataStore: ObservableObject {
     func cancelAll() {
         for id in Set(metaTasks.keys).union(searchTasks.keys) { cancelLookup(gameId: id) }
         metaPreviews = [:]
+        externalCandidates = [:]
+        previewGames = [:]
     }
 
     /// 编号或路径复用前使旧请求及缓存失效；这里不删除磁盘数据。
     func forget(gameId: String) {
+        externalCandidates.removeValue(forKey: gameId)
         clearSearch(gameId: gameId)
         metaPreviews.removeValue(forKey: gameId)
+        previewGames.removeValue(forKey: gameId)
         metaNotice.removeValue(forKey: gameId)
         metaError.removeValue(forKey: gameId)
     }
@@ -104,18 +116,19 @@ final class LibraryMetadataStore: ObservableObject {
             }
             guard let service = dlsiteService else { return }
 
-            let result = await service.fetchResolved(rj: rj, category: category, refresh: refresh)
+            let result = await service.fetchResolved(rj: rj, category: category, refresh: refresh, preference: languagePreference())
             guard metaTokens[gameId] == token, game(id: gameId) == expected else { return }
 
             switch result {
             case .success(let work):
                 if preview {
                     metaPreviews[gameId] = work
+                    previewGames[gameId] = expected
                     return
                 }
                 // ⚠️ **合并时保护用户改过的字段**（D26）
                 let existing = meta(for: gameId)
-                let fields = existing?.work.rj == work.rj ? (existing?.editedFields ?? []) : []
+                let fields = existing?.work.identity == work.identity ? (existing?.editedFields ?? []) : []
                 let edited = Set(fields)
                 let merged = EditedFields.merge(
                     old: existing?.work, incoming: work, edited: edited)
@@ -154,6 +167,8 @@ final class LibraryMetadataStore: ObservableObject {
 
     @discardableResult
     func updateMeta(gameId: String, meta: GameDlsiteMeta) -> Bool {
+        var meta = meta
+        meta.removeEditedEvidence()
         guard game(id: gameId) != nil else {
             metaError[gameId] = "游戏已移除或发生变化，未保存作品信息。"
             return false
@@ -210,7 +225,7 @@ final class LibraryMetadataStore: ObservableObject {
             }
             guard let service = dlsiteService else { return }
 
-            let result = await service.searchReport(keyword: keyword, category: category)
+            let result = await service.searchReport(keyword: keyword, category: category, preference: languagePreference())
             guard searchTokens[gameId] == token, game(id: gameId) == expected else { return }
 
             switch result {
@@ -257,20 +272,92 @@ final class LibraryMetadataStore: ObservableObject {
     func discardMetaPreview(gameId: String) {
         cancelLookup(gameId: gameId)
         metaPreviews.removeValue(forKey: gameId)
+        previewGames.removeValue(forKey: gameId)
         metaError.removeValue(forKey: gameId)
     }
 
     @discardableResult
     func applyMetaPreview(gameId: String) -> Bool {
-        guard game(id: gameId) != nil, let incoming = metaPreviews[gameId] else { return false }
+        guard let incoming = metaPreviews[gameId] else { return false }
+        return applyExternalOrDLsitePreview(gameId: gameId, incoming: incoming)
+    }
+
+    func applyExternalOrDLsitePreview(gameId: String, incoming: DlsiteWork, draftEdited: Set<String> = []) -> Bool {
+        guard let expected = previewGames[gameId], game(id: gameId) == expected,
+              metaPreviews[gameId]?.identity == incoming.identity else {
+            metaError[gameId] = "游戏已移除或发生变化，请重新准备资料；本次未保存。"
+            return false
+        }
         let old = meta(for: gameId)
-        let edited = old?.work.rj == incoming.rj ? (old?.editedFields ?? []) : []
-        let merged = EditedFields.merge(old: old?.work, incoming: incoming, edited: Set(edited))
+        var edited = old?.work.identity == incoming.identity ? (old?.editedFields ?? []) : []
+        let merged = EditedFields.merge(old: old?.work, incoming: incoming, edited: Set(edited).subtracting(draftEdited))
+        for field in draftEdited where !edited.contains(field) { edited.append(field) }
         guard updateMeta(gameId: gameId, meta: GameDlsiteMeta(work: merged, editedFields: edited)) else { return false }
         metaPreviews.removeValue(forKey: gameId)
+        previewGames.removeValue(forKey: gameId)
         clearSearch(gameId: gameId)
         metaNotice[gameId] = "已关联作品信息。"
         return true
+    }
+
+    func searchExternal(gameId: String, name: String) {
+        runExternal(gameId: gameId) { service, language in
+            .candidates(try await service.search(name: name, language: language))
+        }
+    }
+    func extractExternal(gameId: String, address: String) {
+        guard let url = MetadataNetwork.publicURL(address.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+            metaError[gameId] = "请输入公开的 HTTPS 商品页地址。"; return
+        }
+        let fetchPage = externalPage
+        runExternal(gameId: gameId) { service, language in
+            let page = try await fetchPage(url)
+            let work = try await service.extract(page: page, language: language)
+            return .work(work)
+        }
+    }
+    private enum ExternalResult: Sendable { case candidates([MetadataCandidate]), work(DlsiteWork) }
+    private func runExternal(gameId: String, body: @escaping @Sendable (MetadataAIService, MetadataLanguage) async throws -> ExternalResult) {
+        guard let expected = game(id: gameId), !fetchingMeta.contains(gameId) else { return }
+        cancelLookup(gameId: gameId)
+        metaPreviews.removeValue(forKey: gameId); previewGames.removeValue(forKey: gameId)
+        externalCandidates.removeValue(forKey: gameId)
+        metaError.removeValue(forKey: gameId); metaNotice.removeValue(forKey: gameId)
+        let service: MetadataAIService
+        do {
+            service = try aiService()
+            guard service.settings.url != nil, !service.settings.model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw MetadataFailure("请先在「设置 → 作品信息」填写有效接口地址和模型，并保存密钥。")
+            }
+        } catch { metaError[gameId] = error.localizedDescription; return }
+        let language = languagePreference()?.preferred ?? .simplifiedChinese
+        let token = UUID(); metaTokens[gameId] = token; fetchingMeta.insert(gameId)
+        metaTasks[gameId] = Task { @MainActor in
+            defer {
+                if metaTokens[gameId] == token {
+                    fetchingMeta.remove(gameId); metaTokens.removeValue(forKey: gameId); metaTasks.removeValue(forKey: gameId)
+                }
+            }
+            do {
+                let result = try await body(service, language)
+                guard !Task.isCancelled, metaTokens[gameId] == token, game(id: gameId) == expected else { return }
+                switch result {
+                case .candidates(let candidates): externalCandidates[gameId] = candidates
+                case .work(let work): metaPreviews[gameId] = work; previewGames[gameId] = expected
+                }
+            } catch {
+                guard !Task.isCancelled, metaTokens[gameId] == token, game(id: gameId) == expected else { return }
+                metaError[gameId] = (error as? MetadataFailure)?.message ?? "网络或接口请求未完成，请检查连接后重试。原有资料未更改。"
+            }
+        }
+    }
+    func prepareManualExternal(gameId: String) {
+        guard let expected = game(id: gameId) else { return }
+        discardMetaPreview(gameId: gameId)
+        var work = DlsiteWork(rj: "", title: expected.gameTitle, fetchedAt: ISO8601DateFormatter().string(from: .now))
+        work.source = "manual"; work.externalID = UUID().uuidString
+        if let existing = meta(for: gameId), existing.work.isExternal { work = existing.work }
+        metaPreviews[gameId] = work; previewGames[gameId] = expected
     }
 
 }

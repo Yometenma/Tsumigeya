@@ -43,16 +43,16 @@ public actor DLsiteService {
     // MARK: - 缓存路径
 
     /// `<dataDir>/dlsite/<RJ>.json`
-    public nonisolated func cachePath(rj: String) -> String {
+    public nonisolated func cachePath(rj: String, language: MetadataLanguage? = nil) -> String {
         // 注意：String 没有 appendingPathComponent（那是 NSString 的方法）
         (((dataDir as NSString)
-            .appendingPathComponent("dlsite")) as NSString)
+            .appendingPathComponent(language.map { "dlsite/" + $0.rawValue } ?? "dlsite")) as NSString)
             .appendingPathComponent("\(rj).json")
     }
 
     /// 读缓存（**不校验 TTL**，调用方决定）。
-    public func readCache(rj: String) -> CachedWork? {
-        let path = cachePath(rj: rj)
+    public func readCache(rj: String, language: MetadataLanguage? = nil) -> CachedWork? {
+        let path = cachePath(rj: rj, language: language)
         guard let data = FileManager.default.contents(atPath: path),
               let cached = try? JSONDecoder().decode(CachedWork.self, from: data) else {
             return nil
@@ -63,7 +63,7 @@ public actor DLsiteService {
     /// 保留未知缓存字段；损坏原件和备份失败都停止写入。
     @discardableResult
     func writeCache(_ cached: CachedWork) -> String? {
-        let url = URL(fileURLWithPath: cachePath(rj: cached.work.rj))
+        let url = URL(fileURLWithPath: cachePath(rj: cached.work.rj, language: cached.work.requestedLanguage.flatMap(MetadataLanguage.init(rawValue:))))
         do {
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
             var raw: [String: JSONValue] = [:]
@@ -97,7 +97,7 @@ public actor DLsiteService {
     ///
     /// - Returns: 成功返回作品；失败返回**结构化错误**（不抛异常）
     public func fetchWork(
-        rj rawRJ: String, category: String = "maniax", refresh: Bool = false
+        rj rawRJ: String, category: String = "maniax", refresh: Bool = false, language: MetadataLanguage? = nil
     ) async -> Result<DlsiteWork, DLsiteError> {
 
         guard ["maniax", "home", "pro"].contains(category) else { return .failure(.invalidURL(category)) }
@@ -107,7 +107,7 @@ public actor DLsiteService {
         }
 
         // ② 缓存命中（非 refresh 时）
-        if !refresh, let cached = readCache(rj: rj), cached.work.rj == rj, isCacheFresh(cached) {
+        if !refresh, let cached = readCache(rj: rj, language: language), cached.work.rj == rj, cached.work.requestedLanguage == language?.rawValue, isCacheFresh(cached) {
             return .success(cached.work)
         }
 
@@ -115,7 +115,7 @@ public actor DLsiteService {
         do { try await waitForRequestSlot() }
         catch { return .failure(.cancelled) }
 
-        let url = Self.pageURL(category: category, rj: rj)
+        let url = Self.pageURL(category: category, rj: rj, language: language)
 
         let response: (status: Int, body: String)
         do {
@@ -145,6 +145,8 @@ public actor DLsiteService {
             return .failure(.rjMismatch(requested: rj, got: work.rj))
         }
 
+        work.requestedLanguage = language?.rawValue
+        work.metadataLanguage = MetadataLanguage.detect(response.body)?.rawValue
         work.category = work.category ?? category
         // 缓存独立于游戏信息，但不能覆盖损坏原件或绕过备份失败。
         if let error = writeCache(CachedWork(work: work, cachedAt: now())) {
@@ -161,11 +163,11 @@ public actor DLsiteService {
     /// - Returns: 成功返回候选列表（可能为空 = 真没搜到）；
     ///   失败返回结构化错误（与 `fetchWork` 同一套错误类型）。
     public func search(
-        keyword: String, category: String = "maniax"
+        keyword: String, category: String = "maniax", language: MetadataLanguage? = nil
     ) async -> Result<[DLsiteSearch.Hit], DLsiteError> {
 
         guard let url = DLsiteSearch.searchURL(
-            keyword: keyword, category: category) else {
+            keyword: keyword, category: category, language: language) else {
             return .failure(.invalidURL(keyword))
         }
 
@@ -210,19 +212,32 @@ public actor DLsiteService {
         lastRequestStart = .now
     }
 
-    public func fetchResolved(rj: String, category: String? = nil, refresh: Bool = false) async -> Result<DlsiteWork, DLsiteError> {
+    public func fetchResolved(rj: String, category: String? = nil, refresh: Bool = false, preference: MetadataLanguagePreference? = nil) async -> Result<DlsiteWork, DLsiteError> {
         let categories = category.map { [$0] } ?? ["maniax", "home", "pro"]
         var last: DLsiteError = .parseFailed(rj: rj)
         for category in categories {
-            let result = await fetchWork(rj: rj, category: category, refresh: refresh)
+            let result = await fetchWork(rj: rj, category: category, refresh: refresh, language: preference?.preferred)
             switch result {
             case .success(var work):
+                // 页面缺少目标语言时只在同一个 RJ 内回退，绝不自动换到翻译版商品。
+                if let preference, let actualLanguage = work.metadataLanguage, actualLanguage != preference.preferred.rawValue,
+                   let fallback = preference.fallback, fallback != preference.preferred {
+                    let result = await fetchWork(rj: rj, category: category, refresh: refresh, language: fallback)
+                    if case .success(let fallbackWork) = result { work = fallbackWork }
+                    if case .failure(.cancelled) = result { return .failure(.cancelled) }
+                }
                 work.category = work.category ?? category
                 return .success(work)
             case .failure(let error):
                 last = error
                 switch error {
-                case .httpStatus(404), .parseFailed: continue
+                case .httpStatus(404), .parseFailed:
+                    if let preference, let fallback = preference.fallback, fallback != preference.preferred {
+                        let fallbackResult = await fetchWork(rj: rj, category: category, refresh: refresh, language: fallback)
+                        if case .success = fallbackResult { return fallbackResult }
+                        if case .failure(.cancelled) = fallbackResult { return .failure(.cancelled) }
+                    }
+                    continue
                 default: return .failure(error)
                 }
             }
@@ -241,7 +256,7 @@ public actor DLsiteService {
     }
 
     /// 保持页面顺序，跨分类按编号去重；部分分类失败不能丢掉已找到的候选。
-    public func searchReport(keyword: String, category: String? = nil) async -> Result<SearchReport, DLsiteError> {
+    public func searchReport(keyword: String, category: String? = nil, preference: MetadataLanguagePreference? = nil) async -> Result<SearchReport, DLsiteError> {
         let categories = category.map { [$0] } ?? ["maniax", "home"]
         var tried: [String] = []
         for variant in DlsiteLookup.keywordVariants(keyword) {
@@ -251,7 +266,12 @@ public actor DLsiteService {
             var firstError: DLsiteError?
             var seen: Set<String> = []
             for category in categories {
-                switch await search(keyword: variant, category: category) {
+                var result = await search(keyword: variant, category: category, language: preference?.preferred)
+                if case .success(let found) = result, found.isEmpty,
+                   let preference, let fallback = preference.fallback, fallback != preference.preferred {
+                    result = await search(keyword: variant, category: category, language: fallback)
+                }
+                switch result {
                 case .success(let found):
                     hits += found.filter { seen.insert($0.rj).inserted }
                 case .failure(.cancelled): return .failure(.cancelled)
@@ -276,8 +296,8 @@ public actor DLsiteService {
     /// 页面 URL（**唯一有效的格式**）。
     ///
     /// `https://www.dlsite.com/{category}/work/=/product_id/{RJ}.html`
-    public nonisolated static func pageURL(category: String, rj: String) -> String {
-        "https://www.dlsite.com/\(category)/work/=/product_id/\(rj).html"
+    public nonisolated static func pageURL(category: String, rj: String, language: MetadataLanguage? = nil) -> String {
+        "https://www.dlsite.com/\(category)/work/=/product_id/\(rj).html" + (language.map { "?locale=" + $0.rawValue } ?? "")
     }
 }
 

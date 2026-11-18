@@ -16,6 +16,7 @@ private final class ScrapingFixture {
         directory = FileManager.default.temporaryDirectory.appendingPathComponent("scraping-" + UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         store = AppStore(dlsiteService: DLsiteService(dataDir: directory.path, transport: transport, minIntervalMs: 0))
+        store.metadata.languagePreference = { nil }
         try #require(JSONStore.save(GameMap(games: [game.id: game]), to: directory.appendingPathComponent("games.json")) == nil)
     }
     func load() async { await store.load(dataDirectory: directory.path) }

@@ -55,9 +55,10 @@ public struct DLsiteURLTransport: DLsiteTransport {
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
             + "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36",
             forHTTPHeaderField: "User-Agent")
-        request.setValue("zh-CN,zh;q=0.9", forHTTPHeaderField: "Accept-Language")
+        let locale = URLComponents(url: parsed, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "locale" }?.value.flatMap(MetadataLanguage.init(rawValue:))
+        request.setValue(locale?.httpLanguage ?? "ja-JP", forHTTPHeaderField: "Accept-Language")
 
-        request.setValue("adultchecked=1", forHTTPHeaderField: "Cookie")
+        request.setValue("adultchecked=1" + (locale.map { "; locale=" + $0.rawValue } ?? ""), forHTTPHeaderField: "Cookie")
 
 
         let (data, response) = try await URLSession.shared.data(for: request)
@@ -142,11 +143,18 @@ extension CachedWork {
         case rj, title, titleSub, circle, coverUrl, workType, ageRating, description, fetchedAt
         case cachedAt, formatVersion
         case category, releaseDate, series, tags, languages, sampleImageURLs, creators, voiceActors, supportedSystems
+        case source, externalID, sourceURLs, metadataLanguage, requestedLanguage, fieldEvidence
     }
 
     // ⚠️ 手写 Codable 而不是合成：加字段时不会静默改掉磁盘格式。
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encodeIfPresent(work.externalID, forKey: .externalID)
+        try c.encodeIfPresent(work.source, forKey: .source)
+        try c.encode(work.sourceURLs, forKey: .sourceURLs)
+        try c.encodeIfPresent(work.metadataLanguage, forKey: .metadataLanguage)
+        try c.encodeIfPresent(work.requestedLanguage, forKey: .requestedLanguage)
+        try c.encode(work.fieldEvidence, forKey: .fieldEvidence)
         try c.encode(work.rj, forKey: .rj)
         try c.encodeIfPresent(work.title, forKey: .title)
         try c.encodeIfPresent(work.titleSub, forKey: .titleSub)
@@ -172,7 +180,7 @@ extension CachedWork {
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         let rj = try c.decode(String.self, forKey: .rj)
-        let work = DlsiteWork(
+        var work = DlsiteWork(
             rj: rj,
             title: try c.decodeIfPresent(String.self, forKey: .title),
             titleSub: try c.decodeIfPresent(String.self, forKey: .titleSub),
@@ -191,6 +199,12 @@ extension CachedWork {
             creators: try c.decodeIfPresent([String].self, forKey: .creators) ?? [],
             voiceActors: try c.decodeIfPresent([String].self, forKey: .voiceActors) ?? [],
             supportedSystems: try c.decodeIfPresent(String.self, forKey: .supportedSystems))
+        work.externalID = try c.decodeIfPresent(String.self, forKey: .externalID)
+        work.source = try c.decodeIfPresent(String.self, forKey: .source)
+        work.sourceURLs = try c.decodeIfPresent([String].self, forKey: .sourceURLs) ?? []
+        work.metadataLanguage = try c.decodeIfPresent(String.self, forKey: .metadataLanguage)
+        work.requestedLanguage = try c.decodeIfPresent(String.self, forKey: .requestedLanguage)
+        work.fieldEvidence = try c.decodeIfPresent([String: String].self, forKey: .fieldEvidence) ?? [:]
         self.work = work
         self.formatVersion = try c.decodeIfPresent(Int.self, forKey: .formatVersion) ?? 1
         // ⚠️ `cachedAt` 缺失时用 0 → 视为「过期」（重新抓）

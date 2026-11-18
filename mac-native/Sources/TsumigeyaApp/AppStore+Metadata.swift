@@ -3,6 +3,22 @@ import TsumigeyaCore
 
 // 保留统一界面入口，但不重复持有资料和队列的状态。
 extension AppStore {
+    var metadataAPISettings: MetadataAPISettings {
+        var result = MetadataAPISettings()
+        result.endpoint = settingString(.metadataEndpoint).trimmingCharacters(in: .whitespacesAndNewlines)
+        result.model = settingString(.metadataModel)
+        result.mode = MetadataAPISettings.Mode(rawValue: settingString(.metadataMode)) ?? .chat
+        return result
+    }
+    var externalCandidates: [String: [MetadataCandidate]] { metadata.externalCandidates }
+    func searchExternal(gameId: String, name: String) { metadata.searchExternal(gameId: gameId, name: name) }
+    func extractExternal(gameId: String, address: String) { metadata.extractExternal(gameId: gameId, address: address) }
+    func prepareManualExternal(gameId: String) { metadata.prepareManualExternal(gameId: gameId) }
+    func applyExternalPreview(gameId: String, work: DlsiteWork, edited: Set<String>) -> Bool {
+        guard let original = metadata.metaPreviews[gameId], original.identity == work.identity else { return false }
+        return metadata.applyExternalOrDLsitePreview(gameId: gameId, incoming: work, draftEdited: edited)
+    }
+
     var gameMeta: [String: GameDlsiteMeta] { library.metadataByGameID }
     var fetchingMeta: Set<String> { metadata.fetchingMeta }
     var metaError: [String: String] { metadata.metaError }

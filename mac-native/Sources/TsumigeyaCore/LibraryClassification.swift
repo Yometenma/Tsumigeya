@@ -24,7 +24,7 @@ public enum LibraryClassification {
         let disabled = Set(strings(raw["classificationSettings"]?.objectValue?["disabledTypes"]))
         for gameID in gameIDs.sorted() {
             var entry = raw[gameID]?.objectValue ?? [:]
-            let code = GameWorkType.code(entry["dlsite"]?.objectValue?["workType"]?.stringValue)
+            let code = GameWorkType.code(GameMetaStore.activeWorkJSON(entry)?.objectValue?["workType"]?.stringValue)
             guard code != nil || entry["classification"] != nil || !(meta.assignments[gameID] ?? []).isEmpty else { continue }
             var state = entry["classification"]?.objectValue ?? [:]
             // 首次接管时把旧归属视为人工添加，不能猜测用户原来的意图。

@@ -13,7 +13,7 @@ struct GameArtwork: View {
             ZStack {
                 placeholder
                 if let url = store.artworkURL(for: game, preferPreview: preferPreview) {
-                    CachedRemoteImage(url: url, contentMode: contentMode, retryLabel: "重试封面").id(url)
+                    CachedRemoteImage(url: url, contentMode: contentMode, external: store.meta(for: game.id)?.work.isExternal == true, retryLabel: "重试封面").id(url)
                 }
             }
             .frame(width: geometry.size.width, height: geometry.size.height)

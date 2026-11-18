@@ -89,7 +89,9 @@ final class BatchMetadataCoordinator: ObservableObject {
                 }
                 batchMetaCurrentID = id
                 setBatchMeta(id, state: .running)
-                if let associated = metadata.meta(for: id) {
+                if let associated = metadata.meta(for: id), associated.work.isExternal {
+                    setBatchMeta(id, state: .skipped, message: "外部作品请在详情中预览补全；批量任务不自动调用付费 AI。")
+                } else if let associated = metadata.meta(for: id) {
                     metadata.fetchMeta(gameId: id, rj: associated.work.rj, refresh: true, category: associated.work.category)
                     await metadata.waitForFetch(gameId: id)
                     guard !Task.isCancelled, batchMetaToken == token else { break }

@@ -187,6 +187,18 @@ public struct DlsiteWork: Sendable, Equatable {
     public var creators: [String]
     public var voiceActors: [String]
     public var supportedSystems: String?
+    /// nil 表示旧版 DLsite 资料；外部资料不使用或伪造 RJ。
+    public var source: String? = nil
+    public var externalID: String? = nil
+    public var sourceURLs: [String] = []
+    public var metadataLanguage: String? = nil
+    public var requestedLanguage: String? = nil
+    public var fieldEvidence: [String: String] = [:]
+    public var isExternal: Bool { source == "external" || source == "manual" }
+    public var identity: String { isExternal ? "external:" + (externalID ?? sourceURLs.first ?? "") : "dlsite:" + rj }
+    public var sourceLabel: String { source == "manual" ? "手动填写" : (isExternal ? "外部页面 · AI 整理" : "DLsite") }
+    public var pageURL: String? { isExternal ? sourceURLs.first : DLsiteService.pageURL(category: category ?? "maniax", rj: rj, language: metadataLanguage.flatMap(MetadataLanguage.init(rawValue:))) }
+
 
     public init(
         rj: String, title: String? = nil, titleSub: String? = nil,
@@ -245,7 +257,7 @@ public enum EditedFields {
     public static func merge(
         old: DlsiteWork?, incoming: DlsiteWork, edited: Set<String>
     ) -> DlsiteWork {
-        guard let old, old.rj == incoming.rj else { return incoming }
+        guard let old, old.identity == incoming.identity else { return incoming }
 
         var result = incoming
         // 被编辑过的字段 → 沿用旧值
@@ -263,6 +275,10 @@ public enum EditedFields {
         if edited.contains("creators") { result.creators = old.creators }
         if edited.contains("voiceActors") { result.voiceActors = old.voiceActors }
         if edited.contains("supportedSystems") { result.supportedSystems = old.supportedSystems }
+
+        result.fieldEvidence = result.fieldEvidence.filter { key, _ in
+            !edited.contains(String(key.split(separator: ".").first ?? ""))
+        }
 
         // ⚠️ **RJ 永远以 incoming 为准**（它不可编辑，是作品的唯一标识）
         result.rj = incoming.rj

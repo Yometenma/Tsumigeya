@@ -5,6 +5,7 @@ struct ManualRJSheet: View {
     @EnvironmentObject private var store: AppStore
     let gameId: String
     @State private var text = ""
+    @State private var external = false
     @State private var inputError: String?
     @FocusState private var focused: Bool
 
@@ -19,7 +20,14 @@ struct ManualRJSheet: View {
                 Spacer()
                 Button("关闭") { store.closeManualRJ() }.keyboardShortcut(.cancelAction)
             }
-            if let preview = store.metaPreviews[gameId] {
+            Picker("作品信息来源", selection: $external) {
+                Text("DLsite").tag(false)
+                Text("其他游戏 · AI／手动").tag(true)
+            }.pickerStyle(.segmented).disabled(busy)
+                .onChange(of: external) { _, _ in store.discardMetaPreview(gameId: gameId) }
+            if external {
+                ExternalMetadataView(gameId: gameId)
+            } else if let preview = store.metaPreviews[gameId] {
                 previewContent(preview)
             } else {
                 searchContent
@@ -28,6 +36,7 @@ struct ManualRJSheet: View {
         .padding(24)
         .frame(width: 700, height: 640)
         .onAppear {
+            external = store.meta(for: gameId)?.work.isExternal == true
             if let game = store.game(id: gameId) {
                 text = store.lastKeyword[gameId] ?? store.meta(for: gameId)?.work.rj
                     ?? store.detectRJ(for: game).first ?? DlsiteLookup.searchKeyword(from: game.gameTitle)
@@ -92,7 +101,7 @@ struct ManualRJSheet: View {
                     DLsiteWorkInfo(work: work)
                 }
             }
-            if let existing = store.meta(for: gameId), existing.work.rj != work.rj {
+            if let existing = store.meta(for: gameId), existing.work.identity != work.identity {
                 Label("将更换已关联的作品，旧作品的手改信息不会混入新作品；游戏名称、分类和存档不变。",
                       systemImage: "arrow.triangle.2.circlepath")
                     .font(.caption).foregroundStyle(.orange)

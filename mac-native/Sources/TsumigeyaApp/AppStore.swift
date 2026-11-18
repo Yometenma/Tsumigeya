@@ -20,6 +20,17 @@ final class AppStore: ObservableObject {
     init(dlsiteService: DLsiteService? = nil) {
         metadata = LibraryMetadataStore(service: dlsiteService)
         batchMetadata = BatchMetadataCoordinator(metadata: metadata)
+        metadata.languagePreference = { [weak self] in
+            guard let self else { return nil }
+            return MetadataLanguagePreference(
+                preferred: MetadataLanguage(rawValue: self.settingString(.metadataPreferredLanguage)) ?? .simplifiedChinese,
+                fallback: MetadataLanguage(rawValue: self.settingString(.metadataFallbackLanguage)))
+        }
+        metadata.aiService = { [weak self] in
+            guard let self else { throw MetadataFailure("游戏库已关闭。") }
+            return MetadataAIService(settings: self.metadataAPISettings,
+                                     key: try MetadataCredential.read(endpoint: self.metadataAPISettings.endpoint))
+        }
         metadata.currentGame = { [weak self] id in self?.game(id: id) }
         metadata.readMeta = { [weak self] id in self?.library.metadata(for: id) }
         metadata.didSave = { [weak self] id, meta, raw in self?.library.metadataDidSave(gameId: id, meta: meta, raw: raw) }
@@ -476,7 +487,7 @@ final class AppStore: ObservableObject {
         }
         // 只使用刮削到的真实作品图片，绝不使用看板娘或占位素材。
         guard let address else { return nil }
-        guard let normalized = DLsiteParser.normalizeCoverUrl(address) else { return nil }
+        guard let normalized = work?.isExternal == true ? MetadataNetwork.publicURL(address)?.absoluteString : DLsiteParser.normalizeCoverUrl(address) else { return nil }
         return URL(string: normalized)
     }
 
@@ -486,6 +497,11 @@ final class AppStore: ObservableObject {
     ///    用户改完就期望它生效。攒着等一个保存按钮反而是 mac 上少见的做法
     ///    （系统偏好设置也是改完立刻生效）。
     func setSetting(_ key: SettingsGroups.Key, _ value: JSONValue) {
+        if key == .metadataEndpoint, let address = value.stringValue,
+           address.contains("?") || address.contains("@") || address.contains("#") {
+            operationError = "接口地址不能包含账号、密码、查询参数或片段。密钥请填入专用密钥框，不会保存到设置文件。"
+            return
+        }
         var updated = settings
         updated[key.rawValue] = value
         if let error = JSONStore.save(JSONValue.object(updated), to: settingsURL) {
