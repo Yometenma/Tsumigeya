@@ -27,6 +27,7 @@ struct GameDetailView: View {
     @State private var showsRelocation = false
     @State private var showsDiagnostics = false
     @State private var tab: DetailTab
+    @StateObject private var lookup = GameDetailLookup()
 
     init(game: GameRecord, onEdit: (() -> Void)? = nil,
          onManageEngines: (() -> Void)? = nil, initialTab: DetailTab = .overview) {
@@ -73,6 +74,10 @@ struct GameDetailView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .task(id: game) {
+            guard store.meta(for: game.id) == nil else { return }
+            await lookup.load(game: game)
+        }
         .scrollIndicators(.automatic)
         .background(Color(nsColor: .windowBackgroundColor))
         .sheet(isPresented: $showsDiagnostics) {
@@ -99,7 +104,7 @@ struct GameDetailView: View {
             HStack(spacing: 8) {
                 Text("作品信息")
                     .font(.system(size: 15, weight: .semibold))
-                if let rj = store.meta(for: game.id)?.work.rj ?? store.detectRJ(for: game).first, !rj.isEmpty {
+                if let rj = store.meta(for: game.id)?.work.rj ?? lookup.rj, !rj.isEmpty {
                     Text(rj)
                         .font(.system(size: 10, design: .monospaced))
                         .foregroundStyle(.tertiary)
@@ -137,7 +142,10 @@ struct GameDetailView: View {
     /// ⚠️ **决策链是用户明确要求的**（2026-11-06）：
     ///    「自动识别如果有直接能找到 rj 号就用 rj 号，不能就按名字来」
     private var noMetaHint: String {
-        switch lookupStep {
+        guard let step = lookup.step else {
+            return "可通过「查找作品」关联作品信息。"
+        }
+        switch step {
         case .byRJ(let rj):
             return "检测到 RJ 号 \(rj)。点「查找作品」可预览并关联作品信息。"
         case .byKeyword(let keyword):
@@ -147,12 +155,6 @@ struct GameDetailView: View {
             return "路径里没有 RJ 号，标题也没法当关键词。请手动输入 RJ（"
                 + "从 DLsite 作品页地址里找 product_id/RJ…）。"
         }
-    }
-
-    /// 这个游戏该怎么查（决策链）。
-    private var lookupStep: DlsiteLookup.Step {
-        DlsiteLookup.plan(
-            gamePath: game.gamePath, gameTitle: game.gameTitle)
     }
 
     @ViewBuilder

@@ -4,12 +4,13 @@ import TsumigeyaCore
 struct WorkRemoteImage: View {
     let address: String?
     var external = false
+    var maxPixelSize = 2048
 
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 7).fill(.quaternary)
             if let url = (external ? address.flatMap(MetadataNetwork.publicURL) : address.flatMap(DLsiteParser.normalizeCoverUrl).flatMap(URL.init(string:))) {
-                CachedRemoteImage(url: url, external: external).id(url)
+                CachedRemoteImage(url: url, external: external, maxPixelSize: maxPixelSize).id(url)
             } else {
                 Image(systemName: "photo")
                     .foregroundStyle(.secondary)
@@ -54,7 +55,7 @@ struct DLsiteWorkInfo: View {
                     HStack(spacing: 10) {
                         ForEach(work.sampleImageURLs, id: \.self) { address in
                             Button { selectedImage = address } label: {
-                                WorkRemoteImage(address: address, external: work.isExternal).frame(width: 180, height: 126)
+                                WorkRemoteImage(address: address, external: work.isExternal, maxPixelSize: 360).frame(width: 180, height: 126)
                             }.buttonStyle(.plain).accessibilityLabel("放大预览截图")
                         }
                     }

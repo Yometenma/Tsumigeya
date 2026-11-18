@@ -1,3 +1,5 @@
+import CoreGraphics
+import ImageIO
 import CryptoKit
 import Foundation
 import Testing
@@ -17,6 +19,63 @@ struct ArtworkImageCacheTests {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("artwork-cache-" + UUID().uuidString)
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         return url
+    }
+
+    private func largePNG(red: CGFloat) throws -> Data {
+        let context = try #require(CGContext(data: nil, width: 1600, height: 900, bitsPerComponent: 8,
+            bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        context.setFillColor(CGColor(red: red, green: 0.5, blue: 0, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: 1600, height: 900))
+        let image = try #require(context.makeImage())
+        let data = NSMutableData()
+        let destination = try #require(CGImageDestinationCreateWithData(data, "public.png" as CFString, 1, nil))
+        CGImageDestinationAddImage(destination, image, nil)
+        #expect(CGImageDestinationFinalize(destination))
+        return data as Data
+    }
+
+    @Test("侧边栏、截图与详情按尺寸解码，同尺寸复用同一像素对象")
+    func decodedSizesAndReuse() async throws {
+        let dir = try directory(); defer { try? FileManager.default.removeItem(at: dir) }
+        let data = try largePNG(red: 1)
+        let counter = ArtworkFetchCounter()
+        let cache = ArtworkImageCache(directory: dir) { url in
+            await counter.increment()
+            return .init(statusCode: 200, finalURL: url, data: data)
+        }
+        let small = try await cache.image(for: address, maxPixelSize: 96)
+        let medium = try await cache.image(for: address, maxPixelSize: 360)
+        let large = try await cache.image(for: address, maxPixelSize: 2048)
+        #expect(small.width == 96 && small.height == 54)
+        #expect(medium.width == 360)
+        #expect(medium.height == 202)
+        #expect(large.width == 1600 && large.height == 900)
+        #expect(try await cache.image(for: address, maxPixelSize: 96) === small)
+        #expect(try await cache.image(for: address, maxPixelSize: 2048) === large)
+        #expect(await counter.count == 1)
+    }
+
+    @Test("刷新原图后其他尺寸不能继续命中旧解码对象，失败刷新仍可读旧缓存")
+    func refreshInvalidatesDecodedVariants() async throws {
+        let dir = try directory(); defer { try? FileManager.default.removeItem(at: dir) }
+        let firstData = try largePNG(red: 1), nextData = try largePNG(red: 0)
+        let counter = ArtworkFetchCounter()
+        let cache = ArtworkImageCache(directory: dir) { url in
+            let count = await counter.increment()
+            if count > 2 { throw URLError(.notConnectedToInternet) }
+            return .init(statusCode: 200, finalURL: url, data: count == 1 ? firstData : nextData)
+        }
+        let small = try await cache.image(for: address, maxPixelSize: 96)
+        let large = try await cache.image(for: address, maxPixelSize: 2048)
+        let refreshed = try await cache.image(for: address, maxPixelSize: 2048, refreshing: true)
+        #expect(refreshed !== large)
+        #expect(try await cache.image(for: address, maxPixelSize: 96) !== small)
+        do {
+            _ = try await cache.image(for: address, maxPixelSize: 2048, refreshing: true)
+            Issue.record("离线刷新应失败")
+        } catch {}
+        #expect(try await cache.image(for: address, maxPixelSize: 2048) === refreshed)
+        #expect(await counter.count == 3)
     }
 
     @Test("首次下载原子落盘，同实例后续读取使用内存缓存")

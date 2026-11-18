@@ -32,6 +32,7 @@ actor ArtworkImageCache {
     private let fetcher: Fetcher
     private let maxBytes: Int
     private let memory = NSCache<NSString, NSData>()
+    private let decodedImages = NSCache<NSString, CGImage>()
     private var inFlight: [String: (id: UUID, task: Task<Data, Error>)] = [:]
 
     init(directory: URL? = nil, allowsExternal: Bool = false, maxBytes: Int = ArtworkImageCache.defaultMaxBytes,
@@ -42,6 +43,8 @@ actor ArtworkImageCache {
         self.directory = URL(fileURLWithPath: requested.standardizedFileURL.path, isDirectory: true)
         self.fetcher = fetcher
         self.maxBytes = max(1, maxBytes)
+        decodedImages.countLimit = 160
+        decodedImages.totalCostLimit = 96 * 1024 * 1024
         memory.countLimit = 160
         memory.totalCostLimit = 192 * 1024 * 1024
     }
@@ -113,6 +116,29 @@ actor ArtworkImageCache {
         }
     }
 
+    /// actor 内按用途下采样并立即解码，避免 SwiftUI 在主线程绘制原尺寸压缩图片。
+    func image(for source: URL, maxPixelSize: Int, refreshing: Bool = false) async throws -> CGImage {
+        guard let url = allowsExternal ? MetadataNetwork.publicURL(source.absoluteString) : Self.normalizedURL(source.absoluteString) else {
+            throw URLError(.unsupportedURL)
+        }
+        let size = max(1, min(maxPixelSize, 4096))
+        let key = "\(url.absoluteString)#\(size)" as NSString
+        if !refreshing, let cached = decodedImages.object(forKey: key) { return cached }
+        let data = try await imageData(for: url, refreshing: refreshing)
+        // 等待同一下载期间其他调用可能已完成解码；刷新则同时淘汰旧尺寸版本。
+        if refreshing { decodedImages.removeAllObjects() }
+        else if let cached = decodedImages.object(forKey: key) { return cached }
+        guard let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary),
+              let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceCreateThumbnailWithTransform: true,
+                kCGImageSourceShouldCacheImmediately: true,
+                kCGImageSourceThumbnailMaxPixelSize: size
+              ] as CFDictionary) else { throw URLError(.cannotDecodeContentData) }
+        decodedImages.setObject(image, forKey: key, cost: image.bytesPerRow * image.height)
+        return image
+    }
+
     private func isSafeCacheFile(_ file: URL) -> Bool {
         guard file.deletingLastPathComponent().standardizedFileURL.path == directory.path,
               directory.resolvingSymlinksInPath().standardizedFileURL.path == directory.path else { return false }
@@ -175,14 +201,15 @@ struct CachedRemoteImage: View {
     var contentMode: ContentMode = .fit
     var external = false
     var retryLabel = "重试图片"
-    @State private var image: NSImage?
+    var maxPixelSize = 2048
+    @State private var image: CGImage?
     @State private var failed = false
     @State private var attempt = 0
 
     var body: some View {
         Group {
             if let image {
-                Image(nsImage: image).resizable().aspectRatio(contentMode: contentMode)
+                Image(decorative: image, scale: 1).resizable().aspectRatio(contentMode: contentMode)
                     .accessibilityLabel("作品图片已加载")
             } else if failed {
                 Button {
@@ -195,14 +222,13 @@ struct CachedRemoteImage: View {
                 ProgressView().controlSize(.small)
             }
         }
-        .task(id: "\(url.absoluteString)#\(attempt)") {
+        .task(id: "\(url.absoluteString)#\(external)#\(maxPixelSize)#\(attempt)") {
             image = nil
             failed = false
             do {
                 let cache = external ? ArtworkImageCache.external : ArtworkImageCache.shared
-                let data = try await cache.imageData(for: url, refreshing: attempt > 0)
+                let decoded = try await cache.image(for: url, maxPixelSize: maxPixelSize, refreshing: attempt > 0)
                 guard !Task.isCancelled else { return }
-                guard let decoded = NSImage(data: data) else { failed = true; return }
                 image = decoded
             } catch {
                 guard !Task.isCancelled else { return }
