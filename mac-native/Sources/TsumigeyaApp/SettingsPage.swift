@@ -368,20 +368,13 @@ struct InfoRows: View {
         }
     }
 
-    /// 应用版本。
-    ///
-    /// ⚠️ **不能从 `Bundle.main` 读**：SwiftPM 的 debug 可执行文件没有 Info.plist，
-    ///    读出来是空的 —— 用户会看到「版本：」后面什么都没有。
-    ///    Electron 版踩过类似的坑（B1：打包成 .app 后版本号恒 v0.0.0）。
-    ///
-    ///    这里用**硬编码的常量 + 注释提醒同步**，同时读 Bundle（有就用）。
+    /// 安装包使用 Info.plist；SwiftPM 开发入口没有版本信息，回退值与打包脚本同步。
     private var appVersion: String {
         if let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
            !v.isEmpty {
             return v
         }
-        // TODO(P8)：打包 .app 时配 Info.plist，那时这里会自动读到。
-        return "1.1.0（开发构建，未打包）"
+        return "3.0.0（开发构建，未打包）"
     }
 
     private var platformString: String {

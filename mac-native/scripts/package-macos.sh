@@ -7,7 +7,7 @@ cd "$(dirname "$0")/.."
 
 APP_NAME="Tsumigeya"
 BUNDLE_ID="com.tsumigeya.launcher"
-VERSION="${TSUMIGEYA_VERSION:-1.1.0}"
+VERSION="${TSUMIGEYA_VERSION:-3.0.0}"
 BUILD_NUM="$(date +%Y%m%d%H%M)"
 OUT_DIR="dist"
 APP_DIR="$OUT_DIR/$APP_NAME.app"
