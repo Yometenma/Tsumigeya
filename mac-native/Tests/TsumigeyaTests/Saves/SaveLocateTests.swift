@@ -1,11 +1,4 @@
-// 存档位置探测测试。
-//
-// 对应 Electron 版：`test/save-locate.test.ts`（19 条，其中 4 条是 D85 的核心）
-//
-// ===== 本文件最重要的两条（D85）=====
-//
-// ① **作者塞进包里的残留档不能骗过它**（这是那个真 bug 的回归）
-// ② **`location: nil`（不知道在哪）与「还没存过档」必须分开**
+// 存档定位、列举及旧格式兼容。
 import Foundation
 import Testing
 

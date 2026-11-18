@@ -1,12 +1,4 @@
-// 分类的纯逻辑测试。
-//
-// 对应 Electron 版：`test/categories.test.ts`（46 条）+ `test/category-ipc.test.ts`
-//
-// ===== 本文件守的三条「错了不报错、只是数据慢慢变脏」=====
-//
-// ① 删分类必须**同时**从所有归属里摘掉那个 id（否则留下悬空引用）
-// ② 重命名**只改 name、id 不动**（改 id = 全库归属全丢）
-// ③ 新建必须查重 + 生成**真正唯一**的 id（撞了 = 两个分类静默合并）
+// 分类和游戏归属的无损持久化。
 import Foundation
 import Testing
 
@@ -156,7 +148,7 @@ struct CategoryMutationTests {
     /// ⚠️ **重命名只改 name、id 不动** —— 改 id 等于把全库归属全丢了。
     @Test("重命名不改 id")
     func renameKeepsId() throws {
-        var defs: CategoryDefs = ["rpg": CategoryDef(name: "RPG", order: 1)]
+        let defs: CategoryDefs = ["rpg": CategoryDef(name: "RPG", order: 1)]
         let updated = try #require(Categories.rename(defs, id: "rpg", newName: "角色扮演"))
         #expect(updated["rpg"]?.name == "角色扮演")
         #expect(updated["rpg"] != nil, "id 必须还在")

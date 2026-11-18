@@ -1,21 +1,4 @@
-// P3 版本比较 + 依赖下载的测试。
-//
-// 对应 Electron 版：test/engines-semver.test.ts（26 条）+ test/engines-install-update.test.ts
-// 的架构选择/下载部分。
-//
-// ===== 本文件的三条纪律 =====
-//
-// ① **下载测试绝不联网**。
-//    下载器的「网络层」是 `DownloadTransport` 协议，测试注入 `ScriptedTransport`。
-//    这样 HTTP 404 / 取消 / 进度 这些**真判据**都在测试里跑过，
-//    而不是用假实现绕过去假装覆盖。
-//
-// ② **版本比较按 Electron 版的 26 条逐条等价**，外加几条 mac 侧的真实边界。
-//    对应关系在每条注释里写，改实现时知道哪条不能动。
-//
-// ③ **nwjs 版本目录的排序行为不能变**。
-//    `LaunchCheck.resolveNwjsVersion` 用 `dirs.max { compareVersions($0,$1) < 0 }`；
-//    把简陋实现换成 Semver 之后，给同样的目录名必须选出同一个。这条单独钉住。
+// 版本比较保留旧 manifest 的宽松语义；下载使用可控传输，不调用真实网络。
 import Foundation
 import Testing
 
@@ -90,6 +73,11 @@ struct SemverNumericTests {
         #expect(compareVersions("1.0.0", "1.0.1") == -1)
         #expect(compareVersions("1.0.1", "1.0.0") == 1)
         #expect(compareVersions("1.0.0", "1.0.0") == 0)
+        #expect(compareVersions("1.2.3", "1.2.4") == -1)
+        #expect(compareVersions("1.3.0", "1.2.9") == 1)
+        #expect(compareVersions("1.2.3", "1.2.3") == 0)
+        #expect(compareVersions("v1.2.3", "1.2.4") == -1)
+        #expect(compareVersions("2.0", "1.9.9") == 1)
     }
 
     /// 位数不等时缺段补 0 —— 上游 manifest 里 `8.5` 与 `8.5.2` 混着出现。
@@ -97,6 +85,7 @@ struct SemverNumericTests {
     func padsMissingSegments() {
         #expect(compareVersions("1.2", "1.2.0") == 0)
         #expect(compareVersions("1.2", "1.2.1") == -1)
+        #expect(compareVersions("1.2.1", "1.2") == 1)
         #expect(compareVersions("1.2", "1.3") == -1)
     }
 

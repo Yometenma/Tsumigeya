@@ -118,7 +118,6 @@ func runSaveCheck() -> Int {
         return 1
     }
 
-    var failures = 0
     for game in map.ordered {
         print("")
         print("id=\(game.id)  \(game.gameTitle)  [\(game.gameEngine)]")
@@ -166,8 +165,8 @@ func runSaveCheck() -> Int {
     }
 
     print("")
-    if failures == 0 { print("✅ 存档探测完成") } else { print("❌ \(failures) 项有问题") }
-    return failures == 0 ? 0 : 1
+    print("存档位置列举完成；请与游戏内的实际存档位置核对。")
+    return 0
 }
 
 // MARK: - 依赖解析检查（P3）

@@ -33,7 +33,6 @@ struct LibraryPresentationTests {
         try #require(GameMetaStore.save(dataDir: directory.path, gameId: "1", meta: meta()) == nil)
         let gamesURL = directory.appendingPathComponent("games.json")
         let gamesBefore = try Data(contentsOf: gamesURL)
-        let metaURL = directory.appendingPathComponent("library-meta.json")
         let metaBefore = GameMetaStore.load(dataDir: directory.path, gameId: "1")
         let store = AppStore()
         await store.load(dataDirectory: directory.path)

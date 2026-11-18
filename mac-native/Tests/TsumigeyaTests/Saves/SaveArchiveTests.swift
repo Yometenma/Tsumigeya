@@ -1,12 +1,4 @@
-// 存档导出/导入测试（**用真文件、真 zip**）。
-//
-// 对应 Electron 版：`test/save-archive-io.test.ts`（26 条）
-//
-// ===== 本文件最重要的三条 =====
-//
-// ① **打整个目录**（D81）：插件写的 `lastsave.autobak` 也要在包里
-// ② **导入顺序：先校验 → 再备份 → 才写**（最坏情况只是"没导进来"）
-// ③ **备份幂等**：第二次导入不覆盖已有 `.tsumigeya-bak`
+// 用真实存档归档验证导入导出和失败保护。
 import Foundation
 import Testing
 

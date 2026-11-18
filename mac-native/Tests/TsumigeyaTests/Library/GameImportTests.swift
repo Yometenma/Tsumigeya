@@ -1,6 +1,4 @@
-// P5 添加游戏 / 库 CRUD 测试。
-//
-// 对应 Electron 版：`test/import-target.test.ts`（29 条）+ games-store 相关
+// 游戏目录解析、校验与导入判据。
 import Foundation
 import Testing
 
@@ -285,8 +283,3 @@ struct GameImportTests {
         #expect(result.resolvedFolder == root)
     }
 }
-
-// MARK: - 假文件系统
-
-// ⚠️ `FakeFS` 已在 P1 的测试文件里定义（`P1EngineTests.swift`）。
-//    同一个 test target 里不能重复声明，这里直接用那个。

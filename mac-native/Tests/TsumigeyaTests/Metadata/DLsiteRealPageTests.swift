@@ -1,16 +1,4 @@
-// 用**真实 DLsite 页面**做回归测试。
-//
-// ===== 为什么这个文件和 P7DlsiteTests 分开 =====
-//
-// `P7DlsiteTests` 用手写 HTML 验「判据本身对不对」；
-// 本文件用**从真实页面精简出来的结构**验「我们理解的结构对不对」。
-//
-// ⚠️ 两者缺一不可。本鱼已经因此踩到两个真 bug（手写 HTML 永远发现不了）：
-//   1. `attribute()` 的字符串插值多了一层反斜杠 → meta 永远读不到
-//   2. `detail[0]`（作品数据）被误当成统计信息
-//
-// 夹具来源：RJ294126 的真实页面（2026-11-06 抓取），
-// 保留 `<meta og:*>` 全部 6 个 + `var contents` 的 JSON 原文。
+// 真实页面夹具用于发现手写 HTML 未覆盖的站点结构；不代表当前网络兼容性。
 import Foundation
 import Testing
 
@@ -28,7 +16,7 @@ struct DlsiteRealPageTests {
         guard let url = Bundle.module.url(
             forResource: "dlsite-RJ294126", withExtension: "html") else {
             Issue.record("找不到夹具 dlsite-RJ294126.html（Package.swift 里的 resources 声明有问题？）")
-            throw MultiSampleFixtureError.missing
+            throw FixtureError.missing
         }
         return try String(contentsOf: url, encoding: .utf8)
     }

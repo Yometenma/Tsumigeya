@@ -1,9 +1,4 @@
-// P0 单元测试。
-//
-// 对应 Electron 版：test/data-dir.test.ts / test/games-store 相关
-//
-// 移植原则（方案 §4）：**不是抄代码，是按判据重新实现一遍**。
-// 每条测试都写清「它在守什么」，这样以后改实现时知道哪条不能动。
+// 数据目录隔离、JSON 存储与旧游戏记录兼容。
 import Foundation
 import Testing
 

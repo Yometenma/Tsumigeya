@@ -56,8 +56,8 @@ public enum GameLibrary {
         id requestedId: String? = nil
     ) -> Result<(map: GameMap, id: String, changed: Bool), ValidationError> {
 
-        var title = draft.gameTitle.trimmingCharacters(in: .whitespacesAndNewlines)
-        var path = draft.gamePath.trimmingCharacters(in: .whitespacesAndNewlines)
+        let title = draft.gameTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        let path = draft.gamePath.trimmingCharacters(in: .whitespacesAndNewlines)
 
         if title.isEmpty { return .failure(.emptyTitle) }
         if path.isEmpty { return .failure(.emptyPath) }

@@ -1,33 +1,4 @@
-// P3 解压层测试。
-//
-// 对应 Electron 版：`test/extract.test.ts` / `src/main/extract.ts`（136 行）
-// 契约：docs/M1-实施方案.md §4（extract.ts 行）与 §6（extract 测试）
-//
-// ===== 本文件最重要的一条：LANG 为空时 bsdtar 会把中文名变成八进制转义 =====
-//
-// 老坑的症状（Electron 版在 mac 真机上抓到的，本文件用 `bsdtarOctalEscapeReproduced`
-// 现场复现，**不是照抄传说**）：
-//
-//     $ env -i /usr/bin/tar -tf b.tar        # 没有任何 LANG / LC_ALL / LC_CTYPE
-//     ./
-//     ./\344\270\255\346\226\207 \346\226\207\344\273\266\345\220\215.txt
-//
-//   而 `assertSafeEntry` 的**第 3 条**是「拒绝反斜杠」→ **含中文名的包整包被拒**。
-//
-// 老坑隐蔽的两个原因：
-//   ① 触发条件是「非交互式启动」（SSH / launchctl / Finder 启动的 .app 里 LANG 常为空），
-//      终端手跑拿到登录环境反而正常 —— 本机 ssh 会话实测 `LANG=[] LC_ALL=[] LC_CTYPE=[]`；
-//   ② **ASCII 名永远测不出**（`./Game.exe` 在无 LANG 下完全正常），
-//      所以一条用 `file.txt` 写的测试在 Windows/Linux/CI 上全能绿。
-//
-// 所以本文件的往返测试**两条都写**：
-//   · `bsdtarOctalEscapeReproduced` —— 用「LANG 为空」的环境跑 tar，**证明坑真的在**（负对照）
-//   · `roundTripWithChineseNamesUnderEmptyLang` —— 同样的环境 + `Extract.tarEnv()`，证明修好了
-//   只有负对照还在，后面那条才有意义：没有它，「往返通过」也可能只是这台机器恰好有 LANG。
-//
-// ⚠️ 环境变量在测试里怎么造：`Process.environment` 是**整体替换**（不继承），
-//    所以给 `["PATH": "/usr/bin:/bin", "LANG": "", "LC_ALL": ""]` 就等于 SSH 那种病态环境。
-//    `Extract.tarEnv(base:)` 吃同一个字典 —— 生产与测试走的是**同一份逻辑**，不各写一套。
+// 使用真实归档验证解包、路径安全和失败时的完整拒绝。
 import Foundation
 import Testing
 

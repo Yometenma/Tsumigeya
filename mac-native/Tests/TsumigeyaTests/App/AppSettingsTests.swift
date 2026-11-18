@@ -88,4 +88,10 @@ struct AppSettingsTests {
             #expect(app.appearance?.name == expected)
         }
     }
+
+    @Test("常用设置可操作，未实现的选项不伪装成可用")
+    func availableSettingsMatchWorkingFeatures() {
+        let available = Set(SettingsGroups.Key.allCases.filter { SettingRow(key: $0).isAvailable })
+        #expect(available == Set([SettingsGroups.Key.appearance, .listView, .deletionConfirmation, .saveSyncMode]).union(SettingsGroups.group(.metadata)?.keys ?? []))
+    }
 }

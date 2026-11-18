@@ -1,16 +1,4 @@
-// DLsite 解析判据测试。
-//
-// 对应 Electron 版：`test/dlsite*.test.ts`
-//
-// ===== 本文件最重要的一条：括号配对扫描 =====
-//
-// 网上流传的抓法是用正则 `/(\{[\s\S]*?\});/`。**那个正则是错的**：
-// 非贪婪 `*?` 遇到**作品简介里出现的 `};`** 会提前截断。
-//
-// 而那种失败**不会报错** —— 它只是「抓不到东西」，
-// 用户会以为 DLsite 上没这部作品，而真正的原因是解析器断在了简介里的一个 `};`。
-//
-// 所以本文件用了**带 `};` 干扰的测试数据**来钉住这一点。
+// 手写边界样本验证编号、解析、白名单及手改保护；真实页面另有夹具回归。
 import Foundation
 import Testing
 
@@ -397,4 +385,31 @@ struct MergeWorkTests {
         let merged = EditedFields.merge(old: nil, incoming: incoming, edited: ["title"])
         #expect(merged.title == "新")
     }
+
+    @Test("未手改时所有抓取字段正常更新")
+    func updatesAllUneditedFields() {
+        let old = work(title: "旧标题", circle: "旧社团")
+        let incoming = work(title: "新标题", circle: "新社团")
+        let merged = EditedFields.merge(old: old, incoming: incoming, edited: [])
+        #expect(merged.title == "新标题")
+        #expect(merged.circle == "新社团")
+    }
+
+    @Test("多字段保护")
+    func multipleEditedFields() {
+        let old = DlsiteWork(
+            rj: "RJ1", title: "改标题", circle: "改社团",
+            description: "改简介", fetchedAt: "t")
+        let incoming = DlsiteWork(
+            rj: "RJ1", title: "新标题", circle: "新社团",
+            description: "新简介", fetchedAt: "t2")
+        let merged = EditedFields.merge(
+            old: old, incoming: incoming,
+            edited: ["title", "circle", "description"])
+
+        #expect(merged.title == "改标题")
+        #expect(merged.circle == "改社团")
+        #expect(merged.description == "改简介")
+    }
+
 }

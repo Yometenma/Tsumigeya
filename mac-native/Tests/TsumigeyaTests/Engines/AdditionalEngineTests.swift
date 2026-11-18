@@ -1,18 +1,4 @@
-// P3 补上的四个引擎：路径与启动计划。
-//
-// 用户机器上只装了 4 个引擎（nwjs / mkxpz / easyrpg / renpy），
-// 这 4 个（kirikiri / nscripter / siglus / godot）**没有已装样本可验**。
-//
-// ===== 所以本文件的路径判据来自「真下载包解压后的实测结构」=====
-//
-// 2026-11-06 本鱼真的下载并解压了三个包（godot 161MB 太大没下，只验了 HTTP 200）：
-//
-//   krkrsdl2-macos.zip           → 单个裸二进制 `krkrsdl2`（16.5MB）
-//   onscripter-...bin.tar.bz2    → 两个裸二进制 `onscripter` / `onscripter-sdl2`
-//   siglus-macos-arm64.app.tar.gz → `Siglus-arm64.app/Contents/MacOS/Siglus`
-//
-// ⚠️ **三个包的布局互不相同**（两个裸二进制、一个 .app），
-//    所以绝不能套用同一个模板 —— 这正是本文件要钉住的东西。
+// 各引擎的裸二进制与 app 目录布局不同，不能套用同一路径模板。
 import Foundation
 import Testing
 

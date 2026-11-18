@@ -13,6 +13,10 @@ dist/
 __pycache__/
 *.pyc
 
+# 私人素材、草稿与数据备份
+/.local-assets/
+/.local-backups/
+
 # 系统文件
 .DS_Store
 Thumbs.db

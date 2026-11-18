@@ -1,9 +1,4 @@
-// P1 引擎识别测试。
-//
-// 对应 Electron 版：test/engines-detect.test.ts（38 条）/ test/detect-priority.test.ts（12 条）
-//
-// 移植原则：**不是抄代码，是按判据重新实现一遍**。
-// 每条测试都写清「它在守什么」——以后改实现时知道哪条不能动。
+// 注入文件系统验证识别规则、优先级与注册表；真实游戏兼容性由 CLI 另行验收。
 import Foundation
 import Testing
 

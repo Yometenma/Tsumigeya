@@ -1,14 +1,4 @@
-// P2 启动层测试。
-//
-// 对应 Electron 版：test/launchers-*.test.ts / test/binary-paths.test.ts / test/spawn-*.test.ts
-//
-// ===== 本文件最重要的两条（都是本次移植踩出来的真 bug）=====
-//
-// ① **CRLF 的 `split(separator: "\n")` 只切出 1 行**
-//    见 GameIniTests.crlfSplitsProperly
-//
-// ② **mkxp.json 只能写 app 包内，不能写游戏目录**（D72）
-//    见 MkxpzConfigTests.configGoesToBundle
+// 启动路径、配置及计划的隔离回归；不代替真实游戏启动验收。
 import Foundation
 import Testing
 
@@ -625,26 +615,5 @@ struct LauncherPrecheckTests {
         #expect(kill(pid, 0) == 0)
         // 清理
         kill(pid, SIGTERM)
-    }
-}
-
-// MARK: - 版本比较
-
-@Suite("版本比较")
-struct VersionCompareTests {
-
-    @Test("基本比较")
-    func basic() {
-        #expect(compareVersions("1.2.3", "1.2.4") < 0)
-        #expect(compareVersions("1.3.0", "1.2.9") > 0)
-        #expect(compareVersions("1.2.3", "1.2.3") == 0)
-        #expect(compareVersions("v1.2.3", "1.2.4") < 0)
-        #expect(compareVersions("2.0", "1.9.9") > 0)
-    }
-
-    @Test("段数不同")
-    func differentSegments() {
-        #expect(compareVersions("1.2", "1.2.0") == 0)
-        #expect(compareVersions("1.2.1", "1.2") > 0)
     }
 }

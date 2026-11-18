@@ -92,7 +92,8 @@ struct MetadataEnrichmentTests {
         for locale in ["zh", "en"] {
             let url = try #require(Bundle.module.url(forResource: "dlsite-localized-RJ331590-" + locale, withExtension: "html"))
             let html = try String(contentsOf: url, encoding: .utf8)
-            works[locale] = try #require(DLsiteParser.parseWork(from: html, rj: "RJ331590", fetchedAt: "fixture"))
+            let work: DlsiteWork = try #require(DLsiteParser.parseWork(from: html, rj: "RJ331590", fetchedAt: "fixture"))
+            works[locale] = work
         }
         #expect(works["zh"]?.title?.contains("卡琳监狱") == true)
         #expect(works["en"]?.title == "Karryn's Prison")
