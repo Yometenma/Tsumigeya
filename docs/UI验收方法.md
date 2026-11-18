@@ -4,15 +4,29 @@
 
 Windows 不能验证 SwiftUI。连接 Mac，在仓库的 `mac-native/` 中执行：
 
+日常编译与默认测试：
+
 ```bash
 swift build
-swift test
-.build/debug/Tsumigeya --snapshot /tmp/tsmg-ui
+swift test --no-parallel
 ```
 
-需要本地查看时，先建 `.dev-scratch/ui/`，再用 `scp` 取回 PNG。不要把快照产物提交到仓库。
+以下是会创建真实窗口的显式快照验收，不要附带在日常编译中；确认可以接受桌面干扰后再单独执行：
+
+```bash
+mkdir -p ../.dev-scratch/ui
+.build/debug/Tsumigeya --snapshot "$PWD/../.dev-scratch/ui"
+```
+
+需要本地查看时，再用 `scp` 取回 PNG。不要把快照产物提交到仓库。
 
 快照复用生产视图，在屏幕外的真实 `NSWindow` 中布局后抓取像素；不能改回直接用 `ImageRenderer` 渲染复杂容器，否则可能得到空白或占位图。布局在主线程推进，不用信号量阻塞。
+
+## 日常编译与窗口渲染测试
+
+`swift build` 只编译，不打开应用界面。`swift test` 默认跳过会创建真实窗口的 4 项渲染测试；需要时用 `TSUMIGEYA_UI_TESTS=1 swift test --no-parallel` 明确启用。这些测试及上面的 `--snapshot` 模式可能短暂显示窗口，负坐标不保证静默，SSH 会话也不与用户桌面隔离。不要在日常编译中自动附带这两类窗口验收。
+
+测试直接使用当前生产视图与示例数据，独立的编辑、查找、分类页面不是旧版应用；如果出现完整旧主窗口，应另外核对启动命令、进程路径和安装版本，不能只凭外观判断。
 
 ## 远程真窗口操作
 

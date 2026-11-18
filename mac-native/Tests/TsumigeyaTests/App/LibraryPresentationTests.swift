@@ -94,7 +94,7 @@ struct LibraryPresentationTests {
         #expect(store.meta(for: "1") == nil)
     }
 
-    @Test("旧隐私设置开启时真实视图仍显示原始标题", arguments: ["列表", "卡片", "编辑", "搜索结果"])
+    @Test("旧隐私设置开启时真实视图仍显示原始标题", .enabled(if: ProcessInfo.processInfo.environment["TSUMIGEYA_UI_TESTS"] == "1"), arguments: ["列表", "卡片", "编辑", "搜索结果"])
     func legacySettingsDoNotHideViews(surface: String) async throws {
         let directory = try fixture()
         defer { try? FileManager.default.removeItem(at: directory) }

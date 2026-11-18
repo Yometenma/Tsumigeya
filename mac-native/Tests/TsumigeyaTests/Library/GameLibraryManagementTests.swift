@@ -353,7 +353,7 @@ struct GameLibraryManagementTests {
         #expect(store.assignments["1"] == [id])
     }
 
-    @Test("生产分类编辑控件可渲染且按钮和类型文案完整", arguments: ["empty", "auto", "manual"])
+    @Test("生产分类编辑控件可渲染且按钮和类型文案完整", .enabled(if: ProcessInfo.processInfo.environment["TSUMIGEYA_UI_TESTS"] == "1"), arguments: ["empty", "auto", "manual"])
     func classificationPresentation(state: String) async throws {
         let hasMetadata = state != "empty"
         let root = try managementDirectory(); defer { try? FileManager.default.removeItem(at: root) }

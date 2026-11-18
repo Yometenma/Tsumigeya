@@ -297,12 +297,8 @@ enum UISnapshot {
         let hosting = NSHostingView(rootView: view)
         hosting.frame = CGRect(origin: .zero, size: size)
 
-        // 窗口必须**真的在屏幕上**（`orderFront`）：
-        // 离屏窗口（`orderOut`）不会做完整布局，取到的还是空白。
-        //
-        // ⚠️ 但也不能让它抢用户焦点 —— 用 `.borderless` + 小尺寸移到屏幕角落。
-        //    在本鱼这个 SSH 场景下用户看不到它，但真实机器上会闪一下，
-        //    所以位置放在屏幕外（负坐标）。
+        // 完整布局需要真实窗口；负坐标只用于尽量避开显示区域，不能保证不闪窗。
+        // 因此只由显式 --snapshot 验收入口调用，不能附带在日常编译中。
         let window = NSWindow(
             contentRect: CGRect(origin: CGPoint(x: -3000, y: -3000), size: size),
             styleMask: [.borderless],
@@ -312,7 +308,6 @@ enum UISnapshot {
         window.contentView = hosting
         if let appearance { window.appearance = appearance }
         window.isReleasedWhenClosed = false
-        // ⚠️ alphaValue = 1 但位置在屏幕外 → 不干扰用户，但布局是真的
         window.orderFrontRegardless()
 
         // 等布局跑完（RunLoop 转两圈 + 给一点时间给 SwiftUI 的 diff）

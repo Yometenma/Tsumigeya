@@ -249,7 +249,7 @@ struct BatchMetadataTests {
         #expect(GameMetaStore.load(dataDir: directory.path, gameId: "2") == nil)
     }
 
-    @Test("批量生产界面的状态、确认和失败重试按钮未被裁切")
+    @Test("批量生产界面的状态、确认和失败重试按钮未被裁切", .enabled(if: ProcessInfo.processInfo.environment["TSUMIGEYA_UI_TESTS"] == "1"))
     func layout() async throws {
         let f = try BatchFixture([game("1", "/fixture/RJ123456/Game.exe", title: "保存项目"),
                                   game("2", "/fixture/Unknown/Game.exe", title: "待核对项目"),
