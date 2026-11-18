@@ -32,12 +32,15 @@ mkdir -p "$APP_DIR/Contents/Resources"
 
 cp "$BIN_PATH" "$APP_DIR/Contents/MacOS/$APP_NAME"
 chmod +x "$APP_DIR/Contents/MacOS/$APP_NAME"
-RESOURCE_BUNDLE="$(dirname "$BIN_PATH")/Tsumigeya_TsumigeyaCore.bundle"
-if [ ! -d "$RESOURCE_BUNDLE" ]; then
-  echo "❌ 缺少运行时及辅助脚本资源：$RESOURCE_BUNDLE" >&2
-  exit 1
-fi
-cp -R "$RESOURCE_BUNDLE" "$APP_DIR/Contents/Resources/"
+# SwiftPM 的开发目录回退路径会掩盖漏打包；界面和核心资源必须一并带走。
+for target in TsumigeyaCore TsumigeyaApp; do
+  RESOURCE_BUNDLE="$(dirname "$BIN_PATH")/Tsumigeya_${target}.bundle"
+  if [ ! -d "$RESOURCE_BUNDLE" ]; then
+    echo "❌ 缺少应用资源：$RESOURCE_BUNDLE" >&2
+    exit 1
+  fi
+  cp -R "$RESOURCE_BUNDLE" "$APP_DIR/Contents/Resources/"
+done
 
 ICNS=""
 for candidate in "../assets/icon.icns" "../../assets/icon.icns"; do
