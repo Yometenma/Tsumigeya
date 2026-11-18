@@ -32,8 +32,8 @@ mkdir -p "$APP_DIR/Contents/Resources"
 
 cp "$BIN_PATH" "$APP_DIR/Contents/MacOS/$APP_NAME"
 chmod +x "$APP_DIR/Contents/MacOS/$APP_NAME"
-# SwiftPM 的开发目录回退路径会掩盖漏打包；界面和核心资源必须一并带走。
-for target in TsumigeyaCore TsumigeyaApp; do
+# 核心运行脚本必须随包分发，不能依赖 SwiftPM 开发目录的回退路径。
+for target in TsumigeyaCore; do
   RESOURCE_BUNDLE="$(dirname "$BIN_PATH")/Tsumigeya_${target}.bundle"
   if [ ! -d "$RESOURCE_BUNDLE" ]; then
     echo "❌ 缺少应用资源：$RESOURCE_BUNDLE" >&2

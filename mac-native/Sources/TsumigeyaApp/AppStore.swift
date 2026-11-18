@@ -477,7 +477,7 @@ final class AppStore: ObservableObject {
         } else {
             address = work?.coverUrl ?? work?.sampleImageURLs.first
         }
-        // 只使用刮削到的真实作品图片，绝不使用看板娘或占位素材。
+        // 作品没有真实图片时返回空值，由界面处理缺图状态。
         guard let address else { return nil }
         guard let normalized = work?.isExternal == true ? MetadataNetwork.publicURL(address)?.absoluteString : DLsiteParser.normalizeCoverUrl(address) else { return nil }
         return URL(string: normalized)

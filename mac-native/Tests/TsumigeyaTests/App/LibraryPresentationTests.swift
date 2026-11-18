@@ -97,6 +97,39 @@ struct LibraryPresentationTests {
         #expect(store.meta(for: "1") == nil)
     }
 
+    @Test("添加游戏向导无装饰侧栏时仍显示文件选择与取消入口")
+    func addGameWizardShowsImportControls() async throws {
+        _ = NSApplication.shared
+        let store = AppStore()
+        let hosting = NSHostingView(rootView: AddGameWizard().environmentObject(store))
+        let size = hosting.fittingSize
+        #expect(size.width == 600)
+        #expect(size.height == 560)
+        let window = NSWindow(contentRect: NSRect(x: -10000, y: -10000, width: size.width, height: size.height),
+            styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = hosting
+        window.orderFrontRegardless()
+        defer { window.close() }
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        var found = false
+        while !found && ContinuousClock.now < deadline {
+            hosting.layoutSubtreeIfNeeded()
+            let bitmap = try #require(hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds))
+            hosting.cacheDisplay(in: hosting.bounds, to: bitmap)
+            let image = try #require(bitmap.cgImage)
+            let request = VNRecognizeTextRequest()
+            request.recognitionLevel = .accurate
+            request.recognitionLanguages = ["zh-Hans", "en-US"]
+            try VNImageRequestHandler(cgImage: image, options: [:]).perform([request])
+            let text = (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }.joined()
+                .filter { !$0.isWhitespace }
+            found = ["添加游戏", "选择文件", "取消"].allSatisfy { text.contains($0) }
+            if !found { try await Task.sleep(for: .milliseconds(30)) }
+        }
+        #expect(found, "移除立绘侧栏后，实际向导的文件选择和取消操作应仍可见")
+    }
+
     @Test("旧显示设置不遮挡当前侧边栏、详情、编辑和搜索结果中的标题", arguments: ["侧边栏", "详情", "编辑", "搜索结果"])
     func legacySettingsDoNotHideViews(surface: String) async throws {
         let directory = try fixture()

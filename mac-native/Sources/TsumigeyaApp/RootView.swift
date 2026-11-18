@@ -468,7 +468,6 @@ struct WelcomeView: View {
         .frame(maxWidth: compact ? 300 : 380, alignment: .leading)
     }
 
-    // 正式看板娘素材准备好前使用中性占位，不再把带底色的临时原图放进欢迎页。
     @ViewBuilder
     private func welcomePlaceholder(compact: Bool) -> some View {
         ZStack {
