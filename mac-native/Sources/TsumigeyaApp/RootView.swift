@@ -407,103 +407,15 @@ struct LibraryNoResultsView: View {
 // MARK: - 空选择时的欢迎页
 
 struct WelcomeView: View {
-    @EnvironmentObject private var store: AppStore
-
     var body: some View {
-        GeometryReader { proxy in
-            let compact = proxy.size.width < 680
-
-            HStack(spacing: 0) {
-                welcomeCopy(compact: compact)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-                    .padding(.leading, compact ? 28 : 44)
-                    .padding(.trailing, compact ? 18 : 32)
-
-                welcomePlaceholder(compact: compact)
-                    .frame(width: compact ? proxy.size.width * 0.42 : proxy.size.width * 0.52)
-                    .frame(maxHeight: .infinity)
-                    .clipped()
-            }
-            .frame(width: proxy.size.width, height: proxy.size.height)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(nsColor: .textBackgroundColor))
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .padding(22)
-    }
-
-    @ViewBuilder
-    private func welcomeCopy(compact: Bool) -> some View {
-        VStack(alignment: .leading, spacing: compact ? 12 : 16) {
-            Text("Tsumigeya")
-                .font(.system(size: 13, weight: .semibold, design: .rounded))
-                .tracking(2.4)
-                .foregroundStyle(Color.tsumigeyaAccent.opacity(0.78))
-                .textCase(.uppercase)
-
-            Text("今天想玩哪一部？")
-                .font(.system(size: compact ? 26 : 30, weight: .bold, design: .rounded))
-                .foregroundStyle(Color(nsColor: .labelColor))
-                .fixedSize(horizontal: false, vertical: true)
-
-            Text("你的作品，都在这里。")
-                .font(.system(size: 14, weight: .regular))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            if store.games.isEmpty {
-                Button {
-                    store.openAddGame()
-                } label: {
-                    Label("添加第一部作品", systemImage: "plus")
-                        .font(.system(size: 13, weight: .semibold))
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 9)
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(Color.tsumigeyaAccent)
-                .controlSize(.large)
-            }
-        }
-        .frame(maxWidth: compact ? 300 : 380, alignment: .leading)
-    }
-
-    @ViewBuilder
-    private func welcomePlaceholder(compact: Bool) -> some View {
-        ZStack {
-            LinearGradient(
-                colors: [
-                    Color.tsumigeyaAccent.opacity(0.08),
-                    Color(nsColor: .windowBackgroundColor).opacity(0.04),
-                    Color.tsumigeyaAccent.opacity(0.16)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-
-            Circle()
-                .fill(Color.tsumigeyaAccent.opacity(0.12))
-                .frame(width: compact ? 170 : 260, height: compact ? 170 : 260)
-                .blur(radius: 2)
-                .offset(x: compact ? 36 : 60, y: compact ? -46 : -72)
-
-            Circle()
-                .stroke(Color.tsumigeyaAccent.opacity(0.18), lineWidth: 1)
-                .frame(width: compact ? 130 : 190, height: compact ? 130 : 190)
-                .offset(x: compact ? -28 : -44, y: compact ? 48 : 72)
-
-            Image(systemName: "sparkles")
-                .font(.system(size: compact ? 48 : 72, weight: .light))
-                .foregroundStyle(Color.tsumigeyaAccent.opacity(0.48))
-                .symbolRenderingMode(.hierarchical)
-        }
-        .overlay(alignment: .topTrailing) {
-            Image(systemName: "gamecontroller.fill")
-                .font(.system(size: compact ? 18 : 24, weight: .medium))
-                .foregroundStyle(Color.tsumigeyaAccent.opacity(0.32))
-                .padding(compact ? 22 : 34)
-        }
-        .accessibilityLabel("欢迎页插画占位")
+        Text("Tsumigeya")
+            .font(.system(size: 34, weight: .semibold, design: .rounded))
+            .tracking(1.2)
+            .foregroundStyle(Color(nsColor: .labelColor))
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color(nsColor: .textBackgroundColor))
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .padding(22)
     }
 }
 /// 游戏 id 是字符串，而模态表单需要稳定的 Identifiable 目标。

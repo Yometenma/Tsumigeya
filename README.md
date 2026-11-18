@@ -1,8 +1,4 @@
 <p align="center">
-  <img src=".github/assets/readme-banner.png" width="960" alt="Tsumigeya：在 Mac 上整理、运行你的 DLsite 游戏">
-</p>
-
-<p align="center">
   <a href="https://github.com/Yometenma/Tsumigeya/releases/latest">下载最新版</a> ·
   <a href="#游戏兼容性">游戏兼容性</a> ·
   <a href="docs/常见问题.md">常见问题</a> ·

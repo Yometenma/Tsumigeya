@@ -127,7 +127,7 @@ struct LibraryPresentationTests {
             found = ["添加游戏", "选择文件", "取消"].allSatisfy { text.contains($0) }
             if !found { try await Task.sleep(for: .milliseconds(30)) }
         }
-        #expect(found, "移除立绘侧栏后，实际向导的文件选择和取消操作应仍可见")
+        #expect(found, "无装饰侧栏的实际向导仍应显示文件选择和取消操作")
     }
 
     @Test("旧显示设置不遮挡当前侧边栏、详情、编辑和搜索结果中的标题", arguments: ["侧边栏", "详情", "编辑", "搜索结果"])
