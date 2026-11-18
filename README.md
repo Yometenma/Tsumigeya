@@ -1,5 +1,5 @@
 <p align="center">
-  <img src=".github/assets/readme-banner.png" width="960" alt="Tsumigeya：在 Mac 上整理、运行你的 DLsite 游戏；银发魔女看板娘与剑心标识">
+  <img src=".github/assets/readme-banner.png" width="960" alt="Tsumigeya：在 Mac 上整理、运行你的 DLsite 游戏">
 </p>
 
 <p align="center">
