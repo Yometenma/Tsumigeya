@@ -37,63 +37,58 @@ struct BatchImportView: View {
                         Text("选择目录并扫描…").foregroundStyle(.black)
                     }
                     .buttonStyle(.bordered)
-                    .disabled(store.privacy.hidesTitles)
+
                 }
             }
-            if store.privacy.hidesTitles {
-                Text("入库内容已隐藏，关闭标题隐藏后可继续。").foregroundStyle(.secondary)
-                Spacer()
-            } else {
-                Text(summary).font(.callout).foregroundStyle(.secondary)
-                Text("最多向下扫描三层、2000 个目录、200 个候选；命中后不再深入。无法识别的游戏请使用单个添加。")
-                    .font(.caption).foregroundStyle(.secondary)
-                if !warnings.isEmpty {
-                    DisclosureGroup("有 \(warnings.count) 处目录无法读取") {
-                        ScrollView { Text(warnings.joined(separator: "\n")).font(.caption).textSelection(.enabled) }
-                            .frame(maxHeight: 80)
-                    }
+            Text(summary).font(.callout).foregroundStyle(.secondary)
+            Text("最多向下扫描三层、2000 个目录、200 个候选；命中后不再深入。无法识别的游戏请使用单个添加。")
+                .font(.caption).foregroundStyle(.secondary)
+            if !warnings.isEmpty {
+                DisclosureGroup("有 \(warnings.count) 处目录无法读取") {
+                    ScrollView { Text(warnings.joined(separator: "\n")).font(.caption).textSelection(.enabled) }
+                        .frame(maxHeight: 80)
                 }
-                List {
-                    ForEach($candidates) { $candidate in
-                        let conflict = store.intakeConflict(candidate)
-                        HStack(alignment: .top, spacing: 12) {
-                            Toggle("选择游戏", isOn: Binding(
-                                get: { selected.contains(candidate.id) },
-                                set: { if $0 { selected.insert(candidate.id) } else { selected.remove(candidate.id) } }
-                            ))
-                            .labelsHidden()
-                            .disabled(conflict != nil || scanToken != nil)
-                            VStack(alignment: .leading, spacing: 5) {
-                                TextField("游戏名", text: $candidate.title).textFieldStyle(.roundedBorder)
-                                    .disabled(scanToken != nil || conflict != nil)
-                                Text(candidate.folder).font(.caption).foregroundStyle(.secondary)
-                                    .lineLimit(2).textSelection(.enabled)
-                                if candidate.engine == "wine" {
-                                    Picker("Windows 启动文件", selection: $candidate.entryPath) {
-                                        Text("请选择启动文件").tag("")
-                                        ForEach(WineRuntime.executables(in: candidate.folder), id: \.self) { file in
-                                            Text((file as NSString).lastPathComponent).tag(file)
-                                        }
+            }
+            List {
+                ForEach($candidates) { $candidate in
+                    let conflict = store.intakeConflict(candidate)
+                    HStack(alignment: .top, spacing: 12) {
+                        Toggle("选择游戏", isOn: Binding(
+                            get: { selected.contains(candidate.id) },
+                            set: { if $0 { selected.insert(candidate.id) } else { selected.remove(candidate.id) } }
+                        ))
+                        .labelsHidden()
+                        .disabled(conflict != nil || scanToken != nil)
+                        VStack(alignment: .leading, spacing: 5) {
+                            TextField("游戏名", text: $candidate.title).textFieldStyle(.roundedBorder)
+                                .disabled(scanToken != nil || conflict != nil)
+                            Text(candidate.folder).font(.caption).foregroundStyle(.secondary)
+                                .lineLimit(2).textSelection(.enabled)
+                            if candidate.engine == "wine" {
+                                Picker("Windows 启动文件", selection: $candidate.entryPath) {
+                                    Text("请选择启动文件").tag("")
+                                    ForEach(WineRuntime.executables(in: candidate.folder), id: \.self) { file in
+                                        Text((file as NSString).lastPathComponent).tag(file)
                                     }
-                                    .disabled(scanToken != nil || conflict != nil)
                                 }
-                                if let conflict { Text(conflict).font(.caption).foregroundStyle(.orange) }
+                                .disabled(scanToken != nil || conflict != nil)
                             }
-                            let definition = EngineRegistry.find(folder: candidate.engine)
-                            VStack(alignment: .trailing, spacing: 4) {
-                                Text(definition?.name ?? candidate.engine).font(.caption)
-                                Text(definition?.launchable == false ? "仅识别，无法直接启动" :
-                                     (store.isEngineInstalled(candidate.engine) ? "运行时已安装" : "入库后需安装运行时"))
-                                    .font(.caption2).foregroundStyle(.secondary)
-                            }.frame(width: 145, alignment: .trailing)
-                        }.padding(.vertical, 6)
-                    }
+                            if let conflict { Text(conflict).font(.caption).foregroundStyle(.orange) }
+                        }
+                        let definition = EngineRegistry.find(folder: candidate.engine)
+                        VStack(alignment: .trailing, spacing: 4) {
+                            Text(definition?.name ?? candidate.engine).font(.caption)
+                            Text(definition?.launchable == false ? "仅识别，无法直接启动" :
+                                 (store.isEngineInstalled(candidate.engine) ? "运行时已安装" : "入库后需安装运行时"))
+                                .font(.caption2).foregroundStyle(.secondary)
+                        }.frame(width: 145, alignment: .trailing)
+                    }.padding(.vertical, 6)
                 }
-                .overlay {
-                    if candidates.isEmpty && scanToken == nil { Text("尚无候选游戏").foregroundStyle(.secondary) }
-                }
-                if let error { Text(error).font(.callout).foregroundStyle(.red).textSelection(.enabled) }
             }
+            .overlay {
+                if candidates.isEmpty && scanToken == nil { Text("尚无候选游戏").foregroundStyle(.secondary) }
+            }
+            if let error { Text(error).font(.callout).foregroundStyle(.red).textSelection(.enabled) }
             HStack {
                 Button {
                     cancelScan(); dismiss()
@@ -111,7 +106,7 @@ struct BatchImportView: View {
                     Text("添加所选（\(selected.count)）").foregroundStyle(.black)
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(selected.isEmpty || scanToken != nil || store.privacy.hidesTitles)
+                .disabled(selected.isEmpty || scanToken != nil)
             }
         }
         .padding(22)
@@ -164,29 +159,25 @@ struct RelocateGameView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("重新定位游戏目录").font(.title2.bold())
-            if store.privacy.hidesTitles {
-                Text("定位内容已隐藏，关闭标题隐藏后可继续。").foregroundStyle(.secondary)
-            } else {
-                Text(expected.gameTitle).font(.headline).lineLimit(2)
-                Text("原路径：\(DetectPath.gameDirForFiles(expected.gamePath))")
-                    .font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
-                Text("选择移动后的同一游戏目录。只更新路径，保留作品信息、分类、游玩记录和启动参数；不会移动游戏文件或存档。")
-                Text("原引擎：\(EngineRegistry.find(folder: expected.gameEngine)?.name ?? expected.gameEngine)")
-                    .font(.callout)
-                Button {
-                    chooseFolder()
-                } label: {
-                    Text("选择新目录…").foregroundStyle(.black)
-                }
-                .buttonStyle(.bordered)
-                if let candidate {
-                    Text(candidate.folder).font(.callout).textSelection(.enabled)
-                    Text("识别引擎：\(EngineRegistry.find(folder: candidate.engine)?.name ?? candidate.engine)")
-                        .font(.caption).foregroundStyle(.secondary)
-                    Toggle("我已确认这是同一个游戏，而不只是相同引擎", isOn: $confirmed)
-                }
-                if let error { Text(error).foregroundStyle(.red).textSelection(.enabled) }
+            Text(expected.gameTitle).font(.headline).lineLimit(2)
+            Text("原路径：\(DetectPath.gameDirForFiles(expected.gamePath))")
+                .font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+            Text("选择移动后的同一游戏目录。只更新路径，保留作品信息、分类、游玩记录和启动参数；不会移动游戏文件或存档。")
+            Text("原引擎：\(EngineRegistry.find(folder: expected.gameEngine)?.name ?? expected.gameEngine)")
+                .font(.callout)
+            Button {
+                chooseFolder()
+            } label: {
+                Text("选择新目录…").foregroundStyle(.black)
             }
+            .buttonStyle(.bordered)
+            if let candidate {
+                Text(candidate.folder).font(.callout).textSelection(.enabled)
+                Text("识别引擎：\(EngineRegistry.find(folder: candidate.engine)?.name ?? candidate.engine)")
+                    .font(.caption).foregroundStyle(.secondary)
+                Toggle("我已确认这是同一个游戏，而不只是相同引擎", isOn: $confirmed)
+            }
+            if let error { Text(error).foregroundStyle(.red).textSelection(.enabled) }
             Spacer(minLength: 0)
             HStack {
                 Button {
@@ -205,7 +196,7 @@ struct RelocateGameView: View {
                     Text("保存新路径").foregroundStyle(.black)
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(candidate == nil || !confirmed || store.privacy.hidesTitles || store.runningGames[expected.id] != nil)
+                .disabled(candidate == nil || !confirmed || store.runningGames[expected.id] != nil)
             }
         }
         .padding(24)

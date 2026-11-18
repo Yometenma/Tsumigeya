@@ -33,7 +33,7 @@ struct LaunchDiagnosticsView: View {
                 .keyboardShortcut(.cancelAction)
                 Spacer()
                 if let diagnosis, diagnosis.items.contains(where: { $0.id == "runtime-binary" && $0.level == .blocking }),
-                   let onManageEngines, !store.privacy.hidesTitles {
+                   let onManageEngines {
                     Button {
                         onManageEngines()
                     } label: {
@@ -60,7 +60,7 @@ struct LaunchDiagnosticsView: View {
                 .foregroundStyle(Color.tsumigeyaAccent)
             Text("启动诊断")
                 .font(.title2.weight(.semibold))
-            Text(store.privacy.hidesTitles ? "游戏 \(game.id)" : game.gameTitle)
+            Text(game.gameTitle)
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
@@ -86,22 +86,16 @@ struct LaunchDiagnosticsView: View {
                     .foregroundStyle(.secondary)
             }
 
-            if store.privacy.hidesTitles {
-                Text("诊断详情已隐藏。关闭标题隐藏后可查看路径、运行时和处理建议。")
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            } else {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 10) {
-                        ForEach(diagnosis.items) { item in
-                            itemRow(item)
-                        }
-                        if let plan = diagnosis.plan {
-                            planSection(plan)
-                        }
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 10) {
+                    ForEach(diagnosis.items) { item in
+                        itemRow(item)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    if let plan = diagnosis.plan {
+                        planSection(plan)
+                    }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)

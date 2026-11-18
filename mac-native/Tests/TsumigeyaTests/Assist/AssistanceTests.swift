@@ -268,14 +268,14 @@ struct AssistanceStoreTests {
         try await Task.sleep(for: .milliseconds(250))
         #expect(!FileManager.default.fileExists(atPath: TranslationFiles.url(project: f.project, dataDir: store.dataDir).path))
     }
-    @Test("隐私隐藏停止网络翻译且损坏目录禁用接入")
-    func privacyAndCorruption() async throws {
+    @Test("主动暂停停止网络翻译且损坏目录禁用接入")
+    func pauseAndCorruption() async throws {
         let f = try AssistFixture(); defer { f.clean() }
         let (store, record) = try await store(f); let session = store.assistanceSession(for: record)
         session.catalog = TranslationCatalog(identity: f.project.identity, entries: [.init(source: "秘密")])
         store.translateAssistanceText = { _, _ in try? await Task.sleep(for: .milliseconds(150)); return "秘密译文" }
         session.translate(); await Task.yield()
-        store.setSetting(.privacyHideTitles, .bool(true)); store.setSetting(.privacyMode, .bool(true))
+        session.pause()
         try await wait(session); #expect(session.catalog?.dictionary.isEmpty == true)
         let url = TranslationFiles.url(project: f.project, dataDir: store.dataDir)
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)

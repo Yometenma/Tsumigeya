@@ -125,7 +125,7 @@ public enum GameMetaStore {
     @discardableResult
     public static func save(
         dataDir: String, gameId: String, meta: GameDlsiteMeta,
-        fileManager: FileManager = .default
+        fileManager: FileManager = .default, didWrite: (([String: JSONValue]) -> Void)? = nil
     ) -> String? {
         mutationLock.lock()
         defer { mutationLock.unlock() }
@@ -155,7 +155,9 @@ public enum GameMetaStore {
         LibraryClassification.synchronize(&raw, gameIDs: [gameId])
 
         // 基于完整原件定点合并；分类之外的顶层键、人工覆盖与未知扩展不丢失。
-        return writeRaw(raw, dataDir: dataDir, fileManager: fileManager)
+        let error = writeRaw(raw, dataDir: dataDir, fileManager: fileManager)
+        if error == nil { didWrite?(raw) }
+        return error
     }
 
     /// 删一部游戏的元数据（删游戏时调）。

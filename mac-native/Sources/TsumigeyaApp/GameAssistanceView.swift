@@ -17,9 +17,7 @@ struct GameAssistanceView: View {
     @State private var session: AssistanceSession?
     var body: some View {
         Group {
-            if store.privacy.hidesTitles {
-                Label("辅助功能已隐藏，关闭标题隐藏后可查看。", systemImage: "eye.slash")
-            } else if let session { AssistanceContent(session: session, mode: mode) }
+            if let session { AssistanceContent(session: session, mode: mode) }
             else { ProgressView("读取辅助配置……") }
         }
         .task(id: "\(store.dataDir)\0\(game.id)\0\(game.gamePath)") { session = store.assistanceSession(for: game) }

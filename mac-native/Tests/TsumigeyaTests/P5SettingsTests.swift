@@ -94,13 +94,11 @@ struct SettingsGroupSemanticsTests {
         #expect(keys.contains(.listView))
     }
 
-    /// 游戏库组里有删确认 / 隐私模式 / 存档同步。
+    /// 游戏库组里有删确认 / 存档同步。
     @Test("游戏库组")
     func libraryGroup() {
         let keys = SettingsGroups.group(.library)?.keys ?? []
         #expect(keys.contains(.deletionConfirmation))
-        #expect(keys.contains(.privacyMode))
-        #expect(keys.contains(.privacyHideTitles))
         #expect(keys.contains(.saveSyncMode))
     }
 }

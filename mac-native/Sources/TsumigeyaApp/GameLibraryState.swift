@@ -19,7 +19,8 @@ final class GameLibraryState: ObservableObject {
         })
     }
     private var dataDir = ""
-    private var searchMetadata: [String: GameDlsiteMeta] = [:]
+    @Published private var searchMetadata: [String: GameDlsiteMeta] = [:]
+    var metadataByGameID: [String: GameDlsiteMeta] { searchMetadata }
     private var file: GameLibraryFile { GameLibraryFile(dataDir: dataDir) }
 
     func load(dataDirectory: String) -> String? {
@@ -47,9 +48,16 @@ final class GameLibraryState: ObservableObject {
         if let activeCategory, categories[activeCategory] == nil { self.activeCategory = nil }
     }
 
-    func metadataDidSave() {
-        reloadRelatedData()
+    func metadataDidSave(gameId: String, meta: GameDlsiteMeta, raw: [String: JSONValue]) {
+        searchMetadata[gameId] = meta
+        let decoded = LibraryMetaStore.decode(raw)
+        categories = decoded.categories
+        assignments = decoded.assignments
+        classificationOverrides[gameId] = raw[gameId]?.objectValue?["classification"]
+        if let activeCategory, categories[activeCategory] == nil { self.activeCategory = nil }
     }
+
+    func metadata(for gameId: String) -> GameDlsiteMeta? { searchMetadata[gameId] }
 
     func game(id: String) -> GameRecord? { games.first { $0.id == id } }
 

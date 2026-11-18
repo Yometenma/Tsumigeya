@@ -183,11 +183,7 @@ struct GameDetailView: View {
     private func bodyContent(for section: DetailTab) -> some View {
         switch section {
         case .overview:
-            if store.privacy.hidesTitles {
-                privacyNotice
-            } else {
-                dlsiteSection
-            }
+            dlsiteSection
         case .saves:
             SaveSection(game: game)
         case .translation:
@@ -196,17 +192,8 @@ struct GameDetailView: View {
             // 只有打开辅助页才读取接口凭据，浏览其他页面不应触发钥匙串授权。
             if tab == .assistance { GameAssistanceView(game: game, mode: .assistance) }
         case .runtime:
-            if store.privacy.hidesTitles {
-                privacyNotice
-            } else {
-                runtimeContent
-            }
+            runtimeContent
         }
-    }
-
-    private var privacyNotice: some View {
-        Label("作品详情已隐藏，关闭标题隐藏后可查看和核对搜索结果。", systemImage: "eye.slash")
-            .foregroundStyle(.secondary)
     }
 
     private var runtimeContent: some View {
@@ -271,7 +258,7 @@ struct GameDetailView: View {
                 Button("检查启动条件…") { showsDiagnostics = true }
                 Divider()
                 Button("重新定位游戏目录…") { showsRelocation = true }
-                    .disabled(store.privacy.hidesTitles || store.runningGames[game.id] != nil)
+                    .disabled(store.runningGames[game.id] != nil)
                 Button("在访达中显示") { store.revealInFinder(game: game) }
                 Button("查找并关联作品…") { store.beginManualRJ(gameId: game.id) }
                 Divider()
@@ -295,7 +282,7 @@ struct GameDetailView: View {
     private var launchFailure: some View {
         if let failure = store.lastLaunchFailure[game.id] {
             HStack(alignment: .top, spacing: 10) {
-                Label(store.privacy.text(failure, replacement: "启动未完成，详细信息已隐藏。"), systemImage: "exclamationmark.triangle.fill")
+                Label(failure, systemImage: "exclamationmark.triangle.fill")
                     .font(.callout)
                     .foregroundStyle(.orange)
                     .textSelection(.enabled)
@@ -303,7 +290,6 @@ struct GameDetailView: View {
                 Spacer(minLength: 8)
                 Button("检查启动条件") { showsDiagnostics = true }
                     .buttonStyle(.bordered)
-                    .disabled(store.privacy.hidesTitles)
             }
             .padding(.bottom, 8)
         }

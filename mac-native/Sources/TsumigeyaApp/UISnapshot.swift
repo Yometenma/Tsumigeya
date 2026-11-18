@@ -191,7 +191,7 @@ enum UISnapshot {
                         dir: directory, appearance: appearance)
                 }
             }
-            // 手动指定存档目录的三种关键状态：未知、有效空目录，以及隐私模式。
+            // 手动指定存档目录的关键状态：未知与有效空目录。
             let savePreviewRoot = previewDirectory.appendingPathComponent("manual-save")
             try FileManager.default.createDirectory(at: savePreviewRoot, withIntermediateDirectories: true)
             let unknownSaveGame = GameRecord(
@@ -223,14 +223,6 @@ enum UISnapshot {
                 size: CGSize(width: 600, height: 520), name: "23-save-manual-directory",
                 dir: directory, appearance: appearance)
 
-            saveStore.setSetting(.privacyMode, .bool(true))
-            saveStore.setSetting(.privacyHideTitles, .bool(true))
-            failures += captureWindow(
-                SaveSection(game: manualSaveGame).environmentObject(saveStore)
-                    .padding(16).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                    .background(Color(nsColor: .windowBackgroundColor)),
-                size: CGSize(width: 600, height: 300), name: "24-save-privacy",
-                dir: directory, appearance: appearance)
             if var game = store.games.first {
                 game.gameTitle = "超长标题布局验收：遠い星の物語・異世界の冒険と約束の記憶 — 完全版 "
                     + "追加章节与多语言游戏名称的显示检查"
@@ -251,35 +243,10 @@ enum UISnapshot {
                     .environmentObject(previewStore),
                 size: CGSize(width: 1100, height: 760), name: "12-library-light",
                 dir: directory, appearance: NSAppearance(named: .aqua))
-            previewStore.setSetting(.privacyMode, .bool(true))
-            previewStore.setSetting(.privacyHideTitles, .bool(false))
-            failures += captureWindow(
-                RootView(selection: previewStore.games.first?.id, loadsOnAppear: false)
-                    .environmentObject(previewStore),
-                size: CGSize(width: 1100, height: 760), name: "15-privacy-covers",
-                dir: directory, appearance: appearance)
-            previewStore.setSetting(.privacyHideTitles, .bool(true))
-            failures += captureWindow(
-                RootView(selection: previewStore.games.first?.id, loadsOnAppear: false)
-                    .environmentObject(previewStore),
-                size: CGSize(width: 1100, height: 760), name: "16-privacy-titles",
-                dir: directory, appearance: appearance)
-            previewStore.setSetting(.listView, .bool(false))
-            failures += captureWindow(
-                RootView(selection: nil, loadsOnAppear: false).environmentObject(previewStore),
-                size: CGSize(width: 1100, height: 760), name: "17-privacy-grid",
-                dir: directory, appearance: appearance)
-            if let game = previewStore.games.first {
-                failures += captureWindow(
-                    GameEditView(game: game).environmentObject(previewStore),
-                    size: CGSize(width: 900, height: 650), name: "18-privacy-edit",
-                    dir: directory, appearance: appearance)
-            }
             let intakeCandidates = [
                 LibraryIntake.Candidate(folder: "/示例游戏/很长的目录名称与中文路径/魔女的故事 完整版", title: "魔女的故事 完整版", engine: "kirikiri"),
                 LibraryIntake.Candidate(folder: "/示例游戏/另一部游戏", title: "另一部游戏", engine: "wine", entryPath: "/示例游戏/另一部游戏/启动.exe")
             ]
-            previewStore.setSetting(.privacyMode, .bool(false))
             failures += captureWindow(
                 BatchImportView(previewCandidates: intakeCandidates).environmentObject(previewStore),
                 size: CGSize(width: 780, height: 590), name: "19-batch-import",
@@ -290,22 +257,10 @@ enum UISnapshot {
                     size: CGSize(width: 600, height: 410), name: "20-relocate-game",
                     dir: directory, appearance: appearance)
             }
-            previewStore.setSetting(.privacyMode, .bool(true))
-            failures += captureWindow(
-                BatchImportView(previewCandidates: intakeCandidates).environmentObject(previewStore),
-                size: CGSize(width: 780, height: 590), name: "21-batch-privacy",
-                dir: directory, appearance: appearance)
             if let game = previewStore.games.first {
-                previewStore.setSetting(.privacyMode, .bool(false))
                 failures += captureWindow(
                     LaunchDiagnosticsView(game: game).environmentObject(previewStore),
                     size: CGSize(width: 720, height: 590), name: "22-launch-diagnostics",
-                    dir: directory, appearance: appearance)
-                previewStore.setSetting(.privacyMode, .bool(true))
-                previewStore.setSetting(.privacyHideTitles, .bool(true))
-                failures += captureWindow(
-                    LaunchDiagnosticsView(game: game).environmentObject(previewStore),
-                    size: CGSize(width: 720, height: 590), name: "23-launch-diagnostics-privacy",
                     dir: directory, appearance: appearance)
             }
             for group in SettingsGroups.groups where group.id != .appearance {
@@ -365,25 +320,7 @@ enum UISnapshot {
         hosting.layoutSubtreeIfNeeded()
         RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.15))
 
-        // ⚠️⚠️ **再等一会儿**：`AsyncImage` 下载网络封面是**异步**的。
-        //
-        //    P7 实测：详情页快照里封面是空的（显示回落渐变的蓝底），
-        //    因为本鱼上面只等了 0.3 秒，而 DLsite 的封面要几百毫秒到几秒。
-        //
-        //    这里等 2.5 秒（够下载一张 200KB 的图），并让 RunLoop 真的转起来
-        //    （`run(mode:)` 会让主线程处理事件，包括 URLSession 的回调）。
-        //
-        //    ⚠️ 代价：每张详情页快照慢 2.5 秒。但**不等的代价是快照永远看不到封面** ——
-        //       那等于 P7 的视觉部分一直没验过。
-        // 再转一圈，让 SwiftUI 完成第二次布局。
-        //
-        // ⚠️ **不再等 3 秒**：那是本鱼为了等 `AsyncImage` 下载封面加的，
-        //    而实测**根本等不到** —— `AsyncImage` 在离屏窗口里不触发下载
-        //    （它靠「视图真的上屏可见」判断）。
-        //
-        //    → 快照里封面缺席是**这个工具的限制**，不是产品 bug：
-        //      用户在真窗口里看是正常的（2026-11-06 确认）。
-        //      封面那一条**用真窗口验**，快照只管布局与文本。
+        // 这里只等待布局和文本稳定；网络图片、材质与真实交互仍需在正常窗口验收。
         RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.3))
         hosting.layoutSubtreeIfNeeded()
 

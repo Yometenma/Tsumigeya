@@ -73,15 +73,10 @@ struct GameEditView: View {
 
     var body: some View {
         Form {
-            if store.privacy.hidesTitles {
-                Text("编辑内容已隐藏，关闭标题隐藏后可继续编辑；未保存的草稿仍然保留。")
-                    .foregroundStyle(.secondary)
-            } else {
-                localSection
-                metaSection
-                argsSection
-                categoriesSection
-            }
+            localSection
+            metaSection
+            argsSection
+            categoriesSection
         }
         .formStyle(.grouped)
         .safeAreaInset(edge: .top, spacing: 0) {
@@ -138,7 +133,7 @@ struct GameEditView: View {
             }
 
             if let saveError {
-                Label(store.privacy.text(saveError, replacement: "保存未完成，详细信息已隐藏。"), systemImage: "exclamationmark.triangle.fill")
+                Label(saveError, systemImage: "exclamationmark.triangle.fill")
                     .font(.caption)
                     .foregroundStyle(.red)
                     .lineLimit(2)
@@ -147,14 +142,14 @@ struct GameEditView: View {
             Button("还原") {
                 restore()
             }
-            .disabled(!isDirty || store.privacy.hidesTitles)
+            .disabled(!isDirty)
 
             Button("保存") {
                 save()
             }
             .buttonStyle(.borderedProminent)
             .keyboardShortcut("s", modifiers: .command)
-            .disabled(!isDirty || store.privacy.hidesTitles)
+            .disabled(!isDirty)
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 12)

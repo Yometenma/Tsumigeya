@@ -66,7 +66,7 @@ public enum LibraryMetaStore {
         return (decode(raw), raw)
     }
 
-    static func decode(_ raw: [String: JSONValue]) -> LibraryMeta {
+    public static func decode(_ raw: [String: JSONValue]) -> LibraryMeta {
         var categories: CategoryDefs = [:]
         if let obj = raw["categories"]?.objectValue {
             for (id, value) in obj {

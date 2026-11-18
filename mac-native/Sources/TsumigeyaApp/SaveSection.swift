@@ -34,18 +34,12 @@ private struct SaveSessionContent: View {
                 Text("存档")
                     .font(.system(size: 13, weight: .semibold))
                 Spacer()
-                actionButtons.disabled(store.privacy.hidesTitles)
+                actionButtons
             }
 
-            if store.privacy.hidesTitles {
-                Text("存档详情已隐藏，关闭标题隐藏后可查看和导入导出。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            } else {
-                content
-            }
+            content
 
-            if let message, !store.privacy.hidesTitles {
+            if let message {
                 Label(message.text, systemImage: message.isError
                         ? "exclamationmark.triangle.fill"
                         : "checkmark.circle.fill")
@@ -57,9 +51,6 @@ private struct SaveSessionContent: View {
         }
         .onAppear { session.reload() }
         .onChange(of: store.runningGames[game.id]) { _, _ in session.reload() }
-        .onChange(of: store.privacy.hidesTitles) { _, hidden in
-            if !hidden { session.reload() }
-        }
     }
 
     // MARK: - 操作按钮

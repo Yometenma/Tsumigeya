@@ -19,10 +19,7 @@ struct ManualRJSheet: View {
                 Spacer()
                 Button("关闭") { store.closeManualRJ() }.keyboardShortcut(.cancelAction)
             }
-            if store.privacy.hidesTitles {
-                Text("作品信息已隐藏，关闭标题隐藏后可查找和关联作品。")
-                    .foregroundStyle(.secondary)
-            } else if let preview = store.metaPreviews[gameId] {
+            if let preview = store.metaPreviews[gameId] {
                 previewContent(preview)
             } else {
                 searchContent
@@ -117,7 +114,7 @@ struct ManualRJSheet: View {
     }
 
     private func lookup() {
-        guard !busy, !store.privacy.hidesTitles else { return }
+        guard !busy else { return }
         inputError = nil
         store.discardMetaPreview(gameId: gameId)
         let input = text.trimmingCharacters(in: .whitespacesAndNewlines)

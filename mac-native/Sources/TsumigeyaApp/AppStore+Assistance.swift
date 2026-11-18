@@ -55,7 +55,7 @@ final class AssistanceSession: ObservableObject {
         }
     }
     func refreshLive() {
-        guard isCurrent, store?.privacy.hidesTitles == false, let project, project.usesFileBridge, installed, options.cheats else { liveState = nil; pendingCommand = nil; return }
+        guard isCurrent, let project, project.usesFileBridge, installed, options.cheats else { liveState = nil; pendingCommand = nil; return }
         do {
             let snapshot = try AssistanceBridge.read(project)
             liveState = snapshot
@@ -74,7 +74,7 @@ final class AssistanceSession: ObservableObject {
         }
     }
     func sendLive(action: String, key: String, value: String) {
-        guard isCurrent, store?.privacy.hidesTitles == false, let project, let liveState, pendingCommand == nil else { return }
+        guard isCurrent, let project, let liveState, pendingCommand == nil else { return }
         do {
             let parsed = action == "reset" || action == "unlock" ? JSONValue.null : try JSONDecoder().decode(JSONValue.self, from: Data(value.utf8))
             pendingCommand = try AssistanceBridge.send(project, snapshot: liveState, action: action, key: key, value: parsed)
@@ -106,7 +106,7 @@ final class AssistanceSession: ObservableObject {
         task = Task { [weak self] in
             do {
                 let entries = try await Task.detached(priority: .userInitiated) { try AssistanceModules.extract(project) }.value
-                guard let self, self.isCurrent, self.store?.privacy.hidesTitles == false, !Task.isCancelled else { self?.busy = false; return }
+                guard let self, self.isCurrent, !Task.isCancelled else { self?.busy = false; return }
                 var next = self.catalog ?? TranslationCatalog(identity: project.identity)
                 next.merge(entries); try self.persist(next)
                 self.message = "已提取并保存 \(entries.count) 条去重文本；已有译文和手动修订均保留。"
@@ -146,7 +146,7 @@ final class AssistanceSession: ObservableObject {
     }
     func pause() { task?.cancel(); message = "正在暂停；已保存的译文会保留。" }
     func translate(onlyFailures: Bool = false, followGame: Bool = false) {
-        guard !busy, let catalog, (!catalog.entries.isEmpty || followGame), store?.privacy.hidesTitles == false else { return }
+        guard !busy, let catalog, (!catalog.entries.isEmpty || followGame) else { return }
         guard service.url != nil, !service.model.isEmpty,
               serviceRaw["endpoint"]?.stringValue == service.endpoint,
               serviceRaw["model"]?.stringValue == service.model,

@@ -16,35 +16,30 @@ struct BatchMetadataView: View {
                 Spacer()
                 Button("关闭") { store.closeBatchMeta() }.keyboardShortcut(.cancelAction)
             }
-            if store.privacy.hidesTitles {
-                Text("作品信息已隐藏，任务已暂停。关闭标题隐藏后可继续。")
-                    .foregroundStyle(.secondary)
-            } else {
-                controls
-                Text("范围为游戏库当前筛选结果。唯一编号会自动获取并保存；名称搜索只准备候选，必须逐项预览确认。已保存的结果不会因暂停或关闭而撤销。")
-                    .font(.callout).foregroundStyle(.secondary)
-                Text("已保存 \(savedCount) · 待确认 \(confirmationCount) · 失败 \(failedCount) · 等待 \(waitingCount)")
-                    .font(.callout.monospacedDigit())
-                if store.batchMetaRunning {
-                    HStack {
-                        ProgressView().controlSize(.small)
-                        Text("正在逐项处理，请求自动间隔至少 800 毫秒…").font(.callout)
-                    }
-                }
-                itemList
+            controls
+            Text("范围为游戏库当前筛选结果。唯一编号会自动获取并保存；名称搜索只准备候选，必须逐项预览确认。已保存的结果不会因暂停或关闭而撤销。")
+                .font(.callout).foregroundStyle(.secondary)
+            Text("已保存 \(savedCount) · 待确认 \(confirmationCount) · 失败 \(failedCount) · 等待 \(waitingCount)")
+                .font(.callout.monospacedDigit())
+            if store.batchMetaRunning {
                 HStack {
-                    if store.batchMetaRunning {
-                        Button("暂停任务") { store.cancelBatchMeta() }
-                    } else {
-                        Button(savedCount == 0 ? "开始补全" : "继续补全") { store.startBatchMeta() }
-                            .buttonStyle(.borderedProminent).disabled(waitingCount == 0)
-                        Button("重试失败项") { store.startBatchMeta(retryFailures: true) }
-                            .disabled(failedCount == 0)
-                    }
-                    Spacer()
-                    Text("按作品类型自动归类并保留手动调整；不改游戏名称和存档。")
-                        .font(.caption).foregroundStyle(.secondary)
+                    ProgressView().controlSize(.small)
+                    Text("正在逐项处理，请求自动间隔至少 800 毫秒…").font(.callout)
                 }
+            }
+            itemList
+            HStack {
+                if store.batchMetaRunning {
+                    Button("暂停任务") { store.cancelBatchMeta() }
+                } else {
+                    Button(savedCount == 0 ? "开始补全" : "继续补全") { store.startBatchMeta() }
+                        .buttonStyle(.borderedProminent).disabled(waitingCount == 0)
+                    Button("重试失败项") { store.startBatchMeta(retryFailures: true) }
+                        .disabled(failedCount == 0)
+                }
+                Spacer()
+                Text("按作品类型自动归类并保留手动调整；不改游戏名称和存档。")
+                    .font(.caption).foregroundStyle(.secondary)
             }
         }
         .padding(24)

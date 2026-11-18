@@ -7,8 +7,8 @@ import TsumigeyaCore
 final class LibraryMetadataStore: ObservableObject {
     private(set) var dataDir = ""
     var currentGame: (String) -> GameRecord? = { _ in nil }
-    var didSave: (String, GameDlsiteMeta) -> Void = { _, _ in }
-    var hidesTitles: () -> Bool = { false }
+    var readMeta: (String) -> GameDlsiteMeta? = { _ in nil }
+    var didSave: (String, GameDlsiteMeta, [String: JSONValue]) -> Void = { _, _, _ in }
     private let injectedService: DLsiteService?
     private var metaTasks: [String: Task<Void, Never>] = [:]
     private var searchTasks: [String: Task<Void, Never>] = [:]
@@ -27,7 +27,6 @@ final class LibraryMetadataStore: ObservableObject {
         // 同一数据目录重载时保留服务的请求间隔，不能因清缓存绕过限速。
         if dataDir != dataDirectory { dlsiteService = injectedService }
         dataDir = dataDirectory
-        gameMeta = [:]
         metaError = [:]
         metaNotice = [:]
         searchHits = [:]
@@ -47,15 +46,11 @@ final class LibraryMetadataStore: ObservableObject {
         clearSearch(gameId: gameId)
         metaPreviews.removeValue(forKey: gameId)
         metaNotice.removeValue(forKey: gameId)
-        gameMeta.removeValue(forKey: gameId)
         metaError.removeValue(forKey: gameId)
     }
 
     func waitForFetch(gameId: String) async { await metaTasks[gameId]?.value }
     func waitForSearch(gameId: String) async { await searchTasks[gameId]?.value }
-
-    /// 详情按需加载的资料缓存；磁盘格式及未知字段保留由 GameMetaStore 负责。
-    @Published private(set) var gameMeta: [String: GameDlsiteMeta] = [:]
 
     /// 正在抓取元数据的游戏（防重复点击）。
     @Published private(set) var fetchingMeta: Set<String> = []
@@ -66,25 +61,9 @@ final class LibraryMetadataStore: ObservableObject {
     /// DLsite 服务（懒加载，首次用到才建）。
     private var dlsiteService: DLsiteService?
 
-    /// 取一个游戏的元数据（**没有就返回 nil，不猜**）。
+    /// 取启动／重载时一次性读入内存的元数据，不在 View 更新期间访问磁盘。
     func meta(for gameId: String) -> GameDlsiteMeta? {
-        if let cached = gameMeta[gameId] { return cached }
-        let loaded = GameMetaStore.load(dataDir: dataDir, gameId: gameId)
-        if let loaded {
-            // ⚠️ 这里**不能直接改 @Published 字典**
-            //    （在 View 的 body 里调这个方法会导致「修改状态时正在渲染」警告）
-            //    所以只返回值，不写缓存。真要缓存请走 `loadMeta(for:)`。
-            return loaded
-        }
-        return nil
-    }
-
-    /// 主动加载并缓存元数据（在 `.task` / 按钮里调）。
-    func loadMeta(for gameId: String) {
-        guard gameMeta[gameId] == nil else { return }
-        if let loaded = GameMetaStore.load(dataDir: dataDir, gameId: gameId) {
-            gameMeta[gameId] = loaded
-        }
+        readMeta(gameId)
     }
 
     /// 从游戏路径自动检测 RJ（不联网）。
@@ -101,7 +80,7 @@ final class LibraryMetadataStore: ObservableObject {
     ///
     /// ⚠️ **异步**：网络请求不能阻塞主线程。
     func fetchMeta(gameId: String, rj: String, refresh: Bool = false, category: String? = nil, preview: Bool = false) {
-        guard let expected = game(id: gameId), !hidesTitles() else { return }
+        guard let expected = game(id: gameId) else { return }
         guard !fetchingMeta.contains(gameId) else { return }
         fetchingMeta.insert(gameId)
         if preview { searchError.removeValue(forKey: gameId) }
@@ -126,7 +105,7 @@ final class LibraryMetadataStore: ObservableObject {
             guard let service = dlsiteService else { return }
 
             let result = await service.fetchResolved(rj: rj, category: category, refresh: refresh)
-            guard metaTokens[gameId] == token, game(id: gameId) == expected, !hidesTitles() else { return }
+            guard metaTokens[gameId] == token, game(id: gameId) == expected else { return }
 
             switch result {
             case .success(let work):
@@ -135,8 +114,7 @@ final class LibraryMetadataStore: ObservableObject {
                     return
                 }
                 // ⚠️ **合并时保护用户改过的字段**（D26）
-                let existing = gameMeta[gameId]
-                    ?? GameMetaStore.load(dataDir: dataDir, gameId: gameId)
+                let existing = meta(for: gameId)
                 let fields = existing?.work.rj == work.rj ? (existing?.editedFields ?? []) : []
                 let edited = Set(fields)
                 let merged = EditedFields.merge(
@@ -180,12 +158,11 @@ final class LibraryMetadataStore: ObservableObject {
             metaError[gameId] = "游戏已移除或发生变化，未保存作品信息。"
             return false
         }
-        if let error = GameMetaStore.save(dataDir: dataDir, gameId: gameId, meta: meta) {
+        if let error = GameMetaStore.save(dataDir: dataDir, gameId: gameId, meta: meta,
+                                       didWrite: { [self] in didSave(gameId, meta, $0) }) {
             metaError[gameId] = "保存作品信息失败：\(error)"
             return false
         }
-        gameMeta[gameId] = meta
-        didSave(gameId, meta)
         metaError.removeValue(forKey: gameId)
         return true
     }
@@ -209,7 +186,7 @@ final class LibraryMetadataStore: ObservableObject {
     ///
     /// ⚠️ **只返回候选，绝不自动选**（D24 —— 实测搜 Karryn 返回正片 + 3 个 DLC）。
     func searchMeta(gameId: String, keyword: String, category: String? = nil) {
-        guard let expected = game(id: gameId), !hidesTitles(), !searchingGameIDs.contains(gameId) else { return }
+        guard let expected = game(id: gameId), !searchingGameIDs.contains(gameId) else { return }
         searchingGameIDs.insert(gameId)
         searchError.removeValue(forKey: gameId)
         searchHits.removeValue(forKey: gameId)
@@ -234,7 +211,7 @@ final class LibraryMetadataStore: ObservableObject {
             guard let service = dlsiteService else { return }
 
             let result = await service.searchReport(keyword: keyword, category: category)
-            guard searchTokens[gameId] == token, game(id: gameId) == expected, !hidesTitles() else { return }
+            guard searchTokens[gameId] == token, game(id: gameId) == expected else { return }
 
             switch result {
             case .success(let report):
@@ -285,7 +262,7 @@ final class LibraryMetadataStore: ObservableObject {
 
     @discardableResult
     func applyMetaPreview(gameId: String) -> Bool {
-        guard game(id: gameId) != nil, !hidesTitles(), let incoming = metaPreviews[gameId] else { return false }
+        guard game(id: gameId) != nil, let incoming = metaPreviews[gameId] else { return false }
         let old = meta(for: gameId)
         let edited = old?.work.rj == incoming.rj ? (old?.editedFields ?? []) : []
         let merged = EditedFields.merge(old: old?.work, incoming: incoming, edited: Set(edited))

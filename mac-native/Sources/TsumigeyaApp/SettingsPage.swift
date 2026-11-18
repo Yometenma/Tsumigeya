@@ -179,24 +179,6 @@ struct SettingRow: View {
                     set: { store.setSetting(.deletionConfirmation, .bool($0)) }
                 ))
 
-            case .privacyMode:
-                Toggle("隐私模式", isOn: Binding(
-                    get: { store.privacy.isEnabled },
-                    set: { store.setSetting(.privacyMode, .bool($0)) }
-                ))
-                Text("隐藏全部作品封面，不依赖成人分级。可按 ⇧⌘P 快速切换。")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-
-            case .privacyHideTitles:
-                Toggle("隐私模式下同时隐藏标题", isOn: Binding(
-                    get: { store.settingBool(.privacyHideTitles) },
-                    set: { store.setSetting(.privacyHideTitles, .bool($0)) }
-                ))
-                Text("用游戏编号代替标题，并隐藏作品详情、游戏路径和搜索文字；不会修改原始数据。自定义分类名和系统窗口不在隐藏范围内。")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-
             case .saveSyncMode:
                 LabeledContent("存档备份", value: "手动导入导出")
                 Text("在游戏详情的「存档」页操作，无需另外启用。备份文件只保存在你选择的位置。")
@@ -291,7 +273,7 @@ struct SettingRow: View {
 
     private var pendingNote: Note? {
         switch key {
-        case .appearance, .listView, .deletionConfirmation, .privacyMode, .privacyHideTitles:
+        case .appearance, .listView, .deletionConfirmation:
             return nil
         case .saveSyncMode:
             // ⚠️ **P6 做完后 manual 模式真的能用** → caveat 而不是 notImplemented。

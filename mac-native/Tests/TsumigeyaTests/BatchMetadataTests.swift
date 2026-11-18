@@ -203,8 +203,8 @@ struct BatchMetadataTests {
         #expect(f.store.batchMetaItems.first?.state == .pending)
     }
 
-    @Test("隐藏标题立即暂停批量请求，晚到响应不落盘")
-    func privacyCancels() async throws {
+    @Test("主动暂停批量请求，晚到响应不落盘")
+    func pauseCancels() async throws {
         let f = try BatchFixture([game("1", "/fixture/RJ123456/Game.exe")])
         defer { f.cleanup() }
         await f.load()
@@ -216,8 +216,7 @@ struct BatchMetadataTests {
             try await Task.sleep(for: .milliseconds(10))
         }
         try #require(await !f.transport.requests.isEmpty)
-        f.store.setSetting(.privacyHideTitles, .bool(true))
-        f.store.setSetting(.privacyMode, .bool(true))
+        f.store.cancelBatchMeta()
         #expect(!f.store.batchMetaRunning)
         await f.transport.release()
         try await Task.sleep(for: .milliseconds(50))

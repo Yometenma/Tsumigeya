@@ -26,7 +26,7 @@ final class SaveSession: ObservableObject {
     private var isCurrent: Bool { valid && store?.game(id: game.id) == game }
 
     func reload() {
-        guard isCurrent, store?.privacy.hidesTitles == false else { return }
+        guard isCurrent else { return }
         listing = SaveStore.list(
             gamePath: game.gamePath, engine: game.gameEngine,
             overrideDirectory: overridePath)
@@ -40,10 +40,7 @@ final class SaveSession: ObservableObject {
             message = ("游戏已移除或发生变化，请重新打开存档页。", true)
             return false
         }
-        guard let store, !store.privacy.hidesTitles else {
-            message = ("请先关闭标题隐藏。", true)
-            return false
-        }
+        guard let store else { return false }
         guard !isWorking else { return false }
         store.refreshRunning()
         guard store.runningGames[game.id] == nil else {

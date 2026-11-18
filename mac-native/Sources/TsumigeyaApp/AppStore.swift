@@ -21,8 +21,8 @@ final class AppStore: ObservableObject {
         metadata = LibraryMetadataStore(service: dlsiteService)
         batchMetadata = BatchMetadataCoordinator(metadata: metadata)
         metadata.currentGame = { [weak self] id in self?.game(id: id) }
-        metadata.hidesTitles = { [weak self] in self?.privacy.hidesTitles ?? true }
-        metadata.didSave = { [weak self] _, _ in self?.library.metadataDidSave() }
+        metadata.readMeta = { [weak self] id in self?.library.metadata(for: id) }
+        metadata.didSave = { [weak self] id, meta, raw in self?.library.metadataDidSave(gameId: id, meta: meta, raw: raw) }
         library.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &featureSubscriptions)
         // ObservableObject 不会自动转发子对象变化，界面仍需收到更新。
@@ -110,9 +110,8 @@ final class AppStore: ObservableObject {
         let resolution = DataDir.resolve()
         dataDir = dataDirectory ?? resolution.path
         dataDirWarning = dataDirectory == nil ? resolution.warning : nil
-        metadata.reset(dataDirectory: dataDir)
-
         operationError = library.load(dataDirectory: dataDir)
+        metadata.reset(dataDirectory: dataDir)
 
         // ---- ⚠️ 设置（global-settings.json）**必须在启动时读** ----
         //
@@ -192,7 +191,7 @@ final class AppStore: ObservableObject {
     }
 
     func configureWine(game: GameRecord) {
-        guard !privacy.hidesTitles, game.gameEngine == "wine", runningGames[game.id] == nil, self.game(id: game.id) == game else { return }
+        guard game.gameEngine == "wine", runningGames[game.id] == nil, self.game(id: game.id) == game else { return }
         if installTasks["wine"] != nil {
             lastLaunchFailure[game.id] = "Wine 正在安装，请等待安装结束后再打开环境设置。"
             return
@@ -464,13 +463,10 @@ final class AppStore: ObservableObject {
         SettingsDefaults.string(key, from: settings)
     }
 
-    var privacy: LibraryPrivacy { LibraryPrivacy(settings: settings) }
-
-    func displayTitle(for game: GameRecord) -> String { privacy.title(for: game) }
+    func displayTitle(for game: GameRecord) -> String { game.gameTitle }
 
     /// 返回作品图片。列表和卡片使用主封面；详情 Hero 优先使用刮削到的首张展示图。
     func artworkURL(for game: GameRecord, preferPreview: Bool = false) -> URL? {
-        guard !privacy.isEnabled else { return nil }
         let work = meta(for: game.id)?.work
         let address: String?
         if preferPreview {
@@ -479,11 +475,9 @@ final class AppStore: ObservableObject {
             address = work?.coverUrl ?? work?.sampleImageURLs.first
         }
         // 只使用刮削到的真实作品图片，绝不使用看板娘或占位素材。
-        return privacy.coverURL(address)
-    }
-
-    func togglePrivacyMode() {
-        setSetting(.privacyMode, .bool(!privacy.isEnabled))
+        guard let address else { return nil }
+        guard let normalized = DLsiteParser.normalizeCoverUrl(address) else { return nil }
+        return URL(string: normalized)
     }
 
     /// 写一个设置（**立刻落盘**）。
@@ -499,11 +493,6 @@ final class AppStore: ObservableObject {
             return
         }
         settings = updated
-        if privacy.hidesTitles {
-            cancelBatchMeta()
-            metadata.cancelAll()
-            assistanceSessions.values.forEach { $0.pause() }
-        }
         applySettingSideEffect(key, value)
     }
 
@@ -590,11 +579,10 @@ final class AppStore: ObservableObject {
         return NwjsVersion.availableVersions(dataDir: dataDir)
     }
 
-    /// 目录修改不移动文件；隐私和运行状态由应用层检查。
+    /// 目录修改不移动文件；运行状态由应用层检查。
     func setSaveDirectoryOverride(gameId: String, path: String?) -> Bool {
         lastAddGameError = nil
         refreshRunning()
-        guard !privacy.hidesTitles else { lastAddGameError = "请先关闭标题隐藏。"; return false }
         guard runningGames[gameId] == nil else {
             lastAddGameError = "游戏运行中，不能更改存档目录。"; return false
         }
@@ -609,13 +597,11 @@ final class AppStore: ObservableObject {
     }
 
     func setCategoryMembership(gameId: String, categoryId: String, member: Bool) {
-        guard !privacy.hidesTitles else { operationError = "请先关闭标题隐藏。"; return }
         guard game(id: gameId) != nil else { operationError = "游戏已移除。"; return }
         _ = changeClassification(.membership(gameID: gameId, categoryID: categoryId, member: member))
     }
 
     func restoreAutomaticClassification(gameId: String) {
-        guard !privacy.hidesTitles else { operationError = "请先关闭标题隐藏。"; return }
         guard game(id: gameId) != nil else { operationError = "游戏已移除。"; return }
         _ = changeClassification(.restoreAutomatic(gameID: gameId))
     }
@@ -714,14 +700,12 @@ final class AppStore: ObservableObject {
 
     func addBatch(_ candidates: [LibraryIntake.Candidate]) -> Bool {
         lastAddGameError = nil
-        guard !privacy.hidesTitles else { lastAddGameError = "请先关闭标题隐藏。"; return false }
         return saveLibraryChange { try library.addBatch(candidates) }
     }
 
     func relocateGame(_ expected: GameRecord, folder: String) -> Bool {
         lastAddGameError = nil
         refreshRunning()
-        guard !privacy.hidesTitles else { lastAddGameError = "请先关闭标题隐藏。"; return false }
         guard runningGames[expected.id] == nil else {
             lastAddGameError = "游戏运行中，不能更改路径。"; return false
         }

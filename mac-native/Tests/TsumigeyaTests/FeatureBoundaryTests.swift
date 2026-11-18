@@ -173,15 +173,14 @@ struct FeatureBoundaryTests {
         #expect(!FileManager.default.fileExists(atPath: f.slot.appendingPathExtension("tsumigeya-bak").path))
     }
 
-    @Test("隐私检查位于会话边界，不能绕过界面导出或修改目录")
-    func savePrivacyGuard() async throws {
+    @Test("会话失效后不能导出或修改目录")
+    func invalidatedSaveGuard() async throws {
         let f = try BoundaryFixture()
         defer { f.cleanup() }
         await f.load()
         try Data("原存档".utf8).write(to: f.slot)
         let session = f.store.saveSession(for: f.game)
-        f.store.setSetting(.privacyHideTitles, .bool(true))
-        f.store.setSetting(.privacyMode, .bool(true))
+        session.invalidate()
         let output = f.directory.appendingPathComponent("blocked")
         session.exportArchive(outputDirectory: output.path)
         #expect(session.message?.isError == true)
@@ -227,6 +226,9 @@ struct FeatureBoundaryTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         let game = GameRecord(id: "1", gameTitle: "独立资料", gamePath: "/fixture/Game.exe", gameEngine: "nwjs")
         let metadata = LibraryMetadataStore()
+        var cached: [String: GameDlsiteMeta] = [:]
+        metadata.readMeta = { cached[$0] }
+        metadata.didSave = { id, meta, _ in cached[id] = meta }
         metadata.currentGame = { $0 == game.id ? game : nil }
         metadata.reset(dataDirectory: directory.path)
         let value = GameDlsiteMeta(work: DlsiteWork(rj: "RJ123456", title: "独立保存", fetchedAt: "test"))
@@ -269,7 +271,7 @@ struct FeatureBoundaryTests {
         #expect(f.store.batchMetaItems.map(\.id) == ["1"])
     }
 
-    @Test("重载取消旧资料请求并清空缓存，迟到响应不能重新写入")
+    @Test("重载取消旧资料请求并重建内存快照，迟到响应不能重新写入")
     func reloadInvalidatesMetadata() async throws {
         let transport = BoundaryTransport()
         let f = try BoundaryFixture(transport: transport)
@@ -279,27 +281,25 @@ struct FeatureBoundaryTests {
         f.store.fetchMeta(gameId: "1", rj: "RJ123456", refresh: true)
         try await waitForRequest(transport)
         await f.load()
-        #expect(f.store.gameMeta.isEmpty)
+        #expect(f.store.gameMeta["1"]?.work.rj == "RJ654321")
         #expect(f.store.fetchingMeta.isEmpty)
         await transport.release()
         try await Task.sleep(for: .milliseconds(50))
         #expect(f.store.meta(for: "1")?.work.rj == "RJ654321")
-        #expect(f.store.gameMeta.isEmpty)
+        #expect(f.store.gameMeta["1"]?.work.rj == "RJ654321")
         #expect(f.store.metaPreviews.isEmpty)
     }
 
-    @Test("隐私切换取消非批量资料请求，恢复显示后迟到响应也不能保存")
-    func privacyInvalidatesSingleLookup() async throws {
+    @Test("主动取消单项资料请求后迟到响应不能保存")
+    func cancellationInvalidatesSingleLookup() async throws {
         let transport = BoundaryTransport()
         let f = try BoundaryFixture(transport: transport)
         defer { f.cleanup(); Task { await transport.release() } }
         await f.load()
         f.store.fetchMeta(gameId: "1", rj: "RJ123456")
         try await waitForRequest(transport)
-        f.store.setSetting(.privacyHideTitles, .bool(true))
-        f.store.setSetting(.privacyMode, .bool(true))
+        f.store.cancelLookup(gameId: "1")
         #expect(f.store.fetchingMeta.isEmpty)
-        f.store.setSetting(.privacyMode, .bool(false))
         await transport.release()
         try await Task.sleep(for: .milliseconds(50))
         #expect(f.store.meta(for: "1") == nil)

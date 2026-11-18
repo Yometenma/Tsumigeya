@@ -101,17 +101,6 @@ struct TsumigeyaApp: App {
         .defaultSize(width: 1180, height: 760)
         .windowResizability(.contentMinSize)
         .commands {
-            CommandMenu("隐私") {
-                Toggle("隐私模式", isOn: Binding(
-                    get: { store.privacy.isEnabled },
-                    set: { store.setSetting(.privacyMode, .bool($0)) }
-                ))
-                .keyboardShortcut("p", modifiers: [.command, .shift])
-                Toggle("同时隐藏标题", isOn: Binding(
-                    get: { store.settingBool(.privacyHideTitles) },
-                    set: { store.setSetting(.privacyHideTitles, .bool($0)) }
-                ))
-            }
             CommandGroup(replacing: .appInfo) {
                 Button("关于 Tsumigeya") {
                     AboutPanel.show()

@@ -121,12 +121,6 @@ struct RootView: View {
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
 
-            Button { store.togglePrivacyMode() } label: {
-                Label(store.privacy.isEnabled ? "隐私已开启" : "隐私模式",
-                      systemImage: store.privacy.isEnabled ? "eye.slash.fill" : "eye")
-            }
-            .help("切换隐私模式（⇧⌘P）")
-
             if page == .library {
                 Button { store.openAddGame() } label: {
                     Label("添加游戏", systemImage: "plus")
@@ -229,7 +223,7 @@ struct RootView: View {
             Button("新建分类…") { store.beginCreateCategory() }
             Divider()
             Button("批量补全作品信息") { store.isBatchMetaPresented = true }
-                .disabled(store.games.isEmpty || store.privacy.hidesTitles)
+                .disabled(store.games.isEmpty)
             Button("批量入库") { store.isBatchAdding = true }
         } label: {
             Image(systemName: "ellipsis")
@@ -341,7 +335,7 @@ struct SidebarGameRow: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .buttonStyle(.plain)
-        .help(store.privacy.text(game.gamePath, replacement: "游戏路径已隐藏"))
+        .help(game.gamePath)
     }
 }
 // MARK: - 搜索框
@@ -352,7 +346,6 @@ struct SidebarGameRow: View {
 ///    在自定义顶栏里用会因为「没有原生容器」而位置错乱（本鱼实测过）。
 ///    自绘一个小的更好控制，而且样式与 mac 一致（圆角 + 放大镜 + 清除按钮）。
 struct SearchField: View {
-    @EnvironmentObject private var store: AppStore
     @Binding var text: String
     @FocusState private var isFocused: Bool
 
@@ -367,13 +360,7 @@ struct SearchField: View {
             .keyboardShortcut("f", modifiers: .command)
             .accessibilityLabel("搜索游戏")
             .help("搜索游戏（⌘F）")
-            Group {
-                if store.privacy.hidesTitles {
-                    SecureField("搜索内容已隐藏", text: $text)
-                } else {
-                    TextField("搜索名称、社团、标签或路径", text: $text)
-                }
-            }
+            TextField("搜索名称、社团、标签或路径", text: $text)
             .focused($isFocused)
             .textFieldStyle(.plain)
             .font(.system(size: 13))
@@ -556,7 +543,7 @@ struct GameCardTile: View {
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .onHover { isHovering = $0 }
         .animation(.easeOut(duration: 0.12), value: isHovering)
-        .help(store.privacy.text(game.gamePath, replacement: "游戏路径已隐藏"))
+        .help(game.gamePath)
     }
 
 
@@ -590,7 +577,7 @@ struct GameListRow: View {
             }
         }
         .padding(.vertical, 6)
-        .help(store.privacy.text(game.gamePath, replacement: "游戏路径已隐藏"))
+        .help(game.gamePath)
     }
 
 
@@ -754,7 +741,7 @@ private struct AppPresentations: ViewModifier {
         )) {
             Button("好", role: .cancel) { store.operationError = nil }
         } message: {
-            Text(store.privacy.text(store.operationError ?? "", replacement: "操作未完成。详细信息已隐藏，可关闭标题隐藏后查看。"))
+            Text(store.operationError ?? "")
         }
         // 删除游戏确认
         .alert("从游戏库移除？", isPresented: Binding(

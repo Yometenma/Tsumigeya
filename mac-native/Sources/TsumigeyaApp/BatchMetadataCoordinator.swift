@@ -53,7 +53,7 @@ final class BatchMetadataCoordinator: ObservableObject {
     }
 
     func startBatchMeta(retryFailures: Bool = false) {
-        guard !batchMetaRunning, !metadata.hidesTitles() else { return }
+        guard !batchMetaRunning else { return }
         let retryIDs = Set(batchMetaItems.filter { $0.state == .failed }.map(\.id))
         if retryFailures {
             for i in batchMetaItems.indices where batchMetaItems[i].state == .failed {
@@ -77,7 +77,7 @@ final class BatchMetadataCoordinator: ObservableObject {
             }
             for item in pending {
                 guard batchMetaItems.first(where: { $0.id == item.id })?.state == .pending else { continue }
-                guard !Task.isCancelled, batchMetaToken == token, !metadata.hidesTitles() else { break }
+                guard !Task.isCancelled, batchMetaToken == token else { break }
                 let id = item.id
                 guard metadata.currentGame(id) == item.game else {
                     setBatchMeta(id, state: .skipped, message: "游戏已移除或发生变化，请重新准备列表。")

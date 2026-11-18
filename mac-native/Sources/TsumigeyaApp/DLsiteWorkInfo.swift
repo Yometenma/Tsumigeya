@@ -3,29 +3,14 @@ import TsumigeyaCore
 
 struct WorkRemoteImage: View {
     let address: String?
-    @EnvironmentObject private var store: AppStore
-    @State private var attempt = 0
 
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 7).fill(.quaternary)
-            if let url = store.privacy.coverURL(address) {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .empty: ProgressView().controlSize(.small)
-                    case .success(let image):
-                        image.resizable().scaledToFit()
-                            .accessibilityLabel("作品图片已加载")
-                    case .failure:
-                        Button { attempt += 1 } label: {
-                            Label("重试图片", systemImage: "arrow.clockwise")
-                                .font(.caption)
-                        }.buttonStyle(.plain)
-                    @unknown default: EmptyView()
-                    }
-                }.id(attempt)
+            if let url = address.flatMap(DLsiteParser.normalizeCoverUrl).flatMap(URL.init(string:)) {
+                CachedRemoteImage(url: url).id(url)
             } else {
-                Image(systemName: store.privacy.isEnabled ? "eye.slash" : "photo")
+                Image(systemName: "photo")
                     .foregroundStyle(.secondary)
             }
         }
@@ -35,66 +20,60 @@ struct WorkRemoteImage: View {
 
 struct DLsiteWorkInfo: View {
     let work: DlsiteWork
-    @EnvironmentObject private var store: AppStore
     @State private var selectedImage: String?
 
     var body: some View {
-        if store.privacy.hidesTitles {
-            Text("作品信息已隐藏").foregroundStyle(.secondary)
-        } else {
-            VStack(alignment: .leading, spacing: 14) {
-                if let title = work.title { Text(title).font(.headline).textSelection(.enabled) }
-                Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 8) {
-                    row("社团", work.circle)
-                    row("发售日期", work.releaseDate)
-                    row("系列", work.series)
-                    row("作品类型", work.workType.map(typeName))
-                    row("语言", work.languages.isEmpty ? nil : work.languages.map(languageName).joined(separator: "、"))
-                    row("制作", work.creators.isEmpty ? nil : work.creators.joined(separator: "、"))
-                    row("配音", work.voiceActors.isEmpty ? nil : work.voiceActors.joined(separator: "、"))
-                    row("原版支持系统", work.supportedSystems)
-                }.font(.callout)
-                if !work.tags.isEmpty {
-                    Text("题材标签").font(.subheadline.weight(.medium))
-                    Text(work.tags.joined(separator: " · "))
-                        .font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
-                }
-                if let description = work.description, !description.isEmpty {
-                    Text("作品介绍").font(.subheadline.weight(.medium))
-                    Text(description).font(.callout).foregroundStyle(.secondary)
-                        .lineSpacing(5).textSelection(.enabled)
-                }
-                if !work.sampleImageURLs.isEmpty && !store.privacy.isEnabled {
-                    Text("预览截图").font(.subheadline.weight(.medium))
-                    ScrollView(.horizontal) {
-                        HStack(spacing: 10) {
-                            ForEach(work.sampleImageURLs, id: \.self) { address in
-                                Button { selectedImage = address } label: {
-                                    WorkRemoteImage(address: address).frame(width: 180, height: 126)
-                                }.buttonStyle(.plain).accessibilityLabel("放大预览截图")
-                            }
+        VStack(alignment: .leading, spacing: 14) {
+            if let title = work.title { Text(title).font(.headline).textSelection(.enabled) }
+            Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 8) {
+                row("社团", work.circle)
+                row("发售日期", work.releaseDate)
+                row("系列", work.series)
+                row("作品类型", work.workType.map(typeName))
+                row("语言", work.languages.isEmpty ? nil : work.languages.map(languageName).joined(separator: "、"))
+                row("制作", work.creators.isEmpty ? nil : work.creators.joined(separator: "、"))
+                row("配音", work.voiceActors.isEmpty ? nil : work.voiceActors.joined(separator: "、"))
+                row("原版支持系统", work.supportedSystems)
+            }.font(.callout)
+            if !work.tags.isEmpty {
+                Text("题材标签").font(.subheadline.weight(.medium))
+                Text(work.tags.joined(separator: " · "))
+                    .font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
+            }
+            if let description = work.description, !description.isEmpty {
+                Text("作品介绍").font(.subheadline.weight(.medium))
+                Text(description).font(.callout).foregroundStyle(.secondary)
+                    .lineSpacing(5).textSelection(.enabled)
+            }
+            if !work.sampleImageURLs.isEmpty {
+                Text("预览截图").font(.subheadline.weight(.medium))
+                ScrollView(.horizontal) {
+                    HStack(spacing: 10) {
+                        ForEach(work.sampleImageURLs, id: \.self) { address in
+                            Button { selectedImage = address } label: {
+                                WorkRemoteImage(address: address).frame(width: 180, height: 126)
+                            }.buttonStyle(.plain).accessibilityLabel("放大预览截图")
                         }
                     }
                 }
-                HStack {
-                    Text(work.rj).font(.caption.monospaced()).foregroundStyle(.secondary)
-                    if let url = URL(string: DLsiteService.pageURL(category: work.category ?? "maniax", rj: work.rj)) {
-                        Link("查看作品页", destination: url).font(.caption)
-                    }
-                    Spacer()
+            }
+            HStack {
+                Text(work.rj).font(.caption.monospaced()).foregroundStyle(.secondary)
+                if let url = URL(string: DLsiteService.pageURL(category: work.category ?? "maniax", rj: work.rj)) {
+                    Link("查看作品页", destination: url).font(.caption)
                 }
-                Text("信息获取时间：\(work.fetchedAt)")
-                    .font(.caption2).foregroundStyle(.tertiary)
+                Spacer()
             }
-            .sheet(isPresented: Binding(get: { selectedImage != nil }, set: { if !$0 { selectedImage = nil } })) {
-                VStack(spacing: 12) {
-                    WorkRemoteImage(address: selectedImage).frame(minWidth: 640, minHeight: 440)
-                    Button("关闭") { selectedImage = nil }.keyboardShortcut(.cancelAction)
-                }.padding(20)
-            }
-            .onChange(of: work.rj) { _, _ in selectedImage = nil }
-            .onChange(of: store.privacy.isEnabled) { _, enabled in if enabled { selectedImage = nil } }
+            Text("信息获取时间：\(work.fetchedAt)")
+                .font(.caption2).foregroundStyle(.tertiary)
         }
+        .sheet(isPresented: Binding(get: { selectedImage != nil }, set: { if !$0 { selectedImage = nil } })) {
+            VStack(spacing: 12) {
+                WorkRemoteImage(address: selectedImage).frame(minWidth: 640, minHeight: 440)
+                Button("关闭") { selectedImage = nil }.keyboardShortcut(.cancelAction)
+            }.padding(20)
+        }
+        .onChange(of: work.rj) { _, _ in selectedImage = nil }
     }
 
     @ViewBuilder private func row(_ title: String, _ value: String?) -> some View {

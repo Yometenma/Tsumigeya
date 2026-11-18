@@ -79,8 +79,8 @@ struct LibraryIntakeStoreTests {
         #expect(JSONStore.load(GameMap.self, from: root.appendingPathComponent("games.json")).value?.ordered == store.games)
     }
 
-    @Test("外部更改或标题隐私状态不能被定位和批量操作覆盖")
-    func staleAndPrivacy() async throws {
+    @Test("外部更改不能被定位操作覆盖")
+    func staleRelocation() async throws {
         let root = try fixture(); defer { try? FileManager.default.removeItem(at: root) }
         let a = try game(root, "a"); let b = try game(root, "b")
         let store = AppStore(); await store.load(dataDirectory: root.path)
@@ -92,8 +92,6 @@ struct LibraryIntakeStoreTests {
         #expect(JSONStore.save(map, to: url) == nil)
         let bytes = try Data(contentsOf: url)
         #expect(!store.relocateGame(old, folder: b.folder)); #expect(try Data(contentsOf: url) == bytes)
-        store.setSetting(.privacyMode, .bool(true)); store.setSetting(.privacyHideTitles, .bool(true))
-        #expect(!store.addBatch([b])); #expect(!store.relocateGame(old, folder: b.folder))
         #expect(try Data(contentsOf: url) == bytes)
     }
 

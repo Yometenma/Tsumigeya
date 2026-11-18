@@ -48,18 +48,9 @@ struct AddGameWizard: View {
             VStack(spacing: 0) {
                 header
                 Divider()
-                if store.privacy.hidesTitles {
-                    Text("添加内容已隐藏，关闭标题隐藏后可继续。")
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    Button("取消") { store.closeAddGame() }
-                        .keyboardShortcut(.cancelAction)
-                        .padding()
-                } else {
-                    content
-                    Divider()
-                    footer
-                }
+                content
+                Divider()
+                footer
             }
         }
         .frame(width: 820, height: 560)

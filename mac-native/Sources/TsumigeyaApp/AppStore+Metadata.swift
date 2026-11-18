@@ -3,7 +3,7 @@ import TsumigeyaCore
 
 // 保留统一界面入口，但不重复持有资料和队列的状态。
 extension AppStore {
-    var gameMeta: [String: GameDlsiteMeta] { metadata.gameMeta }
+    var gameMeta: [String: GameDlsiteMeta] { library.metadataByGameID }
     var fetchingMeta: Set<String> { metadata.fetchingMeta }
     var metaError: [String: String] { metadata.metaError }
     var searchingGameIDs: Set<String> { metadata.searchingGameIDs }
@@ -18,8 +18,7 @@ extension AppStore {
     var batchMetaRunning: Bool { batchMetadata.batchMetaRunning }
     var batchMetaRefreshAssociated: Bool { batchMetadata.batchMetaRefreshAssociated }
 
-    func meta(for gameId: String) -> GameDlsiteMeta? { metadata.meta(for: gameId) }
-    func loadMeta(for gameId: String) { metadata.loadMeta(for: gameId) }
+    func meta(for gameId: String) -> GameDlsiteMeta? { library.metadata(for: gameId) }
     func detectRJ(for game: GameRecord) -> [String] { metadata.detectRJ(for: game) }
     func fetchMeta(gameId: String, rj: String, refresh: Bool = false, category: String? = nil, preview: Bool = false) {
         metadata.fetchMeta(gameId: gameId, rj: rj, refresh: refresh, category: category, preview: preview)
