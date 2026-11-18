@@ -6,7 +6,7 @@ import Vision
 @testable import TsumigeyaCore
 @testable import TsumigeyaApp
 
-@Suite("旧设置兼容与文字资料内存缓存", .serialized)
+@Suite("旧显示设置兼容与文字资料内存缓存", .serialized)
 @MainActor
 struct LibraryPresentationTests {
     private func fixture() throws -> URL {
@@ -22,13 +22,13 @@ struct LibraryPresentationTests {
                                       fetchedAt: "test", sampleImageURLs: ["https://img.dlsite.jp/preview.jpg"]))
     }
 
-    @Test("旧隐私设置不隐藏标题或图片，不阻止存档操作；保存其他设置仍保留未知字段")
-    func legacySettingsAreInert() async throws {
+    @Test("旧显示设置不隐藏内容或限制操作，保存其他设置仍保留历史与未知字段", arguments: [true, false])
+    func legacySettingsAreInert(listView: Bool) async throws {
         let directory = try fixture()
         defer { try? FileManager.default.removeItem(at: directory) }
         let settingsURL = directory.appendingPathComponent("global-settings.json")
         let legacy: [String: JSONValue] = ["privacyMode": .bool(true), "privacyHideTitles": .bool(true),
-            "showAdultCovers": .bool(false), "future": .object(["keep": .int(7)])]
+            "showAdultCovers": .bool(false), "listView": .bool(listView), "future": .object(["keep": .int(7)])]
         try #require(JSONStore.save(legacy, to: settingsURL) == nil)
         try #require(GameMetaStore.save(dataDir: directory.path, gameId: "1", meta: meta()) == nil)
         let gamesURL = directory.appendingPathComponent("games.json")
@@ -40,10 +40,13 @@ struct LibraryPresentationTests {
         #expect(store.displayTitle(for: game) == game.gameTitle)
         #expect(store.artworkURL(for: game)?.absoluteString == "https://img.dlsite.jp/cover.jpg")
         #expect(store.artworkURL(for: game, preferPreview: true)?.absoluteString == "https://img.dlsite.jp/preview.jpg")
-        #expect(!SettingsGroups.settingsKeys.contains { ["privacyMode", "privacyHideTitles"].contains($0.rawValue) })
-        store.setSetting(.listView, .bool(false))
+        #expect(!SettingsGroups.settingsKeys.contains { ["privacyMode", "privacyHideTitles", "listView"].contains($0.rawValue) })
+        store.setSetting(.deletionConfirmation, .bool(false))
         let saved = try #require(JSONStore.load([String: JSONValue].self, from: settingsURL).value)
         for (key, value) in legacy { #expect(saved[key] == value) }
+        let restarted = AppStore()
+        await restarted.load(dataDirectory: directory.path)
+        for (key, value) in legacy { #expect(restarted.settings[key] == value) }
         #expect(try Data(contentsOf: gamesURL) == gamesBefore)
         #expect(GameMetaStore.load(dataDir: directory.path, gameId: "1") == metaBefore)
         let saves = directory.appendingPathComponent("saves")
@@ -94,11 +97,11 @@ struct LibraryPresentationTests {
         #expect(store.meta(for: "1") == nil)
     }
 
-    @Test("旧隐私设置开启时真实视图仍显示原始标题", .enabled(if: ProcessInfo.processInfo.environment["TSUMIGEYA_UI_TESTS"] == "1"), arguments: ["列表", "卡片", "编辑", "搜索结果"])
+    @Test("旧显示设置不遮挡当前侧边栏、详情、编辑和搜索结果中的标题", arguments: ["侧边栏", "详情", "编辑", "搜索结果"])
     func legacySettingsDoNotHideViews(surface: String) async throws {
         let directory = try fixture()
         defer { try? FileManager.default.removeItem(at: directory) }
-        try #require(JSONStore.save(["privacyMode": JSONValue.bool(true), "privacyHideTitles": .bool(true)],
+        try #require(JSONStore.save(["privacyMode": JSONValue.bool(true), "privacyHideTitles": .bool(true), "listView": .bool(false)],
             to: directory.appendingPathComponent("global-settings.json")) == nil)
         try #require(GameMetaStore.save(dataDir: directory.path, gameId: "1", meta: meta("VISIBLE GAME TITLE")) == nil)
         let store = AppStore()
@@ -106,12 +109,12 @@ struct LibraryPresentationTests {
         let game = try #require(store.games.first)
         let view: AnyView
         switch surface {
-        case "列表": view = AnyView(GameListRow(game: game, isRunning: false))
-        case "卡片": view = AnyView(GameCardTile(game: game, isRunning: false, isSelected: false, onSelect: {}))
+        case "侧边栏": view = AnyView(SidebarGameRow(game: game, isSelected: true, isRunning: false, action: {}))
+        case "详情": view = AnyView(RootView(selection: game.id, loadsOnAppear: false))
         case "编辑": view = AnyView(GameEditView(game: game))
         case "搜索结果": view = AnyView(DLsiteSearchResults(hits: [.init(rj: "RJ123456", title: game.gameTitle,
             circle: nil, coverUrl: nil, order: 0)], onSelect: { _ in }, onCancel: {}))
-        default: view = AnyView(GameDetailView(game: game))
+        default: throw CocoaError(.coderInvalidValue)
         }
         _ = NSApplication.shared
         let hosting = NSHostingView(rootView: view.environmentObject(store).background(Color(nsColor: .windowBackgroundColor)))
@@ -125,8 +128,12 @@ struct LibraryPresentationTests {
         var found = false
         while !found && ContinuousClock.now < deadline {
             hosting.layoutSubtreeIfNeeded()
-            let bitmap = try #require(hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds))
-            hosting.cacheDisplay(in: hosting.bounds, to: bitmap)
+            // 详情判据排除侧边栏，避免只识别到左侧标题就误判详情已显示。
+            let bounds = surface == "详情"
+                ? NSRect(x: 249, y: 0, width: hosting.bounds.width - 249, height: hosting.bounds.height)
+                : hosting.bounds
+            let bitmap = try #require(hosting.bitmapImageRepForCachingDisplay(in: bounds))
+            hosting.cacheDisplay(in: bounds, to: bitmap)
             let image = try #require(bitmap.cgImage)
             let request = VNRecognizeTextRequest()
             request.recognitionLevel = .accurate

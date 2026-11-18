@@ -126,20 +126,20 @@ struct AppStoreReliabilityTests {
         #expect(try Data(contentsOf: url) == original)
     }
 
-    @Test("启动直接应用持久化的列表设置，写入失败不发布临时值")
+    @Test("启动直接应用持久化的删除确认设置，写入失败不发布临时值")
     func settingsLoadAndFailure() async throws {
         let dir = try directory()
         defer { try? FileManager.default.removeItem(at: dir) }
         let url = dir.appendingPathComponent("global-settings.json")
-        #expect(JSONStore.save(["listView": JSONValue.bool(false)], to: url) == nil)
+        #expect(JSONStore.save(["deletionConfirmation": JSONValue.bool(false)], to: url) == nil)
         let store = AppStore()
         await store.load(dataDirectory: dir.path)
-        #expect(!store.settingBool(.listView))
+        #expect(!store.settingBool(.deletionConfirmation))
         try FileManager.default.createDirectory(at: url.appendingPathExtension("bak"), withIntermediateDirectories: true)
-        store.setSetting(.listView, .bool(true))
-        #expect(!store.settingBool(.listView))
+        store.setSetting(.deletionConfirmation, .bool(true))
+        #expect(!store.settingBool(.deletionConfirmation))
         #expect(store.operationError != nil)
-        #expect(JSONStore.load([String: JSONValue].self, from: url).value?["listView"] == .bool(false))
+        #expect(JSONStore.load([String: JSONValue].self, from: url).value?["deletionConfirmation"] == .bool(false))
     }
 
     @Test("残留安装目录可重试，取消后等待原任务释放槽位")

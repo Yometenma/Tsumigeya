@@ -163,7 +163,7 @@ enum UISnapshot {
                 dir: directory, appearance: appearance)
         }
 
-        // 新入口必须纳入快照；使用临时设置副本，不能为验 UI 改写用户的显示偏好。
+        // 入库、存档等预览使用临时数据副本，不能为验 UI 改写正式游戏库。
         let previewDirectory = FileManager.default.temporaryDirectory
             .appendingPathComponent("tsmg-ui-preview-" + UUID().uuidString)
         do {
@@ -177,11 +177,6 @@ enum UISnapshot {
             }
             let previewStore = AppStore()
             await previewStore.load(dataDirectory: previewDirectory.path)
-            previewStore.setSetting(.listView, .bool(false))
-            failures += captureWindow(
-                RootView(selection: nil, loadsOnAppear: false).environmentObject(previewStore),
-                size: CGSize(width: 1280, height: 800), name: "08-library-grid",
-                dir: directory, appearance: appearance)
             if let game = store.games.first {
                 for (tab, name) in [(GameDetailView.DetailTab.saves, "09-detail-saves"),
                                     (.runtime, "10-detail-runtime")] {
@@ -232,7 +227,6 @@ enum UISnapshot {
                     size: CGSize(width: 480, height: 500), name: "14-detail-long-title",
                     dir: directory, appearance: appearance)
             }
-            previewStore.setSetting(.listView, .bool(true))
             failures += captureWindow(
                 RootView(selection: previewStore.games.first?.id, loadsOnAppear: false)
                     .environmentObject(previewStore),

@@ -23,23 +23,23 @@ struct AppSettingsTests {
             "enabled": .bool(false), "options": .array([.string("保留"), .int(3)])
         ])
         let original: [String: JSONValue] = [
-            "appearance": .string("system"), "listView": .bool(true),
+            "appearance": .string("system"), "deletionConfirmation": .bool(true),
             "darkTheme": .bool(false), "future": extensionValue
         ]
         try #require(JSONStore.save(original, to: url) == nil)
         let store = AppStore()
         await store.load(dataDirectory: dir.path)
-        #expect(store.settingBool(.listView))
-        store.setSetting(.listView, .bool(false))
+        #expect(store.settingBool(.deletionConfirmation))
+        store.setSetting(.deletionConfirmation, .bool(false))
         #expect(store.operationError == nil)
-        #expect(!store.settingBool(.listView))
+        #expect(!store.settingBool(.deletionConfirmation))
         var expected = original
-        expected["listView"] = .bool(false)
+        expected["deletionConfirmation"] = .bool(false)
         #expect(JSONStore.load([String: JSONValue].self, from: url).value == expected)
 
         let restarted = AppStore()
         await restarted.load(dataDirectory: dir.path)
-        #expect(!restarted.settingBool(.listView))
+        #expect(!restarted.settingBool(.deletionConfirmation))
         #expect(restarted.settings == expected)
     }
 
@@ -50,19 +50,19 @@ struct AppSettingsTests {
         let url = dir.appendingPathComponent("global-settings.json")
         let store = AppStore()
         await store.load(dataDirectory: dir.path)
-        #expect(store.settingBool(.listView))
+        #expect(store.settingBool(.deletionConfirmation))
         #expect(store.settingString(.appearance) == "system")
         #expect(!FileManager.default.fileExists(atPath: url.path))
 
         // 先装入非默认值，再重读坏文件，才能发现残留的旧内存设置。
-        try #require(JSONStore.save(["listView": JSONValue.bool(false)], to: url) == nil)
+        try #require(JSONStore.save(["deletionConfirmation": JSONValue.bool(false)], to: url) == nil)
         await store.load(dataDirectory: dir.path)
-        try #require(!store.settingBool(.listView))
+        try #require(!store.settingBool(.deletionConfirmation))
         let original = Data("{broken".utf8)
         try original.write(to: url)
         await store.load(dataDirectory: dir.path)
         #expect(store.settings.isEmpty)
-        #expect(store.settingBool(.listView))
+        #expect(store.settingBool(.deletionConfirmation))
         #expect(store.settingString(.appearance) == "system")
         #expect(try Data(contentsOf: url) == original)
     }
@@ -92,6 +92,6 @@ struct AppSettingsTests {
     @Test("常用设置可操作，未实现的选项不伪装成可用")
     func availableSettingsMatchWorkingFeatures() {
         let available = Set(SettingsGroups.Key.allCases.filter { SettingRow(key: $0).isAvailable })
-        #expect(available == Set([SettingsGroups.Key.appearance, .listView, .deletionConfirmation, .saveSyncMode]).union(SettingsGroups.group(.metadata)?.keys ?? []))
+        #expect(available == Set([SettingsGroups.Key.appearance, .deletionConfirmation, .saveSyncMode]).union(SettingsGroups.group(.metadata)?.keys ?? []))
     }
 }

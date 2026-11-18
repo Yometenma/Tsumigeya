@@ -20,7 +20,6 @@ public enum SettingsGroups {
     public enum Key: String, CaseIterable, Sendable {
         case appearance
         case language
-        case listView
         case deletionConfirmation
         case nonInstalledAutodetect
         case checkModuleUpdatesOnStartup
@@ -121,7 +120,7 @@ public enum SettingsGroups {
     /// ⚠️ 同理 `diagnoseBeforeLaunch` 与 `nonInstalledAutodetect` 都在 `launch` 组：
     ///    它们都影响「这次启动会不会被拦 / 能不能认出来」。
     public static let groups: [Group] = [
-        Group(id: .appearance, keys: [.appearance, .listView], defaultOpen: true),
+        Group(id: .appearance, keys: [.appearance], defaultOpen: true),
         Group(id: .library,
               keys: [.deletionConfirmation, .saveSyncMode],
               defaultOpen: true),
@@ -187,8 +186,6 @@ public enum SettingsDefaults {
     ///    「`saved.x == false ? false : true`」—— 即「**缺省当开**」，
     ///    因为它们**不在**这个常量里。搞混会让「用户没设过」变成「用户关了」。
     public static let booleans: [SettingsGroups.Key: Bool] = [
-        // 列表对长标题更易读；是否显示封面不影响已有用户的默认选择。
-        .listView: true,
         .deletionConfirmation: true,
         .nonInstalledAutodetect: true,
         .checkModuleUpdatesOnStartup: true,

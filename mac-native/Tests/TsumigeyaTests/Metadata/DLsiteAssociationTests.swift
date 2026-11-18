@@ -211,7 +211,7 @@ struct DLsiteAssociationTests {
 @Suite("作品查找界面布局", .serialized)
 @MainActor
 struct DLsiteScrapingPresentationTests {
-    @Test("生产视图的查找、候选、预览与丰富详情均可渲染", .enabled(if: ProcessInfo.processInfo.environment["TSUMIGEYA_UI_TESTS"] == "1"), arguments: ["查找", "候选", "预览", "详情"])
+    @Test("生产视图的查找、候选、预览与丰富详情均可渲染", arguments: ["查找", "候选", "预览", "详情"])
     func layouts(state: String) async throws {
         let page = """
         <script type="application/ld+json">{"@type":"Product","sku":"RJ123456","name":"SCRAPING SAMPLE","description":"用于验证作品预览的简介，不对应真实在售作品。"}</script>

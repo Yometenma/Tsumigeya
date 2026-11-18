@@ -89,12 +89,12 @@ struct SettingsGroupSemanticsTests {
         #expect(SettingsGroups.group(.data) != nil)
     }
 
-    /// 外观组里有主题与列表视图。
+    /// 外观组只提供当前可用的主题设置。
     @Test("外观组")
     func appearanceGroup() {
         let keys = SettingsGroups.group(.appearance)?.keys ?? []
-        #expect(keys.contains(.appearance))
-        #expect(keys.contains(.listView))
+        #expect(keys == [.appearance])
+        #expect(SettingsGroups.Key(rawValue: "listView") == nil)
     }
 
     /// 游戏库组里有删确认 / 存档同步。
@@ -143,12 +143,11 @@ struct SettingsDefaultsTests {
     func regularBooleanDefaults() {
         let empty: [String: JSONValue] = [:]
         #expect(SettingsDefaults.boolean(.deletionConfirmation, from: empty) == true)
-        #expect(SettingsDefaults.boolean(.listView, from: empty) == true)
         #expect(SettingsDefaults.boolean(.nonInstalledAutodetect, from: empty) == true)
 
         // 显式设了就听用户的
-        let off: [String: JSONValue] = ["listView": .bool(false)]
-        #expect(SettingsDefaults.boolean(.listView, from: off) == false)
+        let off: [String: JSONValue] = ["deletionConfirmation": .bool(false)]
+        #expect(SettingsDefaults.boolean(.deletionConfirmation, from: off) == false)
     }
 
     /// 字符串默认值。

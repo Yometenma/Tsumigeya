@@ -227,15 +227,6 @@ struct SettingRow: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
 
-            case .listView:
-                Toggle("游戏库用列表视图", isOn: Binding(
-                    get: { store.settingBool(.listView) },
-                    set: { store.setSetting(.listView, .bool($0)) }
-                ))
-                Text("也可以在游戏库右上角随时切换列表与卡片。")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-
             case .deletionConfirmation:
                 Toggle("删除游戏前弹确认", isOn: Binding(
                     get: { store.settingBool(.deletionConfirmation) },
@@ -302,17 +293,7 @@ struct SettingRow: View {
         }
         }
 
-    /// 这个设置项现在**是否真的生效**。返回 nil = 已生效。
-    ///
-    /// ⚠️ 判据是「有没有代码消费它」（本鱼用 grep 逐项查过）：
-    ///    · `appearance` → 已接（改窗口外观）
-    ///    · `listView`   → 已接（库页两种视图）
-    ///    · 其余         → **还没接**（它们依赖 P6 存档 / P7 元数据 / 诊断等功能）
-    /// 设置项下方的说明。
-    ///
-    /// ⚠️ **两种语义分开**（用户 2026-11-06 报「开关开着还显示未启用」）。
-    ///
-    /// 返回 nil = 无需说明。
+    /// 未实现的选项与已实现但有使用限制的选项分开标识，避免误导用户。
     struct Note {
         /// 这句说明是「功能没做」还是「能用但有须知」。
         ///
@@ -352,7 +333,7 @@ struct SettingRow: View {
 
     private var pendingNote: Note? {
         switch key {
-        case .appearance, .listView, .deletionConfirmation, .metadataPreferredLanguage, .metadataFallbackLanguage, .metadataEndpoint, .metadataModel, .metadataMode, .metadataLANEndpoint, .metadataTimeout, .metadataInputLimit, .metadataJSONOutput, .metadataDisableThinking, .metadataSearchProvider, .metadataSearchEndpoint, .metadataSearchLANEndpoint, .metadataSearchLimit, .metadataSearchMethod, .metadataSearchQueryKey, .metadataSearchResultsPath, .metadataSearchTitlePath, .metadataSearchURLPath, .metadataSearchSummaryPath, .metadataSearchParameters:
+        case .appearance, .deletionConfirmation, .metadataPreferredLanguage, .metadataFallbackLanguage, .metadataEndpoint, .metadataModel, .metadataMode, .metadataLANEndpoint, .metadataTimeout, .metadataInputLimit, .metadataJSONOutput, .metadataDisableThinking, .metadataSearchProvider, .metadataSearchEndpoint, .metadataSearchLANEndpoint, .metadataSearchLimit, .metadataSearchMethod, .metadataSearchQueryKey, .metadataSearchResultsPath, .metadataSearchTitlePath, .metadataSearchURLPath, .metadataSearchSummaryPath, .metadataSearchParameters:
             return nil
         case .saveSyncMode:
             // ⚠️ **P6 做完后 manual 模式真的能用** → caveat 而不是 notImplemented。
