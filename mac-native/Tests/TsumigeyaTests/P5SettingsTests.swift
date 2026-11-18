@@ -42,7 +42,11 @@ struct SettingsGroupsIntegrityTests {
 
     @Test("作品信息设置集中归组，与游戏翻译及版本偏好独立")
     func metadataSettings() {
-        #expect(SettingsGroups.group(.metadata)?.keys == [.metadataPreferredLanguage, .metadataFallbackLanguage, .metadataEndpoint, .metadataModel, .metadataMode])
+        let keys = Set(SettingsGroups.group(.metadata)?.keys ?? [])
+        #expect(keys.isSuperset(of: [.metadataPreferredLanguage, .metadataFallbackLanguage, .metadataEndpoint, .metadataModel, .metadataMode, .metadataLANEndpoint, .metadataSearchProvider, .metadataSearchEndpoint, .metadataSearchLANEndpoint, .metadataTimeout, .metadataInputLimit, .metadataJSONOutput, .metadataDisableThinking]))
+        #expect(SettingsDefaults.string(.metadataSearchProvider, from: [:]) == "native")
+        #expect(!SettingsDefaults.boolean(.metadataJSONOutput, from: [:]))
+        #expect(SettingsDefaults.string(.metadataSearchResultsPath, from: ["metadataSearchResultsPath": .string("")]) == "")
         #expect(SettingsDefaults.string(.metadataPreferredLanguage, from: [:]) == "zh_CN")
         #expect(SettingsDefaults.string(.metadataFallbackLanguage, from: [:]) == "ja_JP")
     }

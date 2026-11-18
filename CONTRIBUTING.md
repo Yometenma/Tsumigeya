@@ -128,6 +128,12 @@ swift run Tsumigeya
 - DLsite 搜索不能自动选择第一条结果；封面 host 使用白名单，请求间隔至少 800ms。
 - 解析作品页时精确查找 `var contents`，使用能识别字符串的括号配对扫描 JSON，不使用非贪婪正则截取对象。
 
+### 独立搜索及本地模型验收
+
+`metadata-search` 通过 `TSUMIGEYA_SEARCH_PROVIDER=native|tavily|searxng|custom|disabled` 选择搜索方式；独立搜索配置 `TSUMIGEYA_SEARCH_ENDPOINT`、`TSUMIGEYA_SEARCH_KEY` 和可选的 `TSUMIGEYA_SEARCH_LIMIT`。Tavily 地址留空使用官方接口。自定义方式支持 `TSUMIGEYA_SEARCH_METHOD`、`_QUERY_KEY`、`_RESULTS_PATH`、`_TITLE_PATH`、`_URL_PATH`、`_SUMMARY_PATH`、`_PARAMETERS`（均以 `TSUMIGEYA_SEARCH` 为前缀），认证仅支持 Bearer。密钥只通过环境或安全输入传递，不写入测试样本、脚本、日志或命令示例。
+
+局域网 HTTP 接口需显式 `TSUMIGEYA_METADATA_ALLOW_LAN=1` 或 `TSUMIGEYA_SEARCH_ALLOW_LAN=1`，各自只授权本次完整地址，不放宽网页抓取规则。本地模型可选 `TSUMIGEYA_METADATA_TIMEOUT`、`_INPUT_LIMIT`、`_JSON=1`、`_NO_THINKING=1`。默认不要求结构化输出或额外模板参数，服务不兼容时不自动重试。真实验收须区分：搜索认证、候选来源、公开页面读取、模型整理、预览确认及落盘；一个环节成功不代表全链路通过。
+
 ## 提交 Pull Request 前
 
 - 尽量让一次改动只解决一个明确的问题，并在说明中写清改动目的。

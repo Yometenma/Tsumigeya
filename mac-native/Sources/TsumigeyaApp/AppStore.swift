@@ -31,6 +31,12 @@ final class AppStore: ObservableObject {
             return MetadataAIService(settings: self.metadataAPISettings,
                                      key: try MetadataCredential.read(endpoint: self.metadataAPISettings.endpoint))
         }
+        metadata.searchProvider = { [weak self] in self?.metadataSearchSettings.provider ?? .disabled }
+        metadata.searchService = { [weak self] in
+            guard let self else { throw MetadataFailure("游戏库已关闭。") }
+            let settings = self.metadataSearchSettings
+            return MetadataSearchService(settings: settings, key: try MetadataCredential.read(endpoint: settings.effectiveEndpoint, search: true))
+        }
         metadata.currentGame = { [weak self] id in self?.game(id: id) }
         metadata.readMeta = { [weak self] id in self?.library.metadata(for: id) }
         metadata.didSave = { [weak self] id, meta, raw in self?.library.metadataDidSave(gameId: id, meta: meta, raw: raw) }
@@ -497,18 +503,26 @@ final class AppStore: ObservableObject {
     ///    用户改完就期望它生效。攒着等一个保存按钮反而是 mac 上少见的做法
     ///    （系统偏好设置也是改完立刻生效）。
     func setSetting(_ key: SettingsGroups.Key, _ value: JSONValue) {
-        if key == .metadataEndpoint, let address = value.stringValue,
+        if [.metadataEndpoint, .metadataSearchEndpoint].contains(key), let address = value.stringValue,
            address.contains("?") || address.contains("@") || address.contains("#") {
             operationError = "接口地址不能包含账号、密码、查询参数或片段。密钥请填入专用密钥框，不会保存到设置文件。"
             return
         }
+        if key == .metadataSearchParameters, let text = value.stringValue,
+           let object = try? JSONDecoder().decode(JSONValue.self, from: Data(text.utf8)).objectValue,
+           MetadataSearchService.containsSecret(object) {
+            operationError = "搜索附加参数不能包含密钥或令牌，请使用独立密钥框；未保存。"; return
+        }
         var updated = settings
+        if key == .metadataEndpoint, value != settings[key.rawValue] { updated.removeValue(forKey: SettingsGroups.Key.metadataLANEndpoint.rawValue) }
+        if key == .metadataSearchEndpoint || key == .metadataSearchProvider, value != settings[key.rawValue] { updated.removeValue(forKey: SettingsGroups.Key.metadataSearchLANEndpoint.rawValue) }
         updated[key.rawValue] = value
         if let error = JSONStore.save(JSONValue.object(updated), to: settingsURL) {
             operationError = "设置保存失败：\(error)"
             return
         }
         settings = updated
+        if [.metadataEndpoint, .metadataLANEndpoint, .metadataSearchEndpoint, .metadataSearchLANEndpoint, .metadataSearchProvider].contains(key) { metadata.cancelAll() }
         applySettingSideEffect(key, value)
     }
 

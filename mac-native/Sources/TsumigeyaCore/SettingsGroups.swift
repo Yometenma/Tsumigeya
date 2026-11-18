@@ -30,6 +30,7 @@ public enum SettingsGroups {
         case diagnoseBeforeLaunch
         case saveSyncMode
         case metadataPreferredLanguage, metadataFallbackLanguage, metadataEndpoint, metadataModel, metadataMode
+        case metadataLANEndpoint, metadataTimeout, metadataInputLimit, metadataJSONOutput, metadataDisableThinking, metadataSearchProvider, metadataSearchEndpoint, metadataSearchLANEndpoint, metadataSearchLimit, metadataSearchMethod, metadataSearchQueryKey, metadataSearchResultsPath, metadataSearchTitlePath, metadataSearchURLPath, metadataSearchSummaryPath, metadataSearchParameters
     }
 
     /// 全部设置项的唯一清单。
@@ -128,7 +129,7 @@ public enum SettingsGroups {
               keys: [.language, .preferredLanguage, .fallbackLanguage, .languageSwitchPrompt],
               defaultOpen: false),
         Group(id: .metadata,
-              keys: [.metadataPreferredLanguage, .metadataFallbackLanguage, .metadataEndpoint, .metadataModel, .metadataMode],
+              keys: [.metadataPreferredLanguage, .metadataFallbackLanguage, .metadataEndpoint, .metadataModel, .metadataMode, .metadataLANEndpoint, .metadataTimeout, .metadataInputLimit, .metadataJSONOutput, .metadataDisableThinking, .metadataSearchProvider, .metadataSearchEndpoint, .metadataSearchLANEndpoint, .metadataSearchLimit, .metadataSearchMethod, .metadataSearchQueryKey, .metadataSearchResultsPath, .metadataSearchTitlePath, .metadataSearchURLPath, .metadataSearchSummaryPath, .metadataSearchParameters],
               defaultOpen: true),
         Group(id: .launch,
               keys: [.nonInstalledAutodetect, .diagnoseBeforeLaunch,
@@ -236,13 +237,17 @@ public enum SettingsDefaults {
         // 存档同步：none（不接任何云，D83）
         .saveSyncMode: "none",
         .metadataPreferredLanguage: "zh_CN", .metadataFallbackLanguage: "ja_JP",
-        .metadataMode: "chat",
+        .metadataMode: "chat", .metadataTimeout: "180", .metadataInputLimit: "16000",
+        .metadataSearchProvider: "native", .metadataSearchLimit: "5", .metadataSearchMethod: "GET",
+        .metadataSearchQueryKey: "q", .metadataSearchResultsPath: "results", .metadataSearchTitlePath: "title",
+        .metadataSearchURLPath: "url", .metadataSearchSummaryPath: "content", .metadataSearchParameters: "{}",
     ]
 
     /// 读一个字符串设置。
     public static func string(
         _ key: SettingsGroups.Key, from settings: [String: JSONValue]
     ) -> String {
+        if key == .metadataSearchResultsPath, let value = settings[key.rawValue]?.stringValue { return value }
         if let value = settings[key.rawValue]?.stringValue, !value.isEmpty {
             return value
         }

@@ -8,6 +8,26 @@ extension AppStore {
         result.endpoint = settingString(.metadataEndpoint).trimmingCharacters(in: .whitespacesAndNewlines)
         result.model = settingString(.metadataModel)
         result.mode = MetadataAPISettings.Mode(rawValue: settingString(.metadataMode)) ?? .chat
+        result.authorizedLANEndpoint = settingString(.metadataLANEndpoint)
+        result.timeoutSeconds = Double(settingString(.metadataTimeout)) ?? 180
+        result.inputCharacters = Int(settingString(.metadataInputLimit)) ?? 16_000
+        result.jsonOutput = settingBool(.metadataJSONOutput)
+        result.disableThinking = settingBool(.metadataDisableThinking)
+        return result
+    }
+    var metadataSearchSettings: MetadataSearchSettings {
+        var result = MetadataSearchSettings()
+        result.provider = MetadataSearchSettings.Provider(rawValue: settingString(.metadataSearchProvider)) ?? .native
+        result.endpoint = settingString(.metadataSearchEndpoint)
+        result.authorizedLANEndpoint = settingString(.metadataSearchLANEndpoint)
+        result.limit = Int(settingString(.metadataSearchLimit)) ?? 5
+        result.method = settingString(.metadataSearchMethod)
+        result.queryKey = settingString(.metadataSearchQueryKey)
+        result.resultsPath = settingString(.metadataSearchResultsPath)
+        result.titlePath = settingString(.metadataSearchTitlePath)
+        result.urlPath = settingString(.metadataSearchURLPath)
+        result.summaryPath = settingString(.metadataSearchSummaryPath)
+        result.parameters = settingString(.metadataSearchParameters)
         return result
     }
     var externalCandidates: [String: [MetadataCandidate]] { metadata.externalCandidates }

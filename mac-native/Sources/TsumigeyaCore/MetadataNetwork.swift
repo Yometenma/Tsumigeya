@@ -43,20 +43,26 @@ public enum MetadataNetwork {
     public static func request(_ request: URLRequest, maxBytes: Int) async throws -> (Data, HTTPURLResponse) {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.httpCookieStorage = nil; configuration.urlCache = nil
-        configuration.timeoutIntervalForResource = 100
+        configuration.timeoutIntervalForResource = min(900, max(30, request.timeoutInterval))
         let session = URLSession(configuration: configuration, delegate: MetadataNoRedirect(), delegateQueue: nil)
         defer { session.invalidateAndCancel() }
-        let (bytes, response) = try await session.bytes(for: request)
-        guard let http = response as? HTTPURLResponse, http.expectedContentLength <= Int64(maxBytes) else {
-            throw MetadataFailure("服务器返回内容过大或响应无效。")
+        do {
+            let (bytes, response) = try await session.bytes(for: request)
+            guard let http = response as? HTTPURLResponse, http.expectedContentLength <= Int64(maxBytes) else {
+                throw MetadataFailure("服务器返回内容过大或响应无效。")
+            }
+            var data = Data()
+            for try await byte in bytes {
+                if data.count >= maxBytes { throw MetadataFailure("服务器返回内容超过大小限制。") }
+                data.append(byte)
+            }
+            try Task.checkCancellation()
+            return (data, http)
+        } catch let error as URLError {
+            if error.code == .cancelled { throw CancellationError() }
+            if error.code == .timedOut { throw MetadataFailure("请求超时；模型较慢时可在作品信息设置中延长等待上限。原有资料未修改。") }
+            throw MetadataFailure("网络连接未完成（错误码 \(error.code.rawValue)），请检查页面可达性、接口地址、代理或服务监听地址。原有资料未修改。")
         }
-        var data = Data()
-        for try await byte in bytes {
-            if data.count >= maxBytes { throw MetadataFailure("服务器返回内容超过大小限制。") }
-            data.append(byte)
-        }
-        try Task.checkCancellation()
-        return (data, http)
     }
 
     public static func page(_ url: URL, maxBytes: Int = 3 * 1024 * 1024) async throws -> (URL, String) {

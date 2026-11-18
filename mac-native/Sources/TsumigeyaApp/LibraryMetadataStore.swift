@@ -12,6 +12,8 @@ final class LibraryMetadataStore: ObservableObject {
         return MetadataPage(url: finalURL, html: html)
     }
     var aiService: () throws -> MetadataAIService = { throw MetadataFailure("请先配置作品信息接口。") }
+    var searchProvider: () -> MetadataSearchSettings.Provider = { .native }
+    var searchService: () throws -> MetadataSearchService = { throw MetadataFailure("请先配置独立搜索接口。") }
     @Published private(set) var externalCandidates: [String: [MetadataCandidate]] = [:]
     private var previewGames: [String: GameRecord] = [:]
     var currentGame: (String) -> GameRecord? = { _ in nil }
@@ -301,8 +303,20 @@ final class LibraryMetadataStore: ObservableObject {
     }
 
     func searchExternal(gameId: String, name: String) {
-        runExternal(gameId: gameId) { service, language in
-            .candidates(try await service.search(name: name, language: language))
+        let provider = searchProvider()
+        guard provider != .disabled else { metaError[gameId] = "联网搜索已关闭，请指定页面或手动填写。"; return }
+        if provider == .native {
+            runExternal(gameId: gameId) { service, language in
+                guard let service else { throw MetadataFailure("请先配置作品信息接口。") }
+                return .candidates(try await service.search(name: name, language: language))
+            }
+        } else {
+            let service: MetadataSearchService
+            do { service = try searchService() }
+            catch { metaError[gameId] = "无法读取搜索配置或密钥，请检查设置。"; return }
+            runExternal(gameId: gameId, needsAI: false) { _, language in
+                .candidates(try await service.search(name: name, language: language))
+            }
         }
     }
     func extractExternal(gameId: String, address: String) {
@@ -311,22 +325,23 @@ final class LibraryMetadataStore: ObservableObject {
         }
         let fetchPage = externalPage
         runExternal(gameId: gameId) { service, language in
+            guard let service else { throw MetadataFailure("请先配置作品信息接口。") }
             let page = try await fetchPage(url)
             let work = try await service.extract(page: page, language: language)
             return .work(work)
         }
     }
     private enum ExternalResult: Sendable { case candidates([MetadataCandidate]), work(DlsiteWork) }
-    private func runExternal(gameId: String, body: @escaping @Sendable (MetadataAIService, MetadataLanguage) async throws -> ExternalResult) {
+    private func runExternal(gameId: String, needsAI: Bool = true, body: @escaping @Sendable (MetadataAIService?, MetadataLanguage) async throws -> ExternalResult) {
         guard let expected = game(id: gameId), !fetchingMeta.contains(gameId) else { return }
         cancelLookup(gameId: gameId)
         metaPreviews.removeValue(forKey: gameId); previewGames.removeValue(forKey: gameId)
         externalCandidates.removeValue(forKey: gameId)
         metaError.removeValue(forKey: gameId); metaNotice.removeValue(forKey: gameId)
-        let service: MetadataAIService
+        let service: MetadataAIService?
         do {
-            service = try aiService()
-            guard service.settings.url != nil, !service.settings.model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            service = needsAI ? try aiService() : nil
+            if let service, service.settings.url == nil || service.settings.model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 throw MetadataFailure("请先在「设置 → 作品信息」填写有效接口地址和模型，并保存密钥。")
             }
         } catch { metaError[gameId] = error.localizedDescription; return }

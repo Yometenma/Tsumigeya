@@ -21,6 +21,7 @@ import SwiftUI
 import TsumigeyaCore
 
 struct SettingsPage: View {
+    @EnvironmentObject private var store: AppStore
     @State private var selectedGroup: SettingsGroups.GroupId
 
     init(initialGroup: SettingsGroups.GroupId = .appearance) {
@@ -31,7 +32,7 @@ struct SettingsPage: View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 8) {
                 Text("设置").font(.system(size: 24, weight: .bold))
-                Text(selectedGroup == .metadata ? "语言、地址和模型自动保存；接口密钥需单独保存。" : "更改后自动保存，无需另外确认。")
+                Text(selectedGroup == .metadata ? "语言与接口选项自动保存；密钥和自定义参数需单独确认。" : "更改后自动保存，无需另外确认。")
                     .font(.callout).foregroundStyle(.secondary)
                 Picker("设置分组", selection: $selectedGroup) {
                     ForEach(SettingsGroups.groups, id: \.id) { group in
@@ -46,30 +47,33 @@ struct SettingsPage: View {
 
             Form {
                 ForEach(SettingsGroups.groups.filter { $0.id == selectedGroup }, id: \.id) { group in
-                    Section {
-                        if group.keys.isEmpty {
-                            InfoRows()
-                        } else {
-                            ForEach(group.keys.filter { SettingRow(key: $0).isAvailable }, id: \.self) { key in
-                                SettingRow(key: key)
-                            }
-                            if group.id == .metadata { MetadataCredentialView() }
-                            if group.id == .language {
-                                LabeledContent("界面语言", value: "简体中文")
-                                Text("目前仅提供简体中文，不会自动切换游戏的语言版本。")
-                                    .font(.callout).foregroundStyle(.secondary)
-                            }
-                            let unavailable = group.keys.filter { !SettingRow(key: $0).isAvailable }
-                            if !unavailable.isEmpty {
-                                DisclosureGroup("尚未提供的选项（\(unavailable.count)）") {
-                                    ForEach(unavailable, id: \.self) { key in
-                                        SettingRow(key: key).disabled(true)
+                    if group.id == .metadata {
+                        MetadataSettingsForm()
+                    } else {
+                        Section {
+                            if group.keys.isEmpty {
+                                InfoRows()
+                            } else {
+                                ForEach(group.keys.filter { SettingRow(key: $0).isAvailable }, id: \.self) { key in
+                                    SettingRow(key: key)
+                                }
+                                if group.id == .language {
+                                    LabeledContent("界面语言", value: "简体中文")
+                                    Text("目前仅提供简体中文，不会自动切换游戏的语言版本。")
+                                        .font(.callout).foregroundStyle(.secondary)
+                                }
+                                let unavailable = group.keys.filter { !SettingRow(key: $0).isAvailable }
+                                if !unavailable.isEmpty {
+                                    DisclosureGroup("尚未提供的选项（\(unavailable.count)）") {
+                                        ForEach(unavailable, id: \.self) { key in
+                                            SettingRow(key: key).disabled(true)
+                                        }
                                     }
                                 }
                             }
+                        } header: {
+                            GroupLabel(id: group.id)
                         }
-                    } header: {
-                        GroupLabel(id: group.id)
                     }
                 }
             }
@@ -159,8 +163,48 @@ struct SettingRow: View {
                 ))
             case .metadataMode:
                 Picker("AI 接口协议", selection: Binding(get: { store.settingString(key) }, set: { store.setSetting(key, .string($0)) })) {
-                    Text("兼容聊天接口 · 页面整理").tag("chat")
-                    Text("Responses · 联网查找与整理").tag("responses")
+                    Text("兼容聊天接口 · 可配独立搜索").tag("chat")
+                    Text("Responses · 支持原生或独立搜索").tag("responses")
+                }
+            case .metadataLANEndpoint, .metadataSearchLANEndpoint:
+                MetadataLANPermissionView(search: key == .metadataSearchLANEndpoint)
+            case .metadataTimeout, .metadataInputLimit, .metadataSearchLimit:
+                Picker(key == .metadataTimeout ? "模型等待上限" : key == .metadataInputLimit ? "单次正文长度上限" : "搜索候选数量上限", selection: Binding(get: { store.settingString(key) }, set: { store.setSetting(key, .string($0)) })) {
+                    if key == .metadataTimeout {
+                        Text("九十秒").tag("90"); Text("三分钟").tag("180"); Text("五分钟").tag("300"); Text("十分钟").tag("600")
+                    } else if key == .metadataInputLimit {
+                        Text("八千字").tag("8000"); Text("一万六千字").tag("16000"); Text("三万字").tag("30000"); Text("四万五千字").tag("45000")
+                    } else {
+                        Text("三条").tag("3"); Text("五条").tag("5"); Text("十条").tag("10")
+                    }
+                }
+            case .metadataJSONOutput:
+                Toggle("请求模型输出 JSON 对象", isOn: boolBinding(key))
+                Text("仅在服务支持结构化输出时启用；不支持时请关闭，不会自动重试产生额外调用。") .font(.caption).foregroundStyle(.secondary)
+            case .metadataDisableThinking:
+                Toggle("关闭兼容模型的思考模式", isOn: boolBinding(key))
+                Text("仅聊天协议发送模板参数；需服务支持 enable_thinking。默认不发送，避免与其他服务不兼容。") .font(.caption).foregroundStyle(.secondary)
+            case .metadataSearchProvider:
+                Picker("按名称搜索的方式", selection: stringBinding(key)) {
+                    Text("关闭联网搜索").tag("disabled"); Text("模型原生联网").tag("native")
+                    Text("独立搜索 · Tavily").tag("tavily"); Text("独立搜索 · SearXNG").tag("searxng"); Text("独立搜索 · 自定义接口").tag("custom")
+                }
+                Text("独立搜索不要求模型支持联网或工具调用。先搜索并选来源，再由模型读取正文整理。搜索失败不切换其他收费服务。") .font(.caption).foregroundStyle(.secondary)
+            case .metadataSearchEndpoint:
+                if !["disabled", "native"].contains(store.settingString(.metadataSearchProvider)) {
+                    TextField("搜索接口完整地址（Tavily 留空使用官方地址）", text: stringBinding(key))
+                    Text("SearXNG 请填完整搜索路径并在服务端启用 JSON；自定义接口仅支持 JSON 响应和 Bearer 认证。") .font(.caption).foregroundStyle(.secondary)
+                }
+            case .metadataSearchMethod:
+                if store.settingString(.metadataSearchProvider) == "custom" {
+                    Picker("自定义搜索请求方式", selection: stringBinding(key)) { Text("GET · 查询参数").tag("GET"); Text("POST · JSON 正文").tag("POST") }
+                }
+            case .metadataSearchParameters:
+                if store.settingString(.metadataSearchProvider) == "custom" { MetadataSearchParametersEditor() }
+            case .metadataSearchQueryKey, .metadataSearchResultsPath, .metadataSearchTitlePath, .metadataSearchURLPath, .metadataSearchSummaryPath:
+                if store.settingString(.metadataSearchProvider) == "custom" {
+                    TextField(searchFieldLabel, text: stringBinding(key))
+                    if key == .metadataSearchResultsPath { Text("字段路径使用点号分隔，结果路径留空表示根数组。") .font(.caption).foregroundStyle(.secondary) }
                 }
             case .appearance:
                 Picker("外观", selection: Binding(
@@ -288,11 +332,27 @@ struct SettingRow: View {
         }
     }
 
+    private func stringBinding(_ key: SettingsGroups.Key) -> Binding<String> {
+        Binding(get: { store.settingString(key) }, set: { store.setSetting(key, .string($0)) })
+    }
+    private func boolBinding(_ key: SettingsGroups.Key) -> Binding<Bool> {
+        Binding(get: { store.settingBool(key) }, set: { store.setSetting(key, .bool($0)) })
+    }
+    private var searchFieldLabel: String {
+        switch key {
+        case .metadataSearchQueryKey: "关键词参数名"
+        case .metadataSearchResultsPath: "结果数组路径"
+        case .metadataSearchTitlePath: "结果标题路径"
+        case .metadataSearchURLPath: "结果链接路径"
+        case .metadataSearchSummaryPath: "结果摘要路径"
+        default: "附加参数（JSON，不含密钥）"
+        }
+    }
     var isAvailable: Bool { pendingNote?.isNotImplemented != true }
 
     private var pendingNote: Note? {
         switch key {
-        case .appearance, .listView, .deletionConfirmation, .metadataPreferredLanguage, .metadataFallbackLanguage, .metadataEndpoint, .metadataModel, .metadataMode:
+        case .appearance, .listView, .deletionConfirmation, .metadataPreferredLanguage, .metadataFallbackLanguage, .metadataEndpoint, .metadataModel, .metadataMode, .metadataLANEndpoint, .metadataTimeout, .metadataInputLimit, .metadataJSONOutput, .metadataDisableThinking, .metadataSearchProvider, .metadataSearchEndpoint, .metadataSearchLANEndpoint, .metadataSearchLimit, .metadataSearchMethod, .metadataSearchQueryKey, .metadataSearchResultsPath, .metadataSearchTitlePath, .metadataSearchURLPath, .metadataSearchSummaryPath, .metadataSearchParameters:
             return nil
         case .saveSyncMode:
             // ⚠️ **P6 做完后 manual 模式真的能用** → caveat 而不是 notImplemented。

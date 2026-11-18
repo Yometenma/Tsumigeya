@@ -22,7 +22,7 @@ struct ExternalMetadataView: View {
                     .font(.callout).foregroundStyle(.secondary)
                 TextField("官网／商店页 HTTPS 链接，或游戏名＋开发商／年份", text: $input)
                     .textFieldStyle(.roundedBorder).disabled(busy)
-                Toggle("允许把输入内容和必要页面正文发给已配置的作品信息接口（可能收费）", isOn: $consent)
+                Toggle("允许把搜索词发给所选搜索服务、把必要正文发给模型接口（可能收费）", isOn: $consent)
                     .font(.caption).disabled(busy)
                 HStack {
                     Button(input.lowercased().hasPrefix("https://") ? "读取并整理页面" : "联网查找候选") { start() }
@@ -35,6 +35,7 @@ struct ExternalMetadataView: View {
                         ForEach(store.externalCandidates[gameId] ?? []) { candidate in
                             VStack(alignment: .leading, spacing: 5) {
                                 Text(candidate.title).font(.headline)
+                                if !candidate.summary.isEmpty { Text(candidate.summary).font(.caption).lineLimit(4).textSelection(.enabled) }
                                 Text(candidate.url).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
                                 HStack {
                                     if let url = MetadataNetwork.publicURL(candidate.url) { Link("打开来源核对", destination: url) }
@@ -45,7 +46,7 @@ struct ExternalMetadataView: View {
                         }
                     }
                 }
-                Text("普通聊天接口只整理指定页面。联网查找需在「设置 → 作品信息」配置支持 web_search 的 Responses 接口。需登录、验证或动态加载的页面可能无法读取；来源中的内容也可能不准确，请核对后保存。不会自动关联搜索首条。")
+                Text("普通聊天模型可配独立搜索；模型原生搜索需要支持联网工具的 Responses 接口。请在「设置 → 作品信息」选择搜索方式。需登录、验证或动态加载的页面可能无法读取；来源中的内容也可能不准确，请核对后保存。不会自动关联搜索首条。")
                     .font(.caption).foregroundStyle(.secondary)
             }
             if let error = localError ?? store.metaError[gameId] {
