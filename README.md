@@ -3,6 +3,7 @@
 </p>
 
 <p align="center">
+  <a href="https://yometenma.github.io/Tsumigeya/">官网</a> ·
   <a href="https://github.com/Yometenma/Tsumigeya/releases/latest">下载最新版</a> ·
   <a href="#游戏兼容性">游戏兼容性</a> ·
   <a href="docs/常见问题.md">常见问题</a> ·
