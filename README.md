@@ -205,7 +205,7 @@ Also note:
 - TyranoScript and KiriKiri never guess save locations; set the folder by hand on the Saves tab. Setting a folder does not move files; a confirmed folder can be revealed in Finder or copied as a full path; a folder that no longer exists still shows as "location unknown", and clearing it restores auto detection.
 - Saves are local manual import and export only, with **no cloud sync**; a valid but empty folder shows as "no saves yet" and stays distinct from an unknown location.
 - The save folder cannot be changed, imported, or exported while the game is running.
-- **The app interface is currently available in Simplified Chinese only.**
+- **The interface is available in Simplified Chinese, English and Japanese** (Settings → Language), and follows the system language by default.
 
 > [!TIP]
 > Hitting a compatibility problem with a specific work? [File a compatibility report](https://github.com/Yometenma/Tsumigeya/issues/new?template=compatibility.yml) or post in the [Discord "compatibility reports" forum](https://discord.gg/kqut5fAnyk) with the engine, game version, and reproduction steps. Please do not upload commercial game data or private saves.

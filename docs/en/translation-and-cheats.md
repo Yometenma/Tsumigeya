@@ -2,7 +2,7 @@
 
 **English** · [简体中文](../翻译与作弊.md) · [日本語](../ja/translation-and-cheats.md)
 
-> Tsumigeya's interface is currently available in Simplified Chinese only. Interface labels are quoted exactly as shown in the app, in 「」, with an English name on first mention.
+> Tsumigeya's interface supports Simplified Chinese, English and Japanese (Settings → Language) and follows the system language by default. This guide quotes interface labels in Simplified Chinese — the source language — with the English name on first mention; if you run the English interface, the same labels appear in English.
 
 These features live in two separate tabs of a game's detail view, Translation (「翻译」) and Assist (「辅助」). **Launching, translating, and cheating are three different capabilities**: the Engine Management (「引擎管理」) tab lists each one separately. Being able to launch an engine does not mean its text and game state are wired up.
 

@@ -376,7 +376,7 @@ struct InfoRows: View {
            !v.isEmpty {
             return v
         }
-        return L("3.0.0（开发构建，未打包）")
+        return L("3.1.0（开发构建，未打包）")
     }
 
     private var platformString: String {

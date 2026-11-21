@@ -4,7 +4,7 @@
 
 [Back to project home](../../README.md) · [Download the latest release](https://github.com/Yometenma/Tsumigeya/releases/latest) · [Report an issue](https://github.com/Yometenma/Tsumigeya/issues/new/choose)
 
-> Tsumigeya's interface is currently available in Simplified Chinese only. Interface labels are quoted exactly as shown in the app, in 「」, with an English name on first mention.
+> Tsumigeya's interface supports Simplified Chinese, English and Japanese (Settings → Language) and follows the system language by default. This guide quotes interface labels in Simplified Chinese — the source language — with the English name on first mention; if you run the English interface, the same labels appear in English.
 
 ## Installation and updates
 

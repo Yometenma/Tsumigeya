@@ -4,7 +4,7 @@
 
 [プロジェクトトップへ戻る](../../README.ja.md) · [最新版をダウンロード](https://github.com/Yometenma/Tsumigeya/releases/latest) · [問題を報告](https://github.com/Yometenma/Tsumigeya/issues/new/choose)
 
-> Tsumigeya の画面は現在、簡体字中国語のみです。画面内の項目名は「」で実際の表記のまま引用し、初出時に日本語名を添えています。
+> Tsumigeya の画面は簡体字中国語・英語・日本語に対応しており（設定 → 言語）、既定ではシステム言語に従います。本書では画面内の項目名を原文である簡体字中国語で「」に引用し、初出時に日本語名を添えています。英語版の画面では同じ項目が英語で表示されます。
 
 ## インストールと更新
 

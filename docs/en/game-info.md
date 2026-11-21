@@ -2,7 +2,7 @@
 
 **English** · [简体中文](../作品信息获取.md) · [日本語](../ja/game-info.md)
 
-> Tsumigeya's interface is currently available in Simplified Chinese only. Interface labels are quoted exactly as shown in the app, in 「」, with an English name on first mention.
+> Tsumigeya's interface supports Simplified Chinese, English and Japanese (Settings → Language) and follows the system language by default. This guide quotes interface labels in Simplified Chinese — the source language — with the English name on first mention; if you run the English interface, the same labels appear in English.
 
 This page describes the game info features in v3.0.0. Filling in info does not affect launch compatibility, and never downloads the game itself.
 
