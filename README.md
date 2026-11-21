@@ -54,15 +54,9 @@ Add a game you have already downloaded and extracted to your library, and it ide
 
 **v3.1.0**
 
-- **Interface in English and Japanese**: the app follows the system language by default and can be switched in Settings → Language; the README, user guides and the website are now available in three languages.
-
-**v3.0.0**
-
-- **A native library from scratch**: collapsible category sidebar, cover-driven details, and a dedicated action bar, with smoother window resizing, long-description reading, and work switching.
-- **Automatic categories by work type**: games are filed by their confirmed type, manual assignments are kept, and refreshing info never overwrites your adjustments.
-- **Multilingual work info**: set preferred and fallback languages, search adult and all-ages works in one place, and cache info per language.
-- **More than DLsite**: fill info from public official sites and store pages, or find sources through Tavily, SearXNG, or a custom search and hand them to an AI service or local model of your choice. Preview and check every field before saving, and manual entry still works.
-- **Smoother local browsing**: covers, preview images, and text info are reused from cache, and images are decoded at display size. The old privacy mode and decorative in-app assets are gone, while existing libraries and unknown fields stay compatible.
+- **Interface in English and Japanese**: follows the system language by default and can be switched in Settings → Language, effective immediately. Category names stay stored in Chinese, so switching never rewrites your library.
+- **Three-language docs**: the README, FAQ, game info and translation/cheats guides are available in English and Japanese, with a switcher at the top. Developer docs remain Chinese.
+- **Three-language website**: switch in the top-right corner; a first visit follows your browser language, and `?lang=en|ja` links straight to a language.
 
 [Download v3.1.0 and read the release notes](https://github.com/Yometenma/Tsumigeya/releases/tag/v3.1.0) · [Getting game info](docs/en/game-info.md) · [Full changelog](更新日志.md)
 
