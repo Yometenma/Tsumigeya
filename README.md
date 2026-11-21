@@ -50,8 +50,9 @@ Add a game you have already downloaded and extracted to your library, and it ide
 
 <a id="highlights"></a>
 
-## ✦ What's new in v3.0.0
+## ✦ Recent updates
 
+- **Interface in English and Japanese (v3.1.0)**: the app follows the system language by default and can be switched in Settings → Language; the README, user guides and the website are now available in three languages.
 - **A native library from scratch**: collapsible category sidebar, cover-driven details, and a dedicated action bar, with smoother window resizing, long-description reading, and work switching.
 - **Automatic categories by work type**: games are filed by their confirmed type, manual assignments are kept, and refreshing info never overwrites your adjustments.
 - **Multilingual work info**: set preferred and fallback languages, search adult and all-ages works in one place, and cache info per language.
