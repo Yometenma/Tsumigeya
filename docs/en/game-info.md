@@ -4,7 +4,7 @@
 
 > Tsumigeya's interface supports Simplified Chinese, English and Japanese (Settings → Language) and follows the system language by default. This guide quotes interface labels in Simplified Chinese — the source language — with the English name on first mention; if you run the English interface, the same labels appear in English.
 
-This page describes the game info features in v3.0.0. Filling in info does not affect launch compatibility, and never downloads the game itself.
+This page describes the game info features introduced in v3.0.0. Filling in info does not affect launch compatibility, and never downloads the game itself.
 
 ## Choosing the info language
 
