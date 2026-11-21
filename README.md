@@ -52,13 +52,13 @@ Add a game you have already downloaded and extracted to your library, and it ide
 
 ## ✦ Recent updates
 
-**v3.1.0**
+**v3.1.1**
 
-- **Interface in English and Japanese**: follows the system language by default and can be switched in Settings → Language, effective immediately. Category names stay stored in Chinese, so switching never rewrites your library.
-- **Three-language docs**: the README, FAQ, game info and translation/cheats guides are available in English and Japanese, with a switcher at the top. Developer docs remain Chinese.
-- **Three-language website**: switch in the top-right corner; a first visit follows your browser language, and `?lang=en|ja` links straight to a language.
+- **NScripter runtime switched to ONSyuri**: the previous runtime was a 32-bit build and cannot run on Apple Silicon. The arm64 build supports Japanese Shift_JIS, Simplified Chinese GBK and UTF-8 scripts, plus `nt2`／`nt3` encrypted packages.
+- **Encoding and paths handled automatically**: text encoding is detected from the script instead of being chosen by hand, and Japanese/Chinese folder names are mapped to an ASCII alias before launch.
+- **Verified with a real work**: a free DLsite trial runs through its title screen and menus; two launch problems (missing runtime library and a font that would not open) were fixed along the way.
 
-[Download v3.1.0 and read the release notes](https://github.com/Yometenma/Tsumigeya/releases/tag/v3.1.0) · [Getting game info](docs/en/game-info.md) · [Full changelog](更新日志.md)
+[Download v3.1.1 and read the release notes](https://github.com/Yometenma/Tsumigeya/releases/tag/v3.1.1) · [Getting game info](docs/en/game-info.md) · [Full changelog](更新日志.md)
 
 <a id="features"></a>
 
