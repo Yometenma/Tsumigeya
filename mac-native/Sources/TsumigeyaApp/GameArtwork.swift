@@ -19,7 +19,7 @@ struct GameArtwork: View {
             .frame(width: geometry.size.width, height: geometry.size.height)
             .clipped()
         }
-        .accessibilityLabel("\(store.displayTitle(for: game))的封面")
+        .accessibilityLabel(String(format: L("%@的封面"), "\(store.displayTitle(for: game))"))
     }
 
     private var placeholder: some View {

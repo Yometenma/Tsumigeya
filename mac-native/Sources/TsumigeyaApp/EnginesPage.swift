@@ -32,7 +32,7 @@ struct EnginesPage: View {
                 HStack {
                     Text(L("引擎管理")).font(.system(size: 24, weight: .bold))
                     Spacer()
-                    Text("已就绪 \(EngineStatus.installedCount(store.engineEntries)) / \(EngineRegistry.launchable.count)")
+                    Text(String(format: L("已就绪 %@ / %@"), "\(EngineStatus.installedCount(store.engineEntries))", "\(EngineRegistry.launchable.count)"))
                         .font(.callout).foregroundStyle(.secondary)
                 }
                 Text(L("准备游戏所需的引擎组件即可，无需全部安装。Windows 程序可选择 Wine；重装与移除位于更多菜单中。"))
@@ -93,9 +93,9 @@ struct EngineRow: View {
 
             let capabilities = EngineCapabilities.forEngine(entry.id)
             VStack(alignment: .leading, spacing: 3) {
-                Text("启动：\(capabilities.launch)")
-                Text("翻译：\(capabilities.translation)")
-                Text("作弊：\(capabilities.cheats)")
+                Text(String(format: L("启动：%@"), "\(capabilities.launch)"))
+                Text(String(format: L("翻译：%@"), "\(capabilities.translation)"))
+                Text(String(format: L("作弊：%@"), "\(capabilities.cheats)"))
             }.font(.caption).foregroundStyle(.secondary)
 
             // 警告（两种语义分开显示，见 EngineStatus.Warning 的注释）
@@ -120,7 +120,7 @@ struct EngineRow: View {
             Button(L("卸载"), role: .destructive) { store.uninstallEngine(entry.id) }
             Button(L("取消"), role: .cancel) {}
         } message: {
-            Text("使用 \(entry.definition.name) 的游戏将暂时无法启动。游戏文件和存档不会删除，之后可重新安装。")
+            Text(String(format: L("使用 %@ 的游戏将暂时无法启动。游戏文件和存档不会删除，之后可重新安装。"), "\(entry.definition.name)"))
         }
     }
 
@@ -151,7 +151,7 @@ struct EngineRow: View {
             //    用户会以为能点重装）、也不该显示「安装」（点了装的是 NW.js）。
             //    正确表达：告诉用户「用的是 NW.js」，并把他引到那一项。
             HStack(spacing: 5) {
-                Text("复用 \(EngineRegistry.find(folder: reused)?.name ?? reused)")
+                Text(String(format: L("复用 %@"), "\(EngineRegistry.find(folder: reused)?.name ?? reused)"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Image(systemName: entry.installed ? "checkmark.circle.fill" : "exclamationmark.circle")
@@ -178,7 +178,7 @@ struct EngineRow: View {
                 .menuStyle(.borderlessButton)
                 .menuIndicator(.hidden)
                 .fixedSize()
-                .accessibilityLabel("\(entry.definition.name)的更多操作")
+                .accessibilityLabel(String(format: L("%@的更多操作"), "\(entry.definition.name)"))
                 .help(store.runningGames.isEmpty ? L("重新安装或移除组件") : L("请先停止游戏再移除组件"))
             }
         } else {
@@ -251,7 +251,7 @@ struct EngineRow: View {
                 } else {
                     // ⚠️ **没有总字节时不能用 0%**（服务器不给 content-length 会出现）
                     //    显示「已下 X MB」+ 不确定进度条 —— 让用户知道它在动
-                    Text("\(name)  已下载 \(formatBytes(received))")
+                    Text(String(format: L("%@  已下载 %@"), "\(name)", "\(formatBytes(received))"))
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                     ProgressView()

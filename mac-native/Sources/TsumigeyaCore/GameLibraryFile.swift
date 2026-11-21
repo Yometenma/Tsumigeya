@@ -13,7 +13,7 @@ public struct GameLibraryFile: Sendable {
         case .loaded(let map): return map
         case .missing: return GameMap()
         case .corrupt(let failure):
-            throw LibraryIntake.Failure("无法读取游戏库，原件未改动：\(failure.reason)")
+            throw LibraryIntake.Failure(String(format: L10n.string("无法读取游戏库，原件未改动：%@"), "\(failure.reason)"))
         }
     }
 
@@ -22,7 +22,7 @@ public struct GameLibraryFile: Sendable {
         defer { Self.lock.unlock() }
         let updated = try transform(read())
         if let error = JSONStore.save(updated, to: url) {
-            throw LibraryIntake.Failure("保存游戏库失败，未完成操作：\(error)")
+            throw LibraryIntake.Failure(String(format: L10n.string("保存游戏库失败，未完成操作：%@"), "\(error)"))
         }
         return updated
     }
@@ -30,7 +30,7 @@ public struct GameLibraryFile: Sendable {
     public func add(title: String, folder: String, engine: String, entryPath: String? = nil) throws -> GameMap {
         try modify { map in
             if let id = LibraryIntake.duplicateFolder(folder, in: map) {
-                throw LibraryIntake.Failure("此目录已入库（游戏 \(id)）")
+                throw LibraryIntake.Failure(String(format: L10n.string("此目录已入库（游戏 %@）"), "\(id)"))
             }
             let entry: String
             if engine == "wine" {
@@ -75,7 +75,7 @@ public struct GameLibraryFile: Sendable {
             var directory: ObjCBool = false
             guard FileManager.default.fileExists(atPath: candidate, isDirectory: &directory), directory.boolValue,
                   FileManager.default.isReadableFile(atPath: candidate) else {
-                throw LibraryIntake.Failure("存档目录不存在或无法读取：\(candidate)")
+                throw LibraryIntake.Failure(String(format: L10n.string("存档目录不存在或无法读取：%@"), "\(candidate)"))
             }
             normalized = candidate
         } else { normalized = nil }
@@ -100,7 +100,7 @@ public struct GameLibraryFile: Sendable {
         public var message: String? {
             guard let failure else { return nil }
             let saved = completed.isEmpty ? L10n.string("尚未保存任何删除步骤。") : L10n.string("已保存：") + completed.map(\.rawValue).joined(separator: "、") + "。"
-            return "移除游戏未完成：\(failure)\n\(saved)游戏库记录仍保留，可排除问题后重试；不会删除游戏目录或存档。"
+            return String(format: L10n.string("移除游戏未完成：%@\n%@游戏库记录仍保留，可排除问题后重试；不会删除游戏目录或存档。"), "\(failure)", "\(saved)")
         }
     }
 
@@ -123,22 +123,22 @@ public struct GameLibraryFile: Sendable {
             switch JSONStore.load([String: JSONValue].self, from: statsURL, quarantineCorrupt: false) {
             case .loaded(let value): stats = value
             case .missing: break
-            case .corrupt(let failure): throw LibraryIntake.Failure("无法读取游玩记录：\(failure.reason)")
+            case .corrupt(let failure): throw LibraryIntake.Failure(String(format: L10n.string("无法读取游玩记录：%@"), "\(failure.reason)"))
             }
             if let error = GameMetaStore.removeGameData(dataDir: dataDir, gameId: expected.id) {
-                throw LibraryIntake.Failure("清理作品资料和分类归属失败：\(error)")
+                throw LibraryIntake.Failure(String(format: L10n.string("清理作品资料和分类归属失败：%@"), "\(error)"))
             }
             completed.append(.metadata)
             if var stats {
                 stats.removeValue(forKey: expected.id)
                 if let error = JSONStore.save(stats, to: statsURL) {
-                    throw LibraryIntake.Failure("保存游玩记录失败：\(error)")
+                    throw LibraryIntake.Failure(String(format: L10n.string("保存游玩记录失败：%@"), "\(error)"))
                 }
             }
             completed.append(.playStats)
             let updated = GameLibrary.remove(from: map, id: expected.id)
             if let error = JSONStore.save(updated, to: url) {
-                throw LibraryIntake.Failure("保存游戏库失败：\(error)")
+                throw LibraryIntake.Failure(String(format: L10n.string("保存游戏库失败：%@"), "\(error)"))
             }
             completed.append(.game)
             return RemovalReport(completed: completed, failure: nil, map: updated)

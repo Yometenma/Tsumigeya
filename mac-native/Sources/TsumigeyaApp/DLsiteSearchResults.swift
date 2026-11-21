@@ -9,7 +9,7 @@ struct DLsiteSearchResults: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("找到 \(hits.count) 个候选，请核对作品和版本")
+                Text(String(format: L("找到 %@ 个候选，请核对作品和版本"), "\(hits.count)"))
                     .font(.subheadline).foregroundStyle(.secondary)
                 Spacer()
                 Button(L("清除结果"), action: onCancel).controlSize(.small)

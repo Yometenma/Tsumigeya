@@ -147,9 +147,9 @@ struct GameDetailView: View {
         }
         switch step {
         case .byRJ(let rj):
-            return "检测到 RJ 号 \(rj)。点「查找作品」可预览并关联作品信息。"
+            return String(format: L("检测到 RJ 号 %@。点「查找作品」可预览并关联作品信息。"), "\(rj)")
         case .byKeyword(let keyword):
-            return "路径里没有 RJ 号，可以按名字搜索「\(keyword)」，"
+            return String(format: L("路径里没有 RJ 号，可以按名字搜索「%@」，"), "\(keyword)")
                 + L("从结果里选一个作品。")
         case .manual:
             return L("路径里没有 RJ 号，标题也没法当关键词。请手动输入 RJ（")
@@ -204,7 +204,7 @@ struct GameDetailView: View {
             HStack {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(L("引擎信息")).font(.headline)
-                    Text("此游戏使用 \(engineDisplayName)。如果启动异常，可以检查下方的启动参数。")
+                    Text(String(format: L("此游戏使用 %@。如果启动异常，可以检查下方的启动参数。"), "\(engineDisplayName)"))
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
@@ -308,7 +308,7 @@ struct GameDetailView: View {
                     .foregroundStyle(.orange)
             }
             if let pid = store.runningGames[game.id] {
-                infoRow(L("进程"), "运行中（pid \(pid)）")
+                infoRow(L("进程"), String(format: L("运行中（pid %@）"), "\(pid)"))
             }
         }
     }

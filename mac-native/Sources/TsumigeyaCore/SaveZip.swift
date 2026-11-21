@@ -47,7 +47,7 @@ public enum SaveZip {
         fileManager: FileManager = .default
     ) -> String? {
         guard fileManager.fileExists(atPath: sourceDir) else {
-            return "源目录不存在：\(sourceDir)"
+            return String(format: L10n.string("源目录不存在：%@"), "\(sourceDir)")
         }
         // 目标目录必须存在（ditto 不会帮我们建）
         let destDir = (destination as NSString).deletingLastPathComponent
@@ -56,7 +56,7 @@ public enum SaveZip {
                 try fileManager.createDirectory(
                     atPath: destDir, withIntermediateDirectories: true)
             } catch {
-                return "建目标目录失败：\(error.localizedDescription)"
+                return String(format: L10n.string("建目标目录失败：%@"), "\(error.localizedDescription)")
             }
         }
         // 已存在就删掉（否则 ditto 会追加/报错）
@@ -73,9 +73,9 @@ public enum SaveZip {
             sourceDir, destination,
         ])
         if let error = result.stderr, !error.isEmpty {
-            return "ditto 打包失败：\(error.trimmingCharacters(in: .whitespacesAndNewlines))"
+            return String(format: L10n.string("ditto 打包失败：%@"), "\(error.trimmingCharacters(in: .whitespacesAndNewlines))")
         }
-        return result.exitCode == 0 ? nil : "ditto 返回 \(result.exitCode)"
+        return result.exitCode == 0 ? nil : String(format: L10n.string("ditto 返回 %@"), "\(result.exitCode)")
     }
 
     /// 解一个 zip 到目标目录。
@@ -89,14 +89,14 @@ public enum SaveZip {
         fileManager: FileManager = .default
     ) -> String? {
         guard fileManager.fileExists(atPath: archive) else {
-            return "存档包不存在：\(archive)"
+            return String(format: L10n.string("存档包不存在：%@"), "\(archive)")
         }
         if !fileManager.fileExists(atPath: destination) {
             do {
                 try fileManager.createDirectory(
                     atPath: destination, withIntermediateDirectories: true)
             } catch {
-                return "建目标目录失败：\(error.localizedDescription)"
+                return String(format: L10n.string("建目标目录失败：%@"), "\(error.localizedDescription)")
             }
         }
 
@@ -107,9 +107,9 @@ public enum SaveZip {
             archive, destination,
         ])
         if let error = result.stderr, !error.isEmpty {
-            return "ditto 解包失败：\(error.trimmingCharacters(in: .whitespacesAndNewlines))"
+            return String(format: L10n.string("ditto 解包失败：%@"), "\(error.trimmingCharacters(in: .whitespacesAndNewlines))")
         }
-        return result.exitCode == 0 ? nil : "ditto 返回 \(result.exitCode)"
+        return result.exitCode == 0 ? nil : String(format: L10n.string("ditto 返回 %@"), "\(result.exitCode)")
     }
 
     // MARK: - 执行
@@ -144,7 +144,7 @@ public enum SaveZip {
         } catch {
             return RunResult(
                 exitCode: -1, stdout: nil,
-                stderr: "启动 \(executable) 失败：\(error.localizedDescription)")
+                stderr: String(format: L10n.string("启动 %@ 失败：%@"), "\(executable)", "\(error.localizedDescription)"))
         }
         process.waitUntilExit()
 

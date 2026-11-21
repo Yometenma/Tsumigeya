@@ -110,10 +110,10 @@ public struct MetadataSearchService: Sendable {
         else { (data, response) = try await MetadataNetwork.request(request, maxBytes: 2 * 1024 * 1024) }
         try Task.checkCancellation()
         if let http = response as? HTTPURLResponse, [401, 403].contains(http.statusCode) {
-            throw MetadataFailure("搜索接口未授权（HTTP \(http.statusCode)），请检查或重新保存独立搜索密钥及接口权限；不会自动重试或切换收费服务。")
+            throw MetadataFailure(String(format: L10n.string("搜索接口未授权（HTTP %@），请检查或重新保存独立搜索密钥及接口权限；不会自动重试或切换收费服务。"), "\(http.statusCode)"))
         }
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-            throw MetadataFailure("搜索接口请求失败（HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0)）。请检查配置、JSON 输出权限或余额；不会自动切换到其他收费服务。")
+            throw MetadataFailure(String(format: L10n.string("搜索接口请求失败（HTTP %@）。请检查配置、JSON 输出权限或余额；不会自动切换到其他收费服务。"), "\((response as? HTTPURLResponse)?.statusCode ?? 0)"))
         }
         guard data.count <= 2 * 1024 * 1024, let json = try? JSONDecoder().decode(JSONValue.self, from: data) else { throw MetadataFailure(L10n.string("搜索接口未返回有效 JSON。")) }
         let custom = settings.provider == .custom

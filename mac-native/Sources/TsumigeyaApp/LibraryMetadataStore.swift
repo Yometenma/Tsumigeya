@@ -177,7 +177,7 @@ final class LibraryMetadataStore: ObservableObject {
         }
         if let error = GameMetaStore.save(dataDir: dataDir, gameId: gameId, meta: meta,
                                        didWrite: { [self] in didSave(gameId, meta, $0) }) {
-            metaError[gameId] = "保存作品信息失败：\(error)"
+            metaError[gameId] = String(format: L("保存作品信息失败：%@"), "\(error)")
             return false
         }
         metaError.removeValue(forKey: gameId)
@@ -237,7 +237,7 @@ final class LibraryMetadataStore: ObservableObject {
                 searchWarnings[gameId] = report.warnings
                 searchKeywordsTried[gameId] = report.keywordsTried
                 if hits.isEmpty {
-                    searchError[gameId] = "没搜到「\(keyword)」。试试更短的词，或者手动输入 RJ。"
+                    searchError[gameId] = String(format: L("没搜到「%@」。试试更短的词，或者手动输入 RJ。"), "\(keyword)")
                 }
             case .failure(let error):
                 searchError[gameId] = error.message

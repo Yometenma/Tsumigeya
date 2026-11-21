@@ -38,14 +38,14 @@ public enum SaveArchiveError: Error, Sendable, Equatable {
         switch self {
         case .blocked(let block): return block.message
         case .noFilesToExport: return L10n.string("存档目录里没有可导出的文件。")
-        case .writeFailed(let s): return "写入失败：\(s)"
-        case .zipFailed(let s): return "打包失败：\(s)"
+        case .writeFailed(let s): return String(format: L10n.string("写入失败：%@"), "\(s)")
+        case .zipFailed(let s): return String(format: L10n.string("打包失败：%@"), "\(s)")
         case .notOurArchive:
             return L10n.string("这个 zip 不是 Tsumigeya 的存档包（缺少 manifest.json 或格式不对）。")
         case .checksumMismatch(let f):
-            return "文件校验失败（内容与清单不符）：\(f)。包可能在传输中损坏了。"
+            return String(format: L10n.string("文件校验失败（内容与清单不符）：%@。包可能在传输中损坏了。"), "\(f)")
         case .nothingToImport: return L10n.string("包里没有任何存档文件。")
-        case .readFailed(let s): return "读取失败：\(s)"
+        case .readFailed(let s): return String(format: L10n.string("读取失败：%@"), "\(s)")
         }
     }
 }
@@ -223,7 +223,7 @@ public enum SaveArchiveIO {
             let path = (temp as NSString).appendingPathComponent(
                 "\(SaveArchive.filesPrefix)\(entry.name)")
             guard let data = fileManager.contents(atPath: path) else {
-                return .failure(.readFailed("包里缺少文件：\(entry.name)"))
+                return .failure(.readFailed(String(format: L10n.string("包里缺少文件：%@"), "\(entry.name)")))
             }
             let actual = SHA256.hex([UInt8](data))
             guard actual == entry.sha256 else {
@@ -256,13 +256,13 @@ public enum SaveArchiveIO {
                 if fileManager.fileExists(atPath: target) {
                     let attributes = try fileManager.attributesOfItem(atPath: target)
                     guard attributes[.type] as? FileAttributeType == .typeRegular else {
-                        return .failure(.writeFailed("存档目标不是普通文件：\(entry.name)"))
+                        return .failure(.writeFailed(String(format: L10n.string("存档目标不是普通文件：%@"), "\(entry.name)")))
                     }
                 }
                 if fileManager.fileExists(atPath: backup) {
                     let attributes = try fileManager.attributesOfItem(atPath: backup)
                     guard attributes[.type] as? FileAttributeType == .typeRegular else {
-                        return .failure(.writeFailed("备份不是普通文件：\(entry.name)\(SaveArchive.backupSuffix)"))
+                        return .failure(.writeFailed(String(format: L10n.string("备份不是普通文件：%@%@"), "\(entry.name)", "\(SaveArchive.backupSuffix)")))
                     }
                     continue
                 }
@@ -272,7 +272,7 @@ public enum SaveArchiveIO {
                 }
             } catch {
                 // 必须等所有备份成功后才进入写入阶段；不能吞掉复制错误。
-                return .failure(.writeFailed("备份失败（\(entry.name)）：\(error.localizedDescription)"))
+                return .failure(.writeFailed(String(format: L10n.string("备份失败（%@）：%@"), "\(entry.name)", "\(error.localizedDescription)")))
             }
         }
 

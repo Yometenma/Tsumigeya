@@ -38,13 +38,13 @@ public enum SaveIOError: Error, Sendable, Equatable {
 
     public var message: String {
         switch self {
-        case .saveDirMissing(let p): return "找不到存档目录：\(p)"
-        case .notADirectory(let p): return "这不是一个目录：\(p)"
+        case .saveDirMissing(let p): return String(format: L10n.string("找不到存档目录：%@"), "\(p)")
+        case .notADirectory(let p): return String(format: L10n.string("这不是一个目录：%@"), "\(p)")
         case .exportBlocked(let r): return r
-        case .archiveMissing(let p): return "找不到存档包：\(p)"
-        case .invalidArchive(let r): return "存档包格式不对：\(r)"
-        case .checksumMismatch(let f): return "文件校验失败（内容与清单不符）：\(f)"
-        case .writeFailed(let f, let r): return "写 \(f) 失败：\(r)"
+        case .archiveMissing(let p): return String(format: L10n.string("找不到存档包：%@"), "\(p)")
+        case .invalidArchive(let r): return String(format: L10n.string("存档包格式不对：%@"), "\(r)")
+        case .checksumMismatch(let f): return String(format: L10n.string("文件校验失败（内容与清单不符）：%@"), "\(f)")
+        case .writeFailed(let f, let r): return String(format: L10n.string("写 %@ 失败：%@"), "\(f)", "\(r)")
         case .cancelled: return L10n.string("操作已取消")
         }
     }

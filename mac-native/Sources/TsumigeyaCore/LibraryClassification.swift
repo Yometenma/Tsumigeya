@@ -149,7 +149,7 @@ public enum LibraryClassification {
             synchronize(&raw, gameIDs: [gameID])
         }
         if raw != original, let error = GameMetaStore.writeRaw(raw, dataDir: dataDir) {
-            throw LibraryIntake.Failure("保存分类失败：\(error)")
+            throw LibraryIntake.Failure(String(format: L10n.string("保存分类失败：%@"), "\(error)"))
         }
         return LibraryMetaStore.decode(raw)
     }

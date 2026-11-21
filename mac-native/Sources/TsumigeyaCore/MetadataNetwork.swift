@@ -61,7 +61,7 @@ public enum MetadataNetwork {
         } catch let error as URLError {
             if error.code == .cancelled { throw CancellationError() }
             if error.code == .timedOut { throw MetadataFailure(L10n.string("请求超时；模型较慢时可在作品信息设置中延长等待上限。原有资料未修改。")) }
-            throw MetadataFailure("网络连接未完成（错误码 \(error.code.rawValue)），请检查页面可达性、接口地址、代理或服务监听地址。原有资料未修改。")
+            throw MetadataFailure(String(format: L10n.string("网络连接未完成（错误码 %@），请检查页面可达性、接口地址、代理或服务监听地址。原有资料未修改。"), "\(error.code.rawValue)"))
         }
     }
 
@@ -76,7 +76,7 @@ public enum MetadataNetwork {
                let next = URL(string: location, relativeTo: current)?.absoluteURL, publicURL(next.absoluteString) != nil {
                 current = next; continue
             }
-            guard response.statusCode == 200 else { throw MetadataFailure("页面读取失败（HTTP \(response.statusCode)），未修改原信息。") }
+            guard response.statusCode == 200 else { throw MetadataFailure(String(format: L10n.string("页面读取失败（HTTP %@），未修改原信息。"), "\(response.statusCode)")) }
             let mime = response.mimeType?.lowercased() ?? ""
             guard mime == "text/html" || mime == "application/xhtml+xml", let html = String(data: data, encoding: .utf8) else {
                 throw MetadataFailure(L10n.string("目前只支持可直接读取的 UTF-8 网页；不读取下载文件或执行网页脚本。"))

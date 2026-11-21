@@ -34,7 +34,7 @@ struct CreateCategorySheet: View {
                     .foregroundStyle(.orange)
             } else {
                 // 规则写在输入框下面（而不是等用户撞上去才知道）
-                Text("最多 \(Categories.nameMax) 个字，不能与已有分类重名。")
+                Text(String(format: L("最多 %@ 个字，不能与已有分类重名。"), "\(Categories.nameMax)"))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -68,7 +68,7 @@ struct CreateCategorySheet: View {
         if Categories.validateName(name) != nil {
             errorMessage = Categories.validateName(name) == .empty
                 ? L("分类名不能为空")
-                : "分类名太长了（最多 \(Categories.nameMax) 个字）"
+                : String(format: L("分类名太长了（最多 %@ 个字）"), "\(Categories.nameMax)")
             return
         }
         if Categories.isDuplicateName(store.categories, raw: name) {

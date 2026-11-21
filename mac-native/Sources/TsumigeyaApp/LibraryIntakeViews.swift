@@ -44,7 +44,7 @@ struct BatchImportView: View {
             Text(L("最多向下扫描三层、2000 个目录、200 个候选；命中后不再深入。无法识别的游戏请使用单个添加。"))
                 .font(.caption).foregroundStyle(.secondary)
             if !warnings.isEmpty {
-                DisclosureGroup("有 \(warnings.count) 处目录无法读取") {
+                DisclosureGroup(String(format: L("有 %@ 处目录无法读取"), "\(warnings.count)")) {
                     ScrollView { Text(warnings.joined(separator: "\n")).font(.caption).textSelection(.enabled) }
                         .frame(maxHeight: 80)
                 }
@@ -103,7 +103,7 @@ struct BatchImportView: View {
                     if store.addBatch(chosen) { dismiss() }
                     else { error = store.lastAddGameError }
                 } label: {
-                    Text("添加所选（\(selected.count)）").foregroundStyle(.black)
+                    Text(String(format: L("添加所选（%@）"), "\(selected.count)")).foregroundStyle(.black)
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(selected.isEmpty || scanToken != nil)
@@ -129,11 +129,11 @@ struct BatchImportView: View {
                 let result = try await store.scanGames(folder: root.path)
                 guard !Task.isCancelled, scanToken == token else { return }
                 candidates = result.candidates; warnings = result.warnings
-                summary = "已检查 \(result.visited) 个目录，找到 \(candidates.count) 个候选。" +
+                summary = String(format: L("已检查 %@ 个目录，找到 %@ 个候选。"), "\(result.visited)", "\(candidates.count)") +
                     (result.limited ? L("已达到扫描范围或数量上限，结果可能不完整，可选择更小的目录继续。") : L("请核对引擎并逐项勾选。"))
             } catch {
                 guard !Task.isCancelled, scanToken == token else { return }
-                self.error = "扫描失败：\(error)"
+                self.error = String(format: L("扫描失败：%@"), "\(error)")
                 summary = L("扫描未完成，未添加任何游戏。")
             }
             scanToken = nil; scanTask = nil
@@ -160,10 +160,10 @@ struct RelocateGameView: View {
         VStack(alignment: .leading, spacing: 16) {
             Text(L("重新定位游戏目录")).font(.title2.bold())
             Text(expected.gameTitle).font(.headline).lineLimit(2)
-            Text("原路径：\(DetectPath.gameDirForFiles(expected.gamePath))")
+            Text(String(format: L("原路径：%@"), "\(DetectPath.gameDirForFiles(expected.gamePath))"))
                 .font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
             Text(L("选择移动后的同一游戏目录。只更新路径，保留作品信息、分类、游玩记录和启动参数；不会移动游戏文件或存档。"))
-            Text("原引擎：\(EngineRegistry.find(folder: expected.gameEngine)?.name ?? expected.gameEngine)")
+            Text(String(format: L("原引擎：%@"), "\(EngineRegistry.find(folder: expected.gameEngine)?.name ?? expected.gameEngine)"))
                 .font(.callout)
             Button {
                 chooseFolder()
@@ -173,7 +173,7 @@ struct RelocateGameView: View {
             .buttonStyle(.bordered)
             if let candidate {
                 Text(candidate.folder).font(.callout).textSelection(.enabled)
-                Text("识别引擎：\(EngineRegistry.find(folder: candidate.engine)?.name ?? candidate.engine)")
+                Text(String(format: L("识别引擎：%@"), "\(EngineRegistry.find(folder: candidate.engine)?.name ?? candidate.engine)"))
                     .font(.caption).foregroundStyle(.secondary)
                 Toggle(L("我已确认这是同一个游戏，而不只是相同引擎"), isOn: $confirmed)
             }
@@ -216,7 +216,7 @@ struct RelocateGameView: View {
                 error = L("所选目录的引擎与原记录不同，请重新选择。"); return
             }
             candidate = found
-        } catch { self.error = "无法使用此目录：\(error)" }
+        } catch { self.error = String(format: L("无法使用此目录：%@"), "\(error)") }
     }
 }
 

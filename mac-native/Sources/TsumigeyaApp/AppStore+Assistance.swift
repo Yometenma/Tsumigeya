@@ -96,7 +96,7 @@ final class AssistanceSession: ObservableObject {
             serviceRaw["endpoint"] = .string(service.endpoint); serviceRaw["model"] = .string(service.model)
             serviceRaw["targetLanguage"] = .string(service.targetLanguage)
             try TranslationCredential.save(key, account: service.endpoint)
-            if let error = JSONStore.save(serviceRaw, to: url) { throw AssistanceError.invalid("密钥已保存在钥匙串，但接口设置未保存：\(error)") }
+            if let error = JSONStore.save(serviceRaw, to: url) { throw AssistanceError.invalid(String(format: L("密钥已保存在钥匙串，但接口设置未保存：%@"), "\(error)")) }
             message = L("翻译接口已保存；密钥只存放在系统钥匙串。")
         }
     }
@@ -109,7 +109,7 @@ final class AssistanceSession: ObservableObject {
                 guard let self, self.isCurrent, !Task.isCancelled else { self?.busy = false; return }
                 var next = self.catalog ?? TranslationCatalog(identity: project.identity)
                 next.merge(entries); try self.persist(next)
-                self.message = "已提取并保存 \(entries.count) 条去重文本；已有译文和手动修订均保留。"
+                self.message = String(format: L("已提取并保存 %@ 条去重文本；已有译文和手动修订均保留。"), "\(entries.count)")
             } catch { if let self, self.isCurrent { self.error = error.localizedDescription } }
             self?.busy = false
         }
@@ -130,7 +130,7 @@ final class AssistanceSession: ObservableObject {
             guard let project else { return }
             let entries = try TranslationFiles.imported(Data(contentsOf: url))
             var next = catalog ?? .init(identity: project.identity); next.merge(entries)
-            try persist(next); message = "已导入 \(entries.count) 条译文。关闭游戏后点击「应用到游戏」生效。"
+            try persist(next); message = String(format: L("已导入 %@ 条译文。关闭游戏后点击「应用到游戏」生效。"), "\(entries.count)")
         }
     }
     func exportFile(_ url: URL) {
@@ -181,7 +181,7 @@ final class AssistanceSession: ObservableObject {
                     }
                 }
                 let source = pending[position]; position += 1; attempted.insert(source)
-                self.message = "正在翻译 \(position) / \(pending.count)；每条成功后立即保存。"
+                self.message = String(format: L("正在翻译 %@ / %@；每条成功后立即保存。"), "\(position)", "\(pending.count)")
                 var result: String?, failure: String?, stopForService = false
                 for attempt in 0..<3 {
                     do { result = try await translateText(service, source); failure = nil; break }
@@ -198,14 +198,14 @@ final class AssistanceSession: ObservableObject {
                 do {
                     try self.persist(next)
                     if followGame, let project = self.project { try AssistanceInstaller.updateTranslations(project, translations: next.dictionary) }
-                } catch { self.error = "已停止翻译：\(error.localizedDescription)"; break }
+                } catch { self.error = String(format: L("已停止翻译：%@"), "\(error.localizedDescription)"); break }
                 if stopForService { self.error = L("翻译服务拒绝请求，已停止队列。请检查地址、模型、余额或密钥后重试。"); break }
                 try? await Task.sleep(for: .milliseconds(800))
             }
             guard let self, self.isCurrent else { return }
             self.busy = false
             if Task.isCancelled { self.message = L("已暂停，继续时只处理未完成的条目。") }
-            else if self.error == nil { self.message = "翻译任务结束。已完成 \(self.catalog?.completed ?? 0) 条，失败 \(self.catalog?.entries.filter { $0.failure != nil }.count ?? 0) 条。点击「应用到游戏」生效。" }
+            else if self.error == nil { self.message = String(format: L("翻译任务结束。已完成 %@ 条，失败 %@ 条。点击「应用到游戏」生效。"), "\(self.catalog?.completed ?? 0)", "\(self.catalog?.entries.filter { $0.failure != nil }.count ?? 0)") }
         }
     }
     func apply() {
@@ -255,6 +255,6 @@ private enum TranslationCredential {
         let attrs = [kSecValueData as String: Data(value.utf8)]
         var status = SecItemUpdate(q as CFDictionary, attrs as CFDictionary)
         if status == errSecItemNotFound { var item = q; item.merge(attrs) { _, new in new }; item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly; status = SecItemAdd(item as CFDictionary, nil) }
-        guard status == errSecSuccess else { throw AssistanceError.invalid("无法把密钥保存到系统钥匙串（\(status)）。") }
+        guard status == errSecSuccess else { throw AssistanceError.invalid(String(format: L("无法把密钥保存到系统钥匙串（%@）。"), "\(status)")) }
     }
 }

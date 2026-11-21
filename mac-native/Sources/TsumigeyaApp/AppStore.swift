@@ -233,7 +233,7 @@ final class AppStore: ObservableObject {
             if stopped {
                 runningGames.removeValue(forKey: game.id)
             } else {
-                lastLaunchFailure[game.id] = "停止失败：进程 \(pid) 没退出"
+                lastLaunchFailure[game.id] = String(format: L("停止失败：进程 %@ 没退出"), "\(pid)")
             }
         }
     }
@@ -253,7 +253,7 @@ final class AppStore: ObservableObject {
                 if let game = game(id: id), game.gameEngine == "wine",
                    let code = WineRuntime.lastExit(dataDir: dataDir, folder: DetectPath.gameDirForFiles(game.gamePath), gameID: game.wineEnvironmentIdentity),
                    code != 0 && code != 143 {
-                    lastLaunchFailure[id] = "Windows 程序已退出（退出码 \(code)）。请检查启动文件、语言环境及游戏所需依赖。"
+                    lastLaunchFailure[id] = String(format: L("Windows 程序已退出（退出码 %@）。请检查启动文件、语言环境及游戏所需依赖。"), "\(code)")
                 }
             }
             runningGames = alive
@@ -531,7 +531,7 @@ final class AppStore: ObservableObject {
         if key == .metadataSearchEndpoint || key == .metadataSearchProvider, value != settings[key.rawValue] { updated.removeValue(forKey: SettingsGroups.Key.metadataSearchLANEndpoint.rawValue) }
         updated[key.rawValue] = value
         if let error = JSONStore.save(JSONValue.object(updated), to: settingsURL) {
-            operationError = "设置保存失败：\(error)"
+            operationError = String(format: L("设置保存失败：%@"), "\(error)")
             return
         }
         settings = updated
@@ -722,7 +722,7 @@ final class AppStore: ObservableObject {
     func intakeConflict(_ candidate: LibraryIntake.Candidate) -> String? {
         if let id = LibraryIntake.duplicateFolder(candidate.folder, in: GameMap(games: Dictionary(
             uniqueKeysWithValues: games.map { ($0.id, $0) }))) {
-            return "此目录已入库（游戏 \(id)）"
+            return String(format: L("此目录已入库（游戏 %@）"), "\(id)")
         }
         return nil
     }

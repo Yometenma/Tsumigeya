@@ -121,7 +121,7 @@ struct DLsiteWorkInfo: View {
                     }
                 }
             }
-            Text("信息获取时间：\(work.fetchedAt)")
+            Text(String(format: L("信息获取时间：%@"), "\(work.fetchedAt)"))
                 .font(.caption2).foregroundStyle(.tertiary)
         }
         .sheet(isPresented: Binding(get: { selectedImage != nil }, set: { if !$0 { selectedImage = nil } })) {

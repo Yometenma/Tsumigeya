@@ -70,10 +70,10 @@ struct LiveAssistanceView: View {
                     Button(L("变化")) { scan("changed") }; Button(L("未变化")) { scan("unchanged") }
                     Button(L("显示全部")) { baseline = nil; candidates = nil }
                 }.disabled(baseline == nil)
-                Text("匹配 \(variables.count) 条，显示前 100 条；筛选依据每次查找时的数值快照。").font(.caption).foregroundStyle(.secondary)
+                Text(String(format: L("匹配 %@ 条，显示前 100 条；筛选依据每次查找时的数值快照。"), "\(variables.count)")).font(.caption).foregroundStyle(.secondary)
                 ForEach(Array(variables.prefix(100))) { row in
                     HStack {
-                        VStack(alignment: .leading) { Text(row.name); Text("\(row.key) = \(display(row.value))\(row.locked ? "（锁定中）" : "")").font(.caption).textSelection(.enabled) }
+                        VStack(alignment: .leading) { Text(row.name); Text(String(format: L("%@ = %@%@"), "\(row.key)", "\(display(row.value))", "\(row.locked ? "（锁定中）" : "")")).font(.caption).textSelection(.enabled) }
                         Spacer()
                         Button(L("编辑")) { chosen = row; draft = row.value.stringValue ?? display(row.value); booleanDraft = row.value.boolValue ?? false; action = "set" }
                         if row.locked { Button(L("解除锁定")) { session.sendLive(action: "unlock", key: row.key, value: "null") } }
@@ -93,9 +93,9 @@ struct LiveAssistanceView: View {
             VStack(alignment: .leading, spacing: 16) {
                 Text(L("修改游戏状态")).font(.title2.bold())
                 Text("\(row.name)（\(row.key)）").textSelection(.enabled)
-                Text("原值：\(display(row.value))").textSelection(.enabled)
+                Text(String(format: L("原值：%@"), "\(display(row.value))")).textSelection(.enabled)
                 if case .bool = row.value {
-                    Toggle("目标状态：\(booleanDraft ? "开启" : "关闭")", isOn: $booleanDraft)
+                    Toggle(String(format: L("目标状态：%@"), "\(booleanDraft ? "开启" : "关闭")"), isOn: $booleanDraft)
                 } else {
                     TextField(row.value.stringValue == nil ? L("输入目标数值") : L("输入目标文字"), text: $draft)
                 }

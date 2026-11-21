@@ -49,7 +49,7 @@ private struct AssistanceContent: View {
             if let error = session.error { Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.red).textSelection(.enabled) }
             if !session.message.isEmpty { Text(session.message).foregroundStyle(.secondary).textSelection(.enabled) }
             if let project = session.project {
-                Label("已识别 \(project.displayName)", systemImage: "checkmark.circle")
+                Label(String(format: L("已识别 %@"), "\(project.displayName)"), systemImage: "checkmark.circle")
                 Text(L("已接入内置辅助模块，翻译与作弊分别启用；具体兼容范围以模块说明和作品实测为准。")).font(.caption).foregroundStyle(.secondary)
                 installation
                 if project.module.translation != nil && mode != .assistance { translation }
@@ -69,7 +69,7 @@ private struct AssistanceContent: View {
         .confirmationDialog(L("开始自动翻译？"), isPresented: $confirmTranslate) {
             Button(L("发送文本并开始翻译")) { session.translate(onlyFailures: onlyFailures, followGame: followGame) }
         } message: { Text(L("待翻译游戏文本将发送到你填写的接口，可能产生费用。已完成的译文不会重复请求；可随时暂停。游戏文本仅作为数据处理，不执行其中的指令。")) }
-        .confirmationDialog("确认\(restoreTitle)？", isPresented: $confirmRestore) {
+        .confirmationDialog(String(format: L("确认%@？"), "\(restoreTitle)"), isPresented: $confirmRestore) {
             Button(restoreTitle, role: .destructive) { session.restore() }
         } message: { Text(L("移除辅助入口和辅助文件，保留启动器中的译文，不修改原始剧本或数据库。此操作不会撤销已写入存档的作弊修改。")) }
     }
@@ -129,10 +129,10 @@ private struct AssistanceContent: View {
                 let completed = session.catalog?.completed ?? 0
                 let total = session.catalog?.entries.count ?? 0
                 ProgressView(value: Double(completed), total: Double(max(total, 1)))
-                Text("共 \(total) 条，已翻译 \(completed) 条；未命中译文时显示原文。已翻译的游戏无需保持联网或保持启动器开启。").font(.callout).foregroundStyle(.secondary)
+                Text(String(format: L("共 %@ 条，已翻译 %@ 条；未命中译文时显示原文。已翻译的游戏无需保持联网或保持启动器开启。"), "\(total)", "\(completed)")).font(.callout).foregroundStyle(.secondary)
                 TextField(L("搜索原文或译文"), text: $query)
                 Toggle(L("只看未完成条目"), isOn: $onlyMissing)
-                Text("匹配 \(matches.count) 条，显示前 100 条；搜索可缩小范围。").font(.caption).foregroundStyle(.secondary)
+                Text(String(format: L("匹配 %@ 条，显示前 100 条；搜索可缩小范围。"), "\(matches.count)")).font(.caption).foregroundStyle(.secondary)
                 ForEach(Array(matches.prefix(100))) { entry in
                     VStack(alignment: .leading, spacing: 5) {
                         Text(entry.source).lineLimit(3).textSelection(.enabled)

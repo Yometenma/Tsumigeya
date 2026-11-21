@@ -78,7 +78,7 @@ struct LaunchDiagnosticsView: View {
             HStack(spacing: 8) {
                 Image(systemName: diagnosis.isReady ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
                     .foregroundStyle(diagnosis.isReady ? .green : .orange)
-                Text(diagnosis.isReady ? L("启动条件看起来正常") : "发现 \(blocking.count) 项需要处理的问题")
+                Text(diagnosis.isReady ? L("启动条件看起来正常") : String(format: L("发现 %@ 项需要处理的问题"), "\(blocking.count)"))
                     .font(.headline)
                 Spacer()
                 Text(EngineRegistry.find(folder: diagnosis.engine)?.name ?? diagnosis.engine)
@@ -114,7 +114,7 @@ struct LaunchDiagnosticsView: View {
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
                 if let action = item.action {
-                    Text("建议：\(action)")
+                    Text(String(format: L("建议：%@"), "\(action)"))
                         .font(.caption)
                         .foregroundStyle(item.level == .blocking ? .orange : .secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -129,9 +129,9 @@ struct LaunchDiagnosticsView: View {
     private func planSection(_ plan: LaunchPlanPreview) -> some View {
         VStack(alignment: .leading, spacing: 7) {
             Text(L("本次启动计划")).font(.callout.weight(.medium))
-            Text("运行时：\(plan.binary)")
-            if let cwd = plan.workingDirectory { Text("工作目录：\(cwd)") }
-            Text(plan.arguments.isEmpty ? L("参数：无") : "参数：\(plan.arguments.joined(separator: "  "))")
+            Text(String(format: L("运行时：%@"), "\(plan.binary)"))
+            if let cwd = plan.workingDirectory { Text(String(format: L("工作目录：%@"), "\(cwd)")) }
+            Text(plan.arguments.isEmpty ? L("参数：无") : String(format: L("参数：%@"), "\(plan.arguments.joined(separator: "  "))"))
         }
         .font(.caption)
         .foregroundStyle(.secondary)

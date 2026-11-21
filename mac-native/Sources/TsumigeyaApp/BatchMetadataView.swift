@@ -19,7 +19,7 @@ struct BatchMetadataView: View {
             controls
             Text(L("范围为游戏库当前筛选结果。唯一编号会自动获取并保存；名称搜索只准备候选，必须逐项预览确认。已保存的结果不会因暂停或关闭而撤销。"))
                 .font(.callout).foregroundStyle(.secondary)
-            Text("已保存 \(savedCount) · 待确认 \(confirmationCount) · 失败 \(failedCount) · 等待 \(waitingCount)")
+            Text(String(format: L("已保存 %@ · 待确认 %@ · 失败 %@ · 等待 %@"), "\(savedCount)", "\(confirmationCount)", "\(failedCount)", "\(waitingCount)"))
                 .font(.callout.monospacedDigit())
             if store.batchMetaRunning {
                 HStack {

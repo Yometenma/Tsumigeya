@@ -100,7 +100,7 @@ public enum LibraryIntake {
                     if queue.count >= max(1, maxDirectories) { report.limited = true; continue }
                     queue.append((child, depth + 1))
                 }
-            } catch { report.warnings.append("无法读取 \(url.path)：\(error.localizedDescription)") }
+            } catch { report.warnings.append(String(format: L10n.string("无法读取 %@：%@"), "\(url.path)", "\(error.localizedDescription)")) }
         }
         return report
     }
@@ -111,10 +111,10 @@ public enum LibraryIntake {
         var result = map
         for candidate in candidates {
             guard let detected = try inspectFolder(candidate.folder), detected.engine == candidate.engine else {
-                throw Failure("目录已变化或引擎不匹配，请重新扫描：\(candidate.folder)")
+                throw Failure(String(format: L10n.string("目录已变化或引擎不匹配，请重新扫描：%@"), "\(candidate.folder)"))
             }
             if let id = duplicateFolder(candidate.folder, in: result) {
-                throw Failure("此目录已入库（游戏 \(id)），未添加任何游戏。")
+                throw Failure(String(format: L10n.string("此目录已入库（游戏 %@），未添加任何游戏。"), "\(id)"))
             }
             let entry: String
             if candidate.engine == "wine" {

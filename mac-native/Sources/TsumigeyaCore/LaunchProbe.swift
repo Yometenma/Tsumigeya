@@ -79,7 +79,7 @@ public enum LaunchProbe {
         // ① 硬证据：有没有窗口
         let windowCount = countWindows(ofPID: pid)
         if windowCount > 0 {
-            return .running(windowCount: windowCount, evidence: "窗口 \(windowCount) 个")
+            return .running(windowCount: windowCount, evidence: String(format: L10n.string("窗口 %@ 个"), "\(windowCount)"))
         }
 
         // ② 次硬：CPU 时间有没有在增长
@@ -100,7 +100,7 @@ public enum LaunchProbe {
             if delta > 20_000_000 {
                 return .running(
                     windowCount: 0,
-                    evidence: "CPU 在增长（\(delta / 1_000_000)ms / \(cpuSampleInterval)s）")
+                    evidence: String(format: L10n.string("CPU 在增长（%@ms / %@s）"), "\(delta / 1_000_000)", "\(cpuSampleInterval)"))
             }
             // CPU 完全不涨 → 大概率卡在弹窗上
             if delta <= 1_000_000 {

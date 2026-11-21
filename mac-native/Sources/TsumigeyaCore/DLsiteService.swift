@@ -188,7 +188,7 @@ public actor DLsiteService {
         // ⚠️ **必须确认是结果页**：搜不到时 DLsite 返回普通页面，
         //    直接解析会得到空列表，而用户分不清「没有这个作品」与「解析失败」。
         guard DLsiteSearch.isResultPage(response.body) else {
-            return .failure(.parseFailed(rj: "搜索：\(keyword)"))
+            return .failure(.parseFailed(rj: String(format: L10n.string("搜索：%@"), "\(keyword)")))
         }
 
         let hits = DLsiteSearch.parse(response.body).map {
@@ -278,7 +278,7 @@ public actor DLsiteService {
                 case .failure(let error):
                     firstError = firstError ?? error
                     let scope = category == "home" ? L10n.string("一般向") : (category == "pro" ? L10n.string("商业作品") : L10n.string("成人向同人"))
-                    warnings.append("\(scope)未完成：\(error.message)")
+                    warnings.append(String(format: L10n.string("%@未完成：%@"), "\(scope)", "\(error.message)"))
                 }
             }
             if !hits.isEmpty { return .success(SearchReport(hits: hits, warnings: warnings, keywordsTried: tried)) }

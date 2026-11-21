@@ -111,7 +111,7 @@ public enum EngineArgsOptions {
             return match.label
         }
         // 不认识的值 → 明确显示出来，不静默当成自动
-        return "未知值（\(value)）"
+        return String(format: L10n.string("未知值（%@）"), "\(value)")
     }
 
     /// 判断一个值是否被选项表认识。

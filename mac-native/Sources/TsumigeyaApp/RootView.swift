@@ -86,7 +86,7 @@ struct RootView: View {
     @ViewBuilder
     private var dataDirectoryNotice: some View {
         if let warning = store.dataDirWarning {
-            Label("原数据目录不可用，当前使用：\(warning.switchedTo)", systemImage: "exclamationmark.triangle")
+            Label(String(format: L("原数据目录不可用，当前使用：%@"), "\(warning.switchedTo)"), systemImage: "exclamationmark.triangle")
                 .font(.callout)
                 .foregroundStyle(.orange)
                 .textSelection(.enabled)
@@ -490,7 +490,7 @@ private struct AppPresentations: ViewModifier {
                 store.cancelPendingDelete()
             }
         } message: { game in
-            Text("「\(store.displayTitle(for: game))」会从游戏库移除。\n\n"
+            Text(String(format: L("「%@」会从游戏库移除。\n\n"), "\(store.displayTitle(for: game))")
                  + L("**游戏文件不会被删除**，只是不再显示在列表里。")
                  + L("游玩记录和分类归属也会一起清掉。"))
         }
@@ -506,7 +506,7 @@ private struct AppPresentations: ViewModifier {
                 store.cancelDeleteCategory()
             }
         } message: { pair in
-            Text("分类「\(pair.name)」会被删除。\n\n"
+            Text(String(format: L("分类「%@」会被删除。\n\n"), "\(pair.name)")
                  + L("**游戏不会被删除**，只是它们不再属于这个分类。作品类型分类删除后不会在刷新资料时自动重建；新建同名类型分类可重新启用。"))
         }
     }

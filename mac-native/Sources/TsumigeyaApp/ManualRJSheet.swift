@@ -72,7 +72,7 @@ struct ManualRJSheet: View {
                 if !busy { Button(L("重试当前查找")) { lookup() } }
             }
             if let keywords = store.searchKeywordsTried[gameId], !keywords.isEmpty {
-                Text("已搜索：\(keywords.joined(separator: " → "))").font(.caption).foregroundStyle(.secondary)
+                Text(String(format: L("已搜索：%@"), "\(keywords.joined(separator: " → "))")).font(.caption).foregroundStyle(.secondary)
             }
             ForEach(store.searchWarnings[gameId] ?? [], id: \.self) { warning in
                 Label(warning, systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(.orange)

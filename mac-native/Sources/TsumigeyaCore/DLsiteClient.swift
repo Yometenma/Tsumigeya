@@ -96,24 +96,24 @@ public enum DLsiteError: Error, Sendable, Equatable {
     ///    · rjMismatch → 「作品可能下架或改名了」
     public var message: String {
         switch self {
-        case .storage(let detail): return "保存作品缓存失败，原件未覆盖：\(detail)"
+        case .storage(let detail): return String(format: L10n.string("保存作品缓存失败，原件未覆盖：%@"), "\(detail)")
         case .cancelled: return L10n.string("已取消获取，原有作品信息未更改。")
         case .verificationRequired: return L10n.string("站点返回了验证页面，并非没有该作品。请在浏览器中确认站点可访问后重试。")
         case .invalidURL(let url):
-            return "RJ 号或分类不合法：\(url)"
+            return String(format: L10n.string("RJ 号或分类不合法：%@"), "\(url)")
         case .network(let detail):
-            return "网络请求失败：\(detail)。检查网络连接，如果用代理请确认它开着。"
+            return String(format: L10n.string("网络请求失败：%@。检查网络连接，如果用代理请确认它开着。"), "\(detail)")
         case .httpStatus(403): return L10n.string("站点拒绝了请求（403）。请检查浏览器能否访问作品页及代理设置后重试。")
         case .httpStatus(404): return L10n.string("未找到该作品页（404）。请核对编号或尝试其他查找范围；作品也可能已下架。")
         case .httpStatus(429): return L10n.string("站点暂时限制了访问频率（429），请稍后重试。")
         case .httpStatus(let code):
-            return "DLsite 返回了 HTTP \(code)。可能是站点临时故障，稍后再试。"
+            return String(format: L10n.string("DLsite 返回了 HTTP %@。可能是站点临时故障，稍后再试。"), "\(code)")
         case .parseFailed(let rj):
-            return "抓到了页面但解析不出来（\(rj)）。可能这个 RJ 不存在，或 DLsite 改了页面结构。"
+            return String(format: L10n.string("抓到了页面但解析不出来（%@）。可能这个 RJ 不存在，或 DLsite 改了页面结构。"), "\(rj)")
         case .rjMismatch(let requested, let got):
-            return "请求的是 \(requested)，但页面里是 \(got)。作品可能已下架或改了 ID。"
+            return String(format: L10n.string("请求的是 %@，但页面里是 %@。作品可能已下架或改了 ID。"), "\(requested)", "\(got)")
         case .rateLimited(let ms):
-            return "请求太频繁，请等 \(max(1, (ms + 999) / 1000)) 秒后再试。"
+            return String(format: L10n.string("请求太频繁，请等 %@ 秒后再试。"), "\(max(1, (ms + 999) / 1000))")
         }
     }
 }

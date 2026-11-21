@@ -98,15 +98,15 @@ public enum LaunchFailure: Error, Sendable, Equatable {
     public var message: String {
         switch self {
         case .engineBinaryMissing(let b):
-            return "引擎运行时不存在：\(b)\n去「引擎」页安装或修复这个引擎。"
+            return String(format: L10n.string("引擎运行时不存在：%@\n去「引擎」页安装或修复这个引擎。"), "\(b)")
         case .gameFolderMissing(let f):
-            return "游戏目录不存在：\(f)\n游戏可能被移动或删除了，请重新添加。"
+            return String(format: L10n.string("游戏目录不存在：%@\n游戏可能被移动或删除了，请重新添加。"), "\(f)")
         case .notExecutable(let b):
-            return "引擎运行时没有执行权限：\(b)\n试着重装这个引擎。"
+            return String(format: L10n.string("引擎运行时没有执行权限：%@\n试着重装这个引擎。"), "\(b)")
         case .unsupportedEngine(let e):
-            return "引擎「\(e)」的运行时路径还没实现（P2 阶段只支持已装过的 4 个）。"
+            return String(format: L10n.string("引擎「%@」的运行时路径还没实现（P2 阶段只支持已装过的 4 个）。"), "\(e)")
         case .spawnFailed(let m):
-            return "启动失败：\(m)"
+            return String(format: L10n.string("启动失败：%@"), "\(m)")
         }
     }
 }
@@ -168,7 +168,7 @@ public enum LaunchPlanner {
             fileExists: fileExists, listDir: listDir) else {
             // 找不到二进制 → 明确报「运行时不存在」，而不是猜一个路径
             return .failure(.engineBinaryMissing(
-                binary: "\(BinaryPaths.moduleDir(ctx.dataDir, engine))/deps/<未找到>"))
+                binary: String(format: L10n.string("%@/deps/<未找到>"), "\(BinaryPaths.moduleDir(ctx.dataDir, engine))")))
         }
 
         // 参数：游戏目录（这四个引擎都是 `播放器 <游戏目录>` 的形式）
@@ -227,7 +227,7 @@ public enum LaunchPlanner {
             let iniWarning = MkxpzConfig.sanitizeGameIniTitle(gameDir: ctx.folder)
             if let iniWarning {
                 FileHandle.standardError.write(
-                    "[tsumigeya] Game.ini Title 修正跳过：\(iniWarning)\n".data(using: .utf8)!)
+                    String(format: L10n.string("[tsumigeya] Game.ini Title 修正跳过：%@\n"), "\(iniWarning)").data(using: .utf8)!)
             }
 
             var gameFolder = ctx.folder
@@ -253,10 +253,10 @@ public enum LaunchPlanner {
                         config["RTP"] = .array(rtps + [.string(fonts)])
                     }
                 }
-            } catch { return .failure(.spawnFailed(message: "辅助配置检查失败：\(error.localizedDescription)")) }
+            } catch { return .failure(.spawnFailed(message: String(format: L10n.string("辅助配置检查失败：%@"), "\(error.localizedDescription)"))) }
             if let writeError = MkxpzConfig.write(config, to: configPath) {
                 // 写配置失败 → **不启动**。没有配置它必然弹错误框，比不启动更糟。
-                return .failure(.spawnFailed(message: "写 mkxp.json 失败：\(writeError)"))
+                return .failure(.spawnFailed(message: String(format: L10n.string("写 mkxp.json 失败：%@"), "\(writeError)")))
             }
         }
 

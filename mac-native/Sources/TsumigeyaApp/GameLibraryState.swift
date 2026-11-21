@@ -30,7 +30,7 @@ final class GameLibraryState: ObservableObject {
         var warning: String?
         if loadError == nil {
             do { _ = try LibraryClassification.change(.reconcile(gameIDs: games.map(\.id)), dataDir: dataDir) }
-            catch { warning = "已有资料的自动分类未更新：\(error)" }
+            catch { warning = String(format: L("已有资料的自动分类未更新：%@"), "\(error)") }
         }
         reloadRelatedData()
         return warning
@@ -120,7 +120,7 @@ final class GameLibraryState: ObservableObject {
                 (assignments[game.id] ?? []).contains(catId)
             }
             if inCat.isEmpty { continue }
-            result.append(Group(id: catId, title: def.name, games: inCat))
+            result.append(Group(id: catId, title: def.displayName, games: inCat))
         }
 
         // 未归类的：**没在任何分类里**的游戏

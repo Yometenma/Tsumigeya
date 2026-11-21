@@ -161,15 +161,15 @@ public enum DownloadError: Error, Sendable, Equatable, LocalizedError {
     public var message: String {
         switch self {
         case .invalidURL(let raw):
-            return "下载地址不合法：\(raw)"
+            return String(format: L10n.string("下载地址不合法：%@"), "\(raw)")
         case .httpStatus(let code, let url):
-            return "下载失败：HTTP \(code)\n地址：\(url)"
+            return String(format: L10n.string("下载失败：HTTP %@\n地址：%@"), "\(code)", "\(url)")
         case .cancelled:
             return L10n.string("下载已取消。")
         case .transport(let reason):
-            return "下载失败：\(reason)"
+            return String(format: L10n.string("下载失败：%@"), "\(reason)")
         case .writeFailed(let path, let reason):
-            return "写出下载文件失败：\(path)\n原因：\(reason)"
+            return String(format: L10n.string("写出下载文件失败：%@\n原因：%@"), "\(path)", "\(reason)")
         }
     }
 }

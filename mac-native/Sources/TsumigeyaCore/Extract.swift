@@ -105,11 +105,11 @@ public enum ExtractError: Error, LocalizedError, Sendable, Equatable {
     public var message: String {
         switch self {
         case .unsafeArchive(let entry):
-            return "压缩包里的路径不安全：\(entry)"
+            return String(format: L10n.string("压缩包里的路径不安全：%@"), "\(entry)")
         case .archiveNotFound(let archive):
-            return "找不到压缩包：\(archive)"
+            return String(format: L10n.string("找不到压缩包：%@"), "\(archive)")
         case .extractFailed(let message):
-            return "解压失败：\(message)"
+            return String(format: L10n.string("解压失败：%@"), "\(message)")
         }
     }
 
@@ -275,7 +275,7 @@ public enum Extract {
         let listing = runTar(["-tf", archive], env: env)
         guard listing.status == 0 else {
             throw ExtractError.extractFailed(
-                message: "列出条目失败（tar 退出码 \(listing.status)）："
+                message: String(format: L10n.string("列出条目失败（tar 退出码 %@）："), "\(listing.status)")
                     + summarize(listing.stderr))
         }
 
@@ -289,7 +289,7 @@ public enum Extract {
                 atPath: destination, withIntermediateDirectories: true)
         } catch {
             throw ExtractError.extractFailed(
-                message: "创建目标目录失败：\(error.localizedDescription)")
+                message: String(format: L10n.string("创建目标目录失败：%@"), "\(error.localizedDescription)"))
         }
 
         // ---- 3. 解压 ----
@@ -300,7 +300,7 @@ public enum Extract {
         let result = runTar(args, env: env)
         guard result.status == 0 else {
             throw ExtractError.extractFailed(
-                message: "tar 退出码 \(result.status)：\(summarize(result.stderr))")
+                message: String(format: L10n.string("tar 退出码 %@：%@"), "\(result.status)", "\(summarize(result.stderr))"))
         }
     }
 
@@ -338,7 +338,7 @@ public enum Extract {
         } catch {
             // `Process.run()` 对「可执行文件不存在」是**同步抛错**（不像 Node 是异步 error 事件）。
             // tar 不在时走到这里，按「解压失败」而不是「压缩包不安全」报 —— 两者处境不同。
-            return ("", "无法启动 tar（\(tarPath)）：\(error.localizedDescription)", 127)
+            return ("", String(format: L10n.string("无法启动 tar（%@）：%@"), "\(tarPath)", "\(error.localizedDescription)"), 127)
         }
 
         let outData = outPipe.fileHandleForReading.readDataToEndOfFile()

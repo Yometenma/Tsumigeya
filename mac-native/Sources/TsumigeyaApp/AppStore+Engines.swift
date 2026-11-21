@@ -28,7 +28,7 @@ extension AppStore {
         let root = BinaryPaths.moduleDir(dataDir, folder)
         refreshEngineEntries()
         if !force && installedEngines.contains(folder) {
-            engineErrors[folder] = "「\(definition.name)」已经装了。要重装请点「重装」。"
+            engineErrors[folder] = String(format: L("「%@」已经装了。要重装请点「重装」。"), "\(definition.name)")
             return
         }
         if !runningGames.isEmpty {
@@ -126,7 +126,7 @@ extension AppStore {
         } catch {
             if !Task.isCancelled {
                 let message = (error as? InstallError)?.message ?? error.localizedDescription
-                engineErrors[folder] = "安装失败：\(message)"
+                engineErrors[folder] = String(format: L("安装失败：%@"), "\(message)")
             }
         }
     }
@@ -137,10 +137,10 @@ extension AppStore {
     ///    （规矩：文案一律进 locales）。这里做最后一步翻译。
     private static func humanLabel(forKey key: String, label: String) -> String {
         switch key {
-        case "progress.prepare": return "准备 \(label)"
-        case "progress.download": return "正在下载 \(label)"
-        case "progress.extracting": return "正在解压 \(label)"
-        case "progress.done": return "\(label) 完成"
+        case "progress.prepare": return String(format: L("准备 %@"), "\(label)")
+        case "progress.download": return String(format: L("正在下载 %@"), "\(label)")
+        case "progress.extracting": return String(format: L("正在解压 %@"), "\(label)")
+        case "progress.done": return String(format: L("%@ 完成"), "\(label)")
         default: return label
         }
     }

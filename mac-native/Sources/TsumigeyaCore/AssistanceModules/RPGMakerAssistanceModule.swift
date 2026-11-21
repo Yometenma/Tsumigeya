@@ -35,7 +35,7 @@ struct RPGMakerAssistanceModule: AssistanceEngineModule {
             guard database.contains(name) || name == "System.json" || name == "CommonEvents.json" || name.range(of: #"^Map\d+\.json$"#, options: .regularExpression) != nil else { continue }
             guard url.resolvingSymlinksInPath().path.hasPrefix(dir.resolvingSymlinksInPath().path + "/") else { throw AssistanceError.invalid(L10n.string("数据文件越出游戏目录。")) }
             let raw = try Data(contentsOf: url)
-            guard raw.count <= 64 * 1024 * 1024 else { throw AssistanceError.invalid("游戏数据文件过大：\(name)") }
+            guard raw.count <= 64 * 1024 * 1024 else { throw AssistanceError.invalid(String(format: L10n.string("游戏数据文件过大：%@"), "\(name)")) }
             let json = try JSONDecoder().decode(JSONValue.self, from: raw)
             var entries: [TranslationEntry] = []
             func add(_ value: JSONValue?, _ context: String) {
@@ -74,12 +74,12 @@ struct RPGMakerAssistanceModule: AssistanceEngineModule {
                 }
                 if let t = obj["terms"] { terms(t) }
             } else if name == "CommonEvents.json" {
-                for (i, row) in (json.arrayValue ?? []).enumerated() { eventList(row.objectValue?["list"], "公共事件\(i)") }
+                for (i, row) in (json.arrayValue ?? []).enumerated() { eventList(row.objectValue?["list"], String(format: L10n.string("公共事件%@"), "\(i)")) }
             } else {
                 let obj = json.objectValue ?? [:]; add(obj["displayName"], L10n.string("地图名"))
                 for event in obj["events"]?.arrayValue ?? [] {
                     let e = event.objectValue ?? [:]
-                    for page in e["pages"]?.arrayValue ?? [] { eventList(page.objectValue?["list"], "事件\(e["id"]?.intValue ?? 0)") }
+                    for page in e["pages"]?.arrayValue ?? [] { eventList(page.objectValue?["list"], String(format: L10n.string("事件%@"), "\(e["id"]?.intValue ?? 0)")) }
                 }
             }
             result.merge(entries)

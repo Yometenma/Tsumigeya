@@ -163,7 +163,7 @@ public enum ZipWriter {
             try out.write(to: URL(fileURLWithPath: destination))
             return nil
         } catch {
-            return "写 zip 失败：\(error.localizedDescription)"
+            return String(format: L10n.string("写 zip 失败：%@"), "\(error.localizedDescription)")
         }
     }
 

@@ -63,13 +63,13 @@ public enum AssistanceInstaller {
         let packaged = Bundle.main.resourceURL?.appendingPathComponent("Tsumigeya_TsumigeyaCore.bundle")
         let url = packaged.flatMap { Bundle(url: $0)?.url(forResource: name, withExtension: nil, subdirectory: "Assist") }
             ?? Bundle.module.url(forResource: name, withExtension: nil, subdirectory: "Assist")
-        guard let url else { throw AssistanceError.invalid("应用缺少辅助脚本：\(name)") }
+        guard let url else { throw AssistanceError.invalid(String(format: L10n.string("应用缺少辅助脚本：%@"), "\(name)")) }
         return try Data(contentsOf: url)
     }
 
     private static func runtimeResource(_ name: String, project: AssistanceProject) throws -> Data {
         guard let mapped = AssistanceModules.module(for: project.engine).scripts.first(where: { $0.filename == name })?.resource else {
-            throw AssistanceError.invalid("引擎模块未声明辅助脚本：\(name)")
+            throw AssistanceError.invalid(String(format: L10n.string("引擎模块未声明辅助脚本：%@"), "\(name)"))
         }
         return try resource(mapped)
     }
@@ -96,7 +96,7 @@ public enum AssistanceInstaller {
         let url = dir.appendingPathComponent("manifest.json")
         for name in files(project) + ["manifest.json", "original.html", "config.json", "translations.json"] {
             let owned = dir.appendingPathComponent(name)
-            guard owned.resolvingSymlinksInPath().path == owned.path else { throw AssistanceError.invalid("辅助文件是符号链接，拒绝访问：\(name)") }
+            guard owned.resolvingSymlinksInPath().path == owned.path else { throw AssistanceError.invalid(String(format: L10n.string("辅助文件是符号链接，拒绝访问：%@"), "\(name)")) }
         }
         let value = try JSONDecoder().decode([String: JSONValue].self, from: Data(contentsOf: url))
         guard value["schema"]?.intValue == 1, value["identity"]?.stringValue == project.identity,
@@ -151,7 +151,7 @@ public enum AssistanceInstaller {
             var saved: [String] = []
             do {
                 for (url, bytes) in updates { try bytes.write(to: url, options: .atomic); saved.append(url.lastPathComponent) }
-            } catch { throw AssistanceError.invalid("已保存：\(saved.isEmpty ? "无" : saved.joined(separator: "、"))；其余文件未完成：\(error.localizedDescription)") }
+            } catch { throw AssistanceError.invalid(String(format: L10n.string("已保存：%@；其余文件未完成：%@"), "\(saved.isEmpty ? "无" : saved.joined(separator: "、"))", "\(error.localizedDescription)")) }
             return
         }
         let original = try Data(contentsOf: project.page)
@@ -219,6 +219,6 @@ public enum AssistanceInstaller {
         let original = try Data(contentsOf: dir.appendingPathComponent("original.html"))
         try original.write(to: project.page, options: .atomic)
         do { try FileManager.default.removeItem(at: dir) }
-        catch { throw AssistanceError.invalid("原始入口已恢复，但辅助目录清理失败：\(error.localizedDescription)") }
+        catch { throw AssistanceError.invalid(String(format: L10n.string("原始入口已恢复，但辅助目录清理失败：%@"), "\(error.localizedDescription)")) }
     }
 }

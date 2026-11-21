@@ -99,19 +99,19 @@ public enum InstallError: Error, Sendable, Equatable {
     public var message: String {
         switch self {
         case .moduleMissing(let m):
-            return "引擎「\(m)」的 manifest 不存在，需要先安装。"
+            return String(format: L10n.string("引擎「%@」的 manifest 不存在，需要先安装。"), "\(m)")
         case .invalidManifest(let m, let r):
-            return "引擎「\(m)」的 manifest 格式损坏：\(r)"
+            return String(format: L10n.string("引擎「%@」的 manifest 格式损坏：%@"), "\(m)", "\(r)")
         case .dependencyMissing(let d, let m):
-            return "引擎「\(m)」的定义里没有依赖「\(d)」。"
+            return String(format: L10n.string("引擎「%@」的定义里没有依赖「%@」。"), "\(m)", "\(d)")
         case .download(let d, let u, let r):
-            return "下载「\(d)」失败：\(r)\n地址：\(u)"
+            return String(format: L10n.string("下载「%@」失败：%@\n地址：%@"), "\(d)", "\(r)", "\(u)")
         case .extract(let d, let r):
-            return "解压「\(d)」失败：\(r)"
+            return String(format: L10n.string("解压「%@」失败：%@"), "\(d)", "\(r)")
         case .unsafeArchive:
             return L10n.string("压缩包里的路径不安全，已拒绝解压。")
         case .invalidDependency(let n):
-            return "依赖名不合法：\(n)"
+            return String(format: L10n.string("依赖名不合法：%@"), "\(n)")
         case .cancelled:
             return L10n.string("操作已取消。")
         }

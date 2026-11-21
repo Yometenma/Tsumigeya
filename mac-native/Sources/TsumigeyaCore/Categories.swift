@@ -36,6 +36,19 @@ public struct CategoryDef: Sendable, Equatable {
         self.order = order
         self.sourceWorkType = sourceWorkType
     }
+
+    /// 界面显示用的分类名。
+    ///
+    /// ⚠️ `name` 是**持久化数据**（存进 `library-meta.json`，也是自动分类的匹配依据），
+    ///    不能翻译。这里只在「自动生成、且用户没改过名」时按界面语言显示默认译名：
+    ///    用户改过名的分类必须显示用户起的名字，否则他会以为自己改的丢了。
+    public var displayName: String {
+        guard let sourceWorkType,
+              let canonical = GameWorkType.names[sourceWorkType],
+              Categories.normalizeName(name).lowercased() == Categories.normalizeName(canonical).lowercased()
+        else { return name }
+        return L10n.string(canonical)
+    }
 }
 
 /// 定义表：`[slug: CategoryDef]`。

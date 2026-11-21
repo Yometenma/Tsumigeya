@@ -181,7 +181,7 @@ struct GameEditView: View {
                     set: { switchEngine(to: $0) }
                 )) {
                     ForEach(EngineRegistry.all, id: \.folder) { e in
-                        Text(e.launchable ? e.name : "\(e.name)（仅识别）")
+                        Text(e.launchable ? e.name : String(format: L("%@（仅识别）"), "\(e.name)"))
                             .tag(e.folder)
                     }
                 }
@@ -306,7 +306,7 @@ struct GameEditView: View {
                 .textSelection(.enabled)
             Spacer()
             if !meta.editedFields.isEmpty {
-                Text("已手改：\(meta.editedFields.map(metadataFieldName).joined(separator: "、"))")
+                Text(String(format: L("已手改：%@"), "\(meta.editedFields.map(metadataFieldName).joined(separator: "、"))"))
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
@@ -516,7 +516,7 @@ struct GameEditView: View {
         original?.gameArgs = gameArgs
         if let meta = metaDraft, meta != original?.meta {
             guard store.updateMeta(gameId: game.id, meta: meta) else {
-                saveError = "本地信息已保存；\(store.lastAddGameError ?? "保存作品信息失败")"
+                saveError = String(format: L("本地信息已保存；%@"), "\(store.lastAddGameError ?? "保存作品信息失败")")
                 return
             }
         }
@@ -609,7 +609,7 @@ struct EngineArgRow: View {
                             }
                             if let v = EngineArgsOptions.normalizedValue(value),
                                !EngineArgsOptions.isKnown(v, options: rich) {
-                                Text("未知值（\(v)）").tag(v)
+                                Text(String(format: L("未知值（%@）"), "\(v)")).tag(v)
                             }
                         }
                         .labelsHidden()
@@ -660,7 +660,7 @@ struct EngineArgRow: View {
                 // ⚠️ **不静默跳过**（跳过会让用户以为参数不存在）
                 HStack(spacing: 8) {
                     labelText
-                    Text("不支持的类型「\(type ?? "?")」（只读）")
+                    Text(String(format: L("不支持的类型「%@」（只读）"), "\(type ?? "?")"))
                         .font(.caption)
                         .foregroundStyle(.orange)
                 }

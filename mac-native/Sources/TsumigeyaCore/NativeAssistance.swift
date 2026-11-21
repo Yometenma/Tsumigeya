@@ -30,7 +30,7 @@ public enum NativeAssistance {
     }
     private static func checked(_ name: String, in dir: URL) throws -> URL {
         let url = dir.appendingPathComponent(name)
-        guard url.path == url.resolvingSymlinksInPath().path else { throw AssistanceError.invalid("辅助文件不能是符号链接：\(name)") }
+        guard url.path == url.resolvingSymlinksInPath().path else { throw AssistanceError.invalid(String(format: L10n.string("辅助文件不能是符号链接：%@"), "\(name)")) }
         return url
     }
     private static func manifest(_ p: AssistanceProject) throws -> [String: JSONValue] {
@@ -39,7 +39,7 @@ public enum NativeAssistance {
         guard record["schema"]?.intValue == 2, record["identity"]?.stringValue == p.identity else { throw AssistanceError.invalid(L10n.string("辅助记录不属于当前游戏。")) }
         for name in scriptFiles(p) {
             let url = try checked(name, in: dir)
-            guard record[name]?.stringValue == SHA256.hexOfFile(at: url.path) else { throw AssistanceError.invalid("辅助脚本已被外部修改，停止覆盖：\(name)") }
+            guard record[name]?.stringValue == SHA256.hexOfFile(at: url.path) else { throw AssistanceError.invalid(String(format: L10n.string("辅助脚本已被外部修改，停止覆盖：%@"), "\(name)")) }
         }
         if AssistanceModules.module(for: p.engine).entrySource != nil {
             guard p.page.path == p.page.resolvingSymlinksInPath().path, record["entry"]?.stringValue == SHA256.hexOfFile(at: p.page.path) else { throw AssistanceError.invalid(L10n.string("Ren’Py 辅助入口已改变。")) }
@@ -102,7 +102,7 @@ public enum NativeAssistance {
         var saved: [String] = []
         do {
             for (url, data) in writes { try data.write(to: url, options: exists ? .atomic : .withoutOverwriting); saved.append(url.lastPathComponent) }
-        } catch { throw AssistanceError.invalid("已保存：\(saved.joined(separator: "、"))；其余辅助文件未完成：\(error.localizedDescription)") }
+        } catch { throw AssistanceError.invalid(String(format: L10n.string("已保存：%@；其余辅助文件未完成：%@"), "\(saved.joined(separator: "、"))", "\(error.localizedDescription)")) }
     }
     static func updateTranslations(_ p: AssistanceProject, _ translations: [String: String]) throws {
         guard try AssistanceProject.detect(folder: p.root.path) == p else { throw AssistanceError.invalid(L10n.string("游戏身份已改变。")) }
@@ -138,7 +138,7 @@ public enum NativeAssistance {
             for url in targets { try fm.removeItem(at: url); removed.append(url.lastPathComponent) }
             try fm.removeItem(at: dir)
         } catch {
-            throw AssistanceError.invalid("已移除：\(removed.isEmpty ? "无" : removed.joined(separator: "、"))；其余辅助文件未完成移除：\(error.localizedDescription)")
+            throw AssistanceError.invalid(String(format: L10n.string("已移除：%@；其余辅助文件未完成移除：%@"), "\(removed.isEmpty ? "无" : removed.joined(separator: "、"))", "\(error.localizedDescription)"))
         }
     }
 

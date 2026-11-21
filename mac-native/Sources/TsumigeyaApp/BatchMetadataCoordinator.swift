@@ -127,7 +127,7 @@ final class BatchMetadataCoordinator: ObservableObject {
                         }
                         let hits = metadata.searchHits[id] ?? []
                         if !hits.isEmpty {
-                            setBatchMeta(id, state: .needsConfirmation, message: "找到 \(hits.count) 个候选，请预览确认；尚未写入作品信息。")
+                            setBatchMeta(id, state: .needsConfirmation, message: String(format: L("找到 %@ 个候选，请预览确认；尚未写入作品信息。"), "\(hits.count)"))
                         } else {
                             setBatchMeta(id, state: .failed, message: metadata.searchError[id] ?? L("查找已中断，请重试。"))
                         }

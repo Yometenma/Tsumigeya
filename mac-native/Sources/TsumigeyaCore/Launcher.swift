@@ -39,7 +39,7 @@ public struct SpawnOutcome: Sendable {
         pid: Int32, engine: String, capturePath: String? = nil
     ) -> SpawnOutcome {
         SpawnOutcome(ok: true, pid: pid, failure: nil,
-                     detail: "已启动 \(engine)（pid \(pid)）",
+                     detail: String(format: L10n.string("已启动 %@（pid %@）"), "\(engine)", "\(pid)"),
                      capturePath: capturePath)
     }
 
@@ -89,7 +89,7 @@ public enum Launcher {
                 try WineRuntime.prepareFonts(prefix: prefix)
                 let status = URL(fileURLWithPath: prefix + ".exit")
                 if FileManager.default.fileExists(atPath: status.path) { try FileManager.default.removeItem(at: status) }
-            } catch { return .failure(.spawnFailed(message: "无法准备 Wine 运行环境：\(error.localizedDescription)")) }
+            } catch { return .failure(.spawnFailed(message: String(format: L10n.string("无法准备 Wine 运行环境：%@"), "\(error.localizedDescription)"))) }
             process.executableURL = URL(fileURLWithPath: "/bin/sh")
             process.arguments = [WineRuntime.supervisor, plan.binary] + plan.args
         } else {

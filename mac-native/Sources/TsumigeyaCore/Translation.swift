@@ -99,7 +99,7 @@ public enum TranslationFiles {
         let url = url(project: project, dataDir: dataDir)
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         if FileManager.default.fileExists(atPath: url.path) { _ = try load(project: project, dataDir: dataDir) }
-        if let error = JSONStore.save(catalog, to: url) { throw AssistanceError.invalid("译文保存失败：\(error)") }
+        if let error = JSONStore.save(catalog, to: url) { throw AssistanceError.invalid(String(format: L10n.string("译文保存失败：%@"), "\(error)")) }
     }
     public static func imported(_ data: Data) throws -> [TranslationEntry] {
         guard data.count <= 64 * 1024 * 1024 else { throw AssistanceError.invalid(L10n.string("译文文件超过 64 MB。")) }
@@ -171,7 +171,7 @@ public struct TranslationServiceSettings: Codable, Sendable, Equatable {
 public struct TranslationHTTPFailure: LocalizedError, Sendable {
     public let status: Int
     public var retryable: Bool { status == 429 || (500...599).contains(status) }
-    public var errorDescription: String? { "翻译请求失败（HTTP \(status)），未保存这条译文。" }
+    public var errorDescription: String? { String(format: L10n.string("翻译请求失败（HTTP %@），未保存这条译文。"), "\(status)") }
 }
 
 public struct TranslationService: Sendable {

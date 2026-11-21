@@ -164,7 +164,7 @@ public enum LaunchDiagnostics {
             }
         }
         if let runningPID {
-            add("already-running", .notice, L10n.string("游戏已经在运行"), "进程 PID \(runningPID)",
+            add("already-running", .notice, L10n.string("游戏已经在运行"), String(format: L10n.string("进程 PID %@"), "\(runningPID)"),
                 action: L10n.string("如需重新启动，请先停止当前游戏。"))
         }
 

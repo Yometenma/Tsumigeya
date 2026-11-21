@@ -152,14 +152,14 @@ struct AddGameWizard: View {
             if let outcome {
                 // 识别结果
                 if let engine = outcome.engine {
-                    Label("识别为 \(engine.name)", systemImage: "checkmark.circle.fill")
+                    Label(String(format: L("识别为 %@"), "\(engine.name)"), systemImage: "checkmark.circle.fill")
                         .foregroundStyle(.green)
                         .font(.headline)
                     if outcome.ascendLevel > 0 {
                         // ⚠️ **必须告诉用户「往上找了一层」**：
                         //    否则他选的 `/x/y/z/Game.exe` 被存成 `/x/y`，
                         //    以后想改都不知道为什么。
-                        Text("你选的文件在子目录里，游戏目录定为它的上 \(outcome.ascendLevel) 层：\n\(outcome.resolvedFolder)")
+                        Text(String(format: L("你选的文件在子目录里，游戏目录定为它的上 %@ 层：\n%@"), "\(outcome.ascendLevel)", "\(outcome.resolvedFolder)"))
                             .font(.callout)
                             .foregroundStyle(.secondary)
                             .textSelection(.enabled)
@@ -187,7 +187,7 @@ struct AddGameWizard: View {
                     Picker("", selection: $selectedEngine) {
                         Text(L("请选择引擎")).tag("")
                         ForEach(EngineRegistry.all, id: \.folder) { e in
-                            Text(e.launchable ? e.name : "\(e.name)（仅识别）")
+                            Text(e.launchable ? e.name : String(format: L("%@（仅识别）"), "\(e.name)"))
                                 .tag(e.folder)
                         }
                     }

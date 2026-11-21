@@ -63,7 +63,7 @@ public enum MkxpzConfig {
             try FileManager.default.createDirectory(
                 atPath: dir, withIntermediateDirectories: true)
         } catch {
-            return "建目录失败: \(error.localizedDescription)"
+            return String(format: L10n.string("建目录失败: %@"), "\(error.localizedDescription)")
         }
 
         let encoder = JSONEncoder()
@@ -90,7 +90,7 @@ public enum MkxpzConfig {
             try text.write(toFile: file, atomically: true, encoding: .utf8)
             return nil
         } catch {
-            return "写入失败: \(error.localizedDescription)"
+            return String(format: L10n.string("写入失败: %@"), "\(error.localizedDescription)")
         }
     }
 
@@ -244,7 +244,7 @@ public enum MkxpzConfig {
                 try fileManager.copyItem(atPath: file, toPath: backup)
             } catch {
                 // 备份失败 → **不改**。没有回退点的修改，风险高于收益。
-                return "备份失败，跳过 Title 修正: \(error.localizedDescription)"
+                return String(format: L10n.string("备份失败，跳过 Title 修正: %@"), "\(error.localizedDescription)")
             }
         }
 
@@ -258,7 +258,7 @@ public enum MkxpzConfig {
             try updated.write(toFile: file, atomically: true, encoding: .isoLatin1)
             return nil
         } catch {
-            return "写回 Game.ini 失败: \(error.localizedDescription)"
+            return String(format: L10n.string("写回 Game.ini 失败: %@"), "\(error.localizedDescription)")
         }
     }
 }

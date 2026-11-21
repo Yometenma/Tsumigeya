@@ -73,7 +73,7 @@ final class SaveSession: ObservableObject {
             isRunning: false, overrideDirectory: overridePath)
         switch result {
         case .success(let exported):
-            message = ("已导出 \(exported.fileCount) 个文件 → \(exported.archivePath)", false)
+            message = (String(format: L("已导出 %@ 个文件 → %@"), "\(exported.fileCount)", "\(exported.archivePath)"), false)
         case .failure(let error):
             message = (error.message, true)
         }
@@ -90,8 +90,8 @@ final class SaveSession: ObservableObject {
         switch result {
         case .success(let imported):
             let backupNote = imported.backups.isEmpty
-                ? "" : "（\(imported.backups.count) 个原文件已备份为 .tsumigeya-bak）"
-            message = ("已恢复 \(imported.files.count) 个文件\(backupNote)", false)
+                ? "" : String(format: L("（%@ 个原文件已备份为 .tsumigeya-bak）"), "\(imported.backups.count)")
+            message = (String(format: L("已恢复 %@ 个文件%@"), "\(imported.files.count)", "\(backupNote)"), false)
             reload()
         case .failure(let error):
             message = (error.message, true)
