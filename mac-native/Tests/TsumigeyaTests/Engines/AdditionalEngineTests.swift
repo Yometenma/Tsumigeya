@@ -41,14 +41,23 @@ struct KirikiriPathTests {
 @Suite("NScripter 路径")
 struct NScripterPathTests {
 
-    /// 实测结构：包解开是**两个裸二进制**，用 `onscripter`（非 `-sdl2` 那个）。
-    @Test("二进制是 deps 下的 onscripter")
-    func binaryIsOnscripter() {
-        let rootFS = FakeFS(["/data/modules/nscripter/deps/onscripter"])
+    /// 打包结构：`onsyuri` + `lib/*.dylib`（动态库由我方打包，见依赖表）。
+    ///
+    /// ⚠️ 旧实现取的是 tmkk 包里的 `onscripter`（ppc + i386），现代 macOS 直接
+    ///    `bad CPU type`，且 sdl2 版也没有 GBK 支持。这里钉死「必须是 onsyuri」。
+    @Test("二进制是 deps/onsyuri 下的 onsyuri")
+    func binaryIsOnsYuri() {
+        let binary = "/data/modules/nscripter/deps/onsyuri/onsyuri"
+        let fake = FakeFS([binary])
         let p = BinaryPaths.nscripterBinary(
-            "/data", fileExists: rootFS.exists, listDir: { _ in [] })
-        #expect(p == "/data/modules/nscripter/deps/onscripter")
-        #expect(p?.contains("onscripter-sdl2") == false, "用 onscripter，不用 sdl2 版")
+            "/data", fileExists: fake.exists,
+            listDir: { path in
+                if path.hasSuffix("/deps") { return ["onsyuri"] }
+                if path.hasSuffix("/deps/onsyuri") { return ["onsyuri", "lib"] }
+                return []
+            })
+        #expect(p == binary)
+        #expect(p?.contains("onscripter") == false, "不再用 tmkk 的 onscripter")
         #expect(p?.contains(".app") == false)
     }
 }
@@ -213,8 +222,11 @@ struct UnifiedBinaryTests {
         }
     }
 
-    /// 有二进制时，启动参数是**游戏目录**（四个引擎的共同约定）。
-    @Test("四个新引擎的参数是游戏目录")
+    /// 有二进制时，启动参数是**游戏目录**（三个引擎的共同约定）。
+    ///
+    /// ⚠️ ONS 不在这条约定里：它用 `-r` 显式给目录，还要按脚本判编码 ——
+    ///    见 `ONSLaunchTests`。
+    @Test("三个新引擎的参数是游戏目录")
     func newEnginesPassGameFolder() throws {
         let data = try makeTemp()
         defer { try? FileManager.default.removeItem(at: data) }
@@ -222,7 +234,6 @@ struct UnifiedBinaryTests {
 
         let cases: [(String, String)] = [
             ("kirikiri", "\(deps)/kirikiri/deps/krkrsdl2"),
-            ("nscripter", "\(deps)/nscripter/deps/onscripter"),
         ]
         for (engine, binary) in cases {
             let fake = FakeFS([binary])

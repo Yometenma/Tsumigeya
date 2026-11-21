@@ -82,9 +82,13 @@ public enum EngineRegistry {
             folder: "kirikiri", name: "KiriKiri",
             autodetect: DetectRule(files: ["data.xp3"], allRequired: true)),
 
+        // ⚠️ `0.txt` / `00.txt` 必须列进来：ONScripter 的实际脚本入口是
+        //    `0.txt` → `00.txt` → `nscript.dat` 依次查找，汉化/移植版几乎都用明文
+        //    `0.txt`。只认 `nscript.dat` 会把这类作品判成未知引擎。
         EngineDefinition(
             folder: "nscripter", name: "NScripter",
-            autodetect: DetectRule(files: ["nscript.dat", "arc.nsa"], allRequired: false)),
+            autodetect: DetectRule(
+                files: ["nscript.dat", "0.txt", "00.txt", "arc.nsa"], allRequired: false)),
 
         EngineDefinition(
             folder: "siglus", name: "Siglus",

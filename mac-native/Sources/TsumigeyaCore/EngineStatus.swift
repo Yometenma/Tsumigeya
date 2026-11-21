@@ -153,7 +153,12 @@ public enum EngineStatus {
         if definition.folder == "tyrano" {
             return .unverifiedLaunchOnly
         }
-        if ["nscripter", "siglus", "godot"].contains(definition.folder) {
+        // ⚠️ nscripter **不再**在这个清单里：2026-11-22 已在 macOS 上用真实作品
+        //    （DLsite 体験版 RJ051613，`nscript.dat` + `arc.nsa`）跑通标题画面与菜单，
+        //    启动参数（`-r` / `--enc` / 字体 / ASCII 别名）已实测。
+        //    仍未覆盖的是 `nt2`/`nt3` 加密包与 Lua 作品 —— 那属于「作品差异」，
+        //    不构成「引擎没验证过」的警告。
+        if ["siglus", "godot"].contains(definition.folder) {
             return .unverified
         }
 

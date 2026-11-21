@@ -92,7 +92,8 @@ public enum EngineArgsLabels {
         // 下面 5 个引擎的参数表只有 `fullscreen`（D61 精简后）
         "tyrano": ["fullscreen": "全屏启动"],
         "kirikiri": ["fullscreen": "全屏启动"],
-        "nscripter": ["fullscreen": "全屏启动"],
+        // ONS 多一个 `encoding`：不选就会按探测结果走，选错就是乱码
+        "nscripter": ["fullscreen": "全屏启动", "encoding": "脚本编码"],
         "siglus": ["fullscreen": "全屏启动"],
         "godot": ["fullscreen": "全屏启动"],
     ]

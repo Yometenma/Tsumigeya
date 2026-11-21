@@ -210,15 +210,21 @@ public enum BinaryPaths {
             fileExists: fileExists, listDir: listDir)
     }
 
-    /// NScripter 的可执行文件（`deps/onscripter*/onscripter`）。
+    /// NScripter（ONS）的可执行文件（`deps/onsyuri/onsyuri`）。
     ///
-    /// ===== 实测（2026-11-06，真下载包）=====
-    /// 包 `onscripter-20230825bin.tar.bz2` 解开是**两个裸二进制**：
-    ///     onscripter         （3.9MB）
-    ///     onscripter-sdl2    （5.1MB）
+    /// ===== 为什么不用 tmkk 那两个二进制（2026-11-21 实测）=====
     ///
-    /// ⚠️ 用 `onscripter` 而不是 `onscripter-sdl2`：
-    /// SDL2 版在无窗口/远程会话下更容易出问题。
+    /// `onscripter-20230825bin.tar.bz2` 解开是：
+    ///     onscripter        Mach-O universal **[ppc, i386]**  → 现代 macOS 直接
+    ///                       `bad CPU type in executable`（Rosetta 2 也不认 i386）
+    ///     onscripter-sdl2   Mach-O universal [x86_64, arm64]，但**要先外挂 SDL2**
+    ///                       （缺库时它不报错，直接静默挂死）
+    ///
+    /// 就算补上 SDL2，sdl2 版也只有 SJIS→UTF-16 转换表（二进制里 0 处 gbk 引用），
+    /// 中文脚本必然乱码，`nt2`/`nt3` 加密脚本也读不出。
+    ///
+    /// 所以换成 OnscripterYuri（ONSyuri）：arm64 原生 + `--enc:gbk|sjis|utf8`
+    /// + `nt2`/`nt3`。它的动态库由我方打包成 `@loader_path/lib`（见依赖表）。
     public static func nscripterBinary(
         _ dataDir: String,
         fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) },
@@ -228,7 +234,7 @@ public enum BinaryPaths {
     ) -> String? {
         let deps = depsDir(dataDir, "nscripter")
         return findBareBinary(
-            deps: deps, binaryName: "onscripter",
+            deps: deps, binaryName: "onsyuri",
             fileExists: fileExists, listDir: listDir)
     }
 

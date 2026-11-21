@@ -65,6 +65,17 @@ public enum EngineArgsOptions {
                 Option(value: "3", label: "RPG Maker VX Ace（RGSS 3）"),
             ],
         ],
+        // ⚠️ 默认必须是「自动」：ONSyuri 自己的默认编码是 **gbk**，
+        //    而 DLsite 上多数 ONS 作品是日文原版（SJIS）。不给 auto 就等于
+        //    替所有游戏选了 GBK —— 日文作品全变乱码。
+        "nscripter": [
+            "encoding": [
+                Option(value: "auto", label: L10n.string("自动（按脚本内容判断）")),
+                Option(value: "sjis", label: L10n.string("Shift_JIS（日文原版）")),
+                Option(value: "gbk", label: L10n.string("GBK（简体中文）")),
+                Option(value: "utf8", label: "UTF-8"),
+            ],
+        ],
     ]
 
     /// 把 gameArgs 里的值统一转成「选项值字符串」。

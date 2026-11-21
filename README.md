@@ -191,7 +191,7 @@ The table below shows the launch paths available today. Real tests only cover th
 | Ren'Py | Ren'Py SDK | 🟢 Real game launch recorded |
 | TyranoScript | NW.js | 🟡 Official V5 sample and original scripts of free works verified for translation and variable editing; Electron builds need separate adaptation and do not run as-is |
 | KiriKiri / KAG | krkrsdl2 | 🟡 Experimental, commercial game compatibility not guaranteed |
-| NScripter | ONScripter | ⚪ Wired up, game launch not yet tested |
+| NScripter | ONSyuri | 🟢 Real game launch recorded |
 | Siglus | siglus_rs | ⚪ Wired up, game launch not yet tested |
 | Godot | Godot editor | ⚪ Wired up, game launch not yet tested |
 | Windows programs (PE `.exe`) | Wine | 🔵 32-bit and 64-bit Minesweeper windows and console programs tested; individual works still need testing |

@@ -126,6 +126,9 @@ public enum LaunchPlanner {
         listDir: (String) -> [String] = { dir in
             (try? FileManager.default.contentsOfDirectory(atPath: dir)) ?? []
         },
+        readFile: (String) -> Data? = { path in
+            try? Data(contentsOf: URL(fileURLWithPath: path))
+        },
         performPreparation: Bool = true
     ) -> Result<LaunchPlan, LaunchFailure> {
 
@@ -140,7 +143,12 @@ public enum LaunchPlanner {
             return easyrpgPlan(ctx, fileExists: fileExists)
         case "renpy":
             return renpyPlan(ctx, fileExists: fileExists)
-        case "kirikiri", "nscripter", "siglus", "godot":
+        // ONS 需要读游戏目录里的脚本判编码，不能走「只传目录」的通用方案
+        case "nscripter":
+            return nscripterPlan(
+                ctx, fileExists: fileExists, listDir: listDir, readFile: readFile,
+                performPreparation: performPreparation)
+        case "kirikiri", "siglus", "godot":
             return genericPlan(
                 ctx, engine: engine, fileExists: fileExists, listDir: listDir)
         default:
@@ -175,6 +183,73 @@ public enum LaunchPlanner {
         let args = [ctx.folder]
         return .success(LaunchPlan(
             binary: binary, args: args, cwd: ctx.folder, engine: engine))
+    }
+
+    // MARK: - NScripter（ONSyuri）
+
+    /// ONS 的启动方案。
+    ///
+    /// ===== 为什么不能和 KiriKiri / Siglus / Godot 共用 genericPlan =====
+    ///
+    /// 那三个的 CLI 只吃「游戏目录」一个位置参数；ONS 不是：
+    ///
+    ///   · 目录要显式给 `-r`（ONScripter 没有位置参数，裸目录会被忽略）
+    ///   · 脚本编码不给 `--enc` 就用 ONSyuri 的默认 **gbk** —— 日文原版直接乱码
+    ///   · 必须有字体：游戏目录没 `default.ttf` 时一个字都画不出来
+    ///
+    /// ===== 非 ASCII 目录名必须走 ASCII 别名（实测）=====
+    ///
+    /// ONS 内部用 `fopen` 拼路径。DLsite 作品解压出来常是日文目录名
+    /// （实测 `ココロのクサリ２体験版`），Windows 上它按 ANSI 代码页解析，
+    /// 直接报 `can't open any of 0.txt, 00.txt, nscript.dat`。
+    /// 换成纯 ASCII 路径后立刻正常。
+    ///
+    /// 所以这里沿用 mkxp-z 的 D72 做法：需要时建一个 `/tmp` 下的 ASCII 符号链接，
+    /// `-r` 与 cwd 都用别名，链接仍指向真实目录（游戏写存档也落回真实目录）。
+    static func nscripterPlan(
+        _ ctx: LaunchContext,
+        fileExists: (String) -> Bool,
+        listDir: (String) -> [String],
+        readFile: (String) -> Data?,
+        performPreparation: Bool = true
+    ) -> Result<LaunchPlan, LaunchFailure> {
+        let version = ctx.gameArgs["version"]?.stringValue ?? ""
+        guard let binary = BinaryPaths.binary(
+            for: "nscripter", dataDir: ctx.dataDir, version: version, arch: ctx.arch,
+            fileExists: fileExists, listDir: listDir) else {
+            return .failure(.engineBinaryMissing(
+                binary: String(format: L10n.string("%@/deps/<未找到>"),
+                               BinaryPaths.moduleDir(ctx.dataDir, "nscripter"))))
+        }
+
+        // 诊断（performPreparation=false）不能建链接，否则「只看一眼」也留垃圾
+        var gameFolder = ctx.folder
+        if performPreparation, AsciiAlias.needsAsciiAlias(gameFolder) {
+            if let alias = try? AsciiAlias.ensureAlias(for: gameFolder) {
+                gameFolder = alias
+            }
+        }
+
+        var args: [String] = ["-r", gameFolder]
+
+        // 编码：auto 也要解析成具体值（ONSyuri 的默认值是 gbk，不能借给它）
+        let encoding = ONSRuntime.resolveEncoding(
+            gameArgs: ctx.gameArgs, folder: gameFolder, readFile: readFile)
+        if let flag = encoding.flag {
+            args.append("--enc:\(flag)")
+        }
+
+        // 字体：游戏自带 default.ttf 就不用传（cwd 就是游戏目录）
+        if let font = ONSRuntime.fontArgument(folder: gameFolder, fileExists: fileExists) {
+            args.append(contentsOf: ["-f", font])
+        }
+
+        if ctx.gameArgs["fullscreen"]?.boolValue == true {
+            args.append("--fullscreen")
+        }
+
+        return .success(LaunchPlan(
+            binary: binary, args: args, cwd: gameFolder, engine: "nscripter"))
     }
 
     // MARK: - NW.js

@@ -89,11 +89,36 @@ public enum EngineDependencies {
                     "https://github.com/krkrsdl2/krkrsdl2/releases/download/latest/krkrsdl2-macos.zip")),
             ]
 
-        // ---- NScripter（ONScripter）----
+        // ---- NScripter（ONSyuri）----
+        //
+        // ===== 为什么换成 ONSyuri（2026-11-21 实测）=====
+        //
+        // tmkk 的 `onscripter-20230825bin.tar.bz2` 里那个 `onscripter` 是 ppc + i386，
+        // 现代 macOS 直接 `bad CPU type in executable`；同包的 `onscripter-sdl2` 虽然是
+        // x86_64 + arm64，但要外挂 SDL2（缺库时静默挂死），而且只有 SJIS 转换表 ——
+        // 中文脚本必乱码、`nt2`/`nt3` 加密脚本读不出。
+        //
+        // ONSyuri（OnscripterYuri 0.7.7beta）给 arm64 原生 + `--enc:gbk|sjis|utf8`
+        // + `nt2`/`nt3`，与 Launcher 按同一套约定启动。
+        //
+        // ⚠️ **必须自托管**：上游的 mac 包只动态链接 `/opt/homebrew/opt/...` 下的
+        //    lua/sdl2 全家（用户机器上没有 Homebrew 就起不来）。所以这里下载的是
+        //    我方重新打包的产物：二进制 + `lib/*.dylib`，依赖全部改写成 `@loader_path/lib`，
+        //    并做了 ad-hoc 签名。解包后落成：
+        //        deps/onsyuri/onsyuri
+        //        deps/onsyuri/lib/*.dylib
+        //    与其它运行时一样，**只有用户在「引擎」页点安装时才会下载**。
+        //
+        // ⚠️ `lib/libSDL3.dylib` 是必需的：brew 的 `libSDL2-2.0.0.dylib` 实际是
+        //    **sdl2-compat**，它运行时会 dlopen `@loader_path/libSDL3.dylib`。
+        //    dylibbundler 看不见这种加载 —— 漏了它 macOS 上启动即
+        //    `Fatal error! Failed loading SDL3 library.`
         case "nscripter":
             return [
-                ("onscripter", .universal(
-                    "https://tmkk.undo.jp/onscripter/onscripter-20230825bin.tar.bz2")),
+                ("onsyuri", DependencySpec(builds: ["universal": DependencyBuild(
+                    link: "https://github.com/Yometenma/Tsumigeya/releases/download/deps-onsyuri-0.7.7/onsyuri-macos-arm64.tar.gz",
+                    unzip: true,
+                    sha256: "c9cd731e85d159d02d5cc94f42ea99e833c350b75b5c01e169fce501c10a6f4b")])),
             ]
 
         // ---- Siglus（siglus_rs）----
@@ -158,8 +183,21 @@ public enum EngineDependencies {
             "author": .string(definition.folder == "wine" ? "Wine 项目／Gcenx" : "Tsumigeya"),
             "license": .string(definition.folder == "wine" ? "LGPL-2.1-or-later" : "GPL-3.0"),
             "autodetect": autodetect,
-            "gameArgs": .object(definition.folder == "wine" ? WineRuntime.argumentSchema : [:]),
+            "gameArgs": .object(argumentSchema(for: definition.folder)),
             "dependencies": .object(deps),
         ]
+    }
+
+    /// 每个引擎写进 manifest 的参数 schema。
+    ///
+    /// ⚠️ 只有**需要用户干预**的引擎才给 schema：
+    ///    wine 指 Windows 启动文件与语言环境，ONS 指脚本编码（编码判错就是乱码）。
+    ///    其余引擎的参数表单是空的（D61 精简），别为了「看起来完整」塞默认项。
+    static func argumentSchema(for folder: String) -> [String: JSONValue] {
+        switch WineRuntime.canonicalEngine(folder) {
+        case "wine": return WineRuntime.argumentSchema
+        case "nscripter": return ONSRuntime.argumentSchema
+        default: return [:]
+        }
     }
 }

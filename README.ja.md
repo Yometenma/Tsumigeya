@@ -191,7 +191,7 @@ xattr -dr com.apple.quarantine /Applications/Tsumigeya.app
 | Ren'Py | Ren'Py SDK | 🟢 実ゲームでの起動実績あり |
 | TyranoScript | NW.js | 🟡 公式 V5 サンプルと無料作品のオリジナル脚本で翻訳・変数編集を検証済み。Electron の配布物は別途対応が必要で、そのままでは起動できません |
 | 吉里吉里 / KAG | krkrsdl2 | 🟡 実験的。商用ゲームの互換性は保証しません |
-| NScripter | ONScripter | ⚪ 接続済み、ゲームの起動は未検証 |
+| NScripter | ONSyuri | 🟢 実ゲームでの起動実績あり |
 | Siglus | siglus_rs | ⚪ 接続済み、ゲームの起動は未検証 |
 | Godot | Godot エディター | ⚪ 接続済み、ゲームの起動は未検証 |
 | Windows プログラム（PE `.exe`） | Wine | 🔵 32／64 ビットのマインスイーパーとコンソールプログラムで検証済み。個々の作品は別途検証が必要です |

@@ -391,3 +391,7 @@
 "这不是一个目录：%@" = "This is not a folder: %@";
 "进程 PID %@" = "Process PID %@";
 "页面读取失败（HTTP %@），未修改原信息。" = "Failed to read the page (HTTP %@); existing info was left unchanged.";
+"脚本编码" = "Script encoding";
+"自动（按脚本内容判断）" = "Auto (detect from the script)";
+"Shift_JIS（日文原版）" = "Shift_JIS (Japanese original)";
+"GBK（简体中文）" = "GBK (Simplified Chinese)";
