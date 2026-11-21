@@ -12,13 +12,13 @@ enum MkxpzTranslationFont {
         let target = fonts.appendingPathComponent("translation.ttf")
         for url in [root.deletingLastPathComponent(), root, fonts, target] {
             guard url.path == url.resolvingSymlinksInPath().path else {
-                throw AssistanceError.invalid("翻译字体缓存经过符号链接，停止写入。")
+                throw AssistanceError.invalid(L10n.string("翻译字体缓存经过符号链接，停止写入。"))
             }
         }
         if fm.fileExists(atPath: target.path) {
             guard try target.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true,
                   SHA256.hexOfFile(at: target.path) == digest else {
-                throw AssistanceError.invalid("翻译字体缓存已改变，未覆盖原文件。")
+                throw AssistanceError.invalid(L10n.string("翻译字体缓存已改变，未覆盖原文件。"))
             }
         } else {
             try fm.createDirectory(at: fonts, withIntermediateDirectories: true)

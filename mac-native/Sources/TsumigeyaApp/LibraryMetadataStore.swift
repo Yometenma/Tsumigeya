@@ -11,9 +11,9 @@ final class LibraryMetadataStore: ObservableObject {
         let (finalURL, html) = try await MetadataNetwork.page(url)
         return MetadataPage(url: finalURL, html: html)
     }
-    var aiService: () throws -> MetadataAIService = { throw MetadataFailure("请先配置作品信息接口。") }
+    var aiService: () throws -> MetadataAIService = { throw MetadataFailure(L("请先配置作品信息接口。")) }
     var searchProvider: () -> MetadataSearchSettings.Provider = { .native }
-    var searchService: () throws -> MetadataSearchService = { throw MetadataFailure("请先配置独立搜索接口。") }
+    var searchService: () throws -> MetadataSearchService = { throw MetadataFailure(L("请先配置独立搜索接口。")) }
     @Published private(set) var externalCandidates: [String: [MetadataCandidate]] = [:]
     private var previewGames: [String: GameRecord] = [:]
     var currentGame: (String) -> GameRecord? = { _ in nil }
@@ -138,7 +138,7 @@ final class LibraryMetadataStore: ObservableObject {
                 let meta = GameDlsiteMeta(
                     work: merged, editedFields: fields)
                 guard updateMeta(gameId: gameId, meta: meta) else { return }
-                metaNotice[gameId] = "作品信息已更新；手动修改的字段已保留。"
+                metaNotice[gameId] = L("作品信息已更新；手动修改的字段已保留。")
             case .failure(let error):
                 // ⚠️ 结构化错误 → 直接显示它的 message（每种错误说不同的话）
                 metaError[gameId] = error.message
@@ -172,7 +172,7 @@ final class LibraryMetadataStore: ObservableObject {
         var meta = meta
         meta.removeEditedEvidence()
         guard game(id: gameId) != nil else {
-            metaError[gameId] = "游戏已移除或发生变化，未保存作品信息。"
+            metaError[gameId] = L("游戏已移除或发生变化，未保存作品信息。")
             return false
         }
         if let error = GameMetaStore.save(dataDir: dataDir, gameId: gameId, meta: meta,
@@ -287,7 +287,7 @@ final class LibraryMetadataStore: ObservableObject {
     func applyExternalOrDLsitePreview(gameId: String, incoming: DlsiteWork, draftEdited: Set<String> = []) -> Bool {
         guard let expected = previewGames[gameId], game(id: gameId) == expected,
               metaPreviews[gameId]?.identity == incoming.identity else {
-            metaError[gameId] = "游戏已移除或发生变化，请重新准备资料；本次未保存。"
+            metaError[gameId] = L("游戏已移除或发生变化，请重新准备资料；本次未保存。")
             return false
         }
         let old = meta(for: gameId)
@@ -298,22 +298,22 @@ final class LibraryMetadataStore: ObservableObject {
         metaPreviews.removeValue(forKey: gameId)
         previewGames.removeValue(forKey: gameId)
         clearSearch(gameId: gameId)
-        metaNotice[gameId] = "已关联作品信息。"
+        metaNotice[gameId] = L("已关联作品信息。")
         return true
     }
 
     func searchExternal(gameId: String, name: String) {
         let provider = searchProvider()
-        guard provider != .disabled else { metaError[gameId] = "联网搜索已关闭，请指定页面或手动填写。"; return }
+        guard provider != .disabled else { metaError[gameId] = L("联网搜索已关闭，请指定页面或手动填写。"); return }
         if provider == .native {
             runExternal(gameId: gameId) { service, language in
-                guard let service else { throw MetadataFailure("请先配置作品信息接口。") }
+                guard let service else { throw MetadataFailure(L("请先配置作品信息接口。")) }
                 return .candidates(try await service.search(name: name, language: language))
             }
         } else {
             let service: MetadataSearchService
             do { service = try searchService() }
-            catch { metaError[gameId] = "无法读取搜索配置或密钥，请检查设置。"; return }
+            catch { metaError[gameId] = L("无法读取搜索配置或密钥，请检查设置。"); return }
             runExternal(gameId: gameId, needsAI: false) { _, language in
                 .candidates(try await service.search(name: name, language: language))
             }
@@ -321,11 +321,11 @@ final class LibraryMetadataStore: ObservableObject {
     }
     func extractExternal(gameId: String, address: String) {
         guard let url = MetadataNetwork.publicURL(address.trimmingCharacters(in: .whitespacesAndNewlines)) else {
-            metaError[gameId] = "请输入公开的 HTTPS 商品页地址。"; return
+            metaError[gameId] = L("请输入公开的 HTTPS 商品页地址。"); return
         }
         let fetchPage = externalPage
         runExternal(gameId: gameId) { service, language in
-            guard let service else { throw MetadataFailure("请先配置作品信息接口。") }
+            guard let service else { throw MetadataFailure(L("请先配置作品信息接口。")) }
             let page = try await fetchPage(url)
             let work = try await service.extract(page: page, language: language)
             return .work(work)
@@ -342,7 +342,7 @@ final class LibraryMetadataStore: ObservableObject {
         do {
             service = needsAI ? try aiService() : nil
             if let service, service.settings.url == nil || service.settings.model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                throw MetadataFailure("请先在「设置 → 作品信息」填写有效接口地址和模型，并保存密钥。")
+                throw MetadataFailure(L("请先在「设置 → 作品信息」填写有效接口地址和模型，并保存密钥。"))
             }
         } catch { metaError[gameId] = error.localizedDescription; return }
         let language = languagePreference()?.preferred ?? .simplifiedChinese
@@ -362,7 +362,7 @@ final class LibraryMetadataStore: ObservableObject {
                 }
             } catch {
                 guard !Task.isCancelled, metaTokens[gameId] == token, game(id: gameId) == expected else { return }
-                metaError[gameId] = (error as? MetadataFailure)?.message ?? "网络或接口请求未完成，请检查连接后重试。原有资料未更改。"
+                metaError[gameId] = (error as? MetadataFailure)?.message ?? L("网络或接口请求未完成，请检查连接后重试。原有资料未更改。")
             }
         }
     }

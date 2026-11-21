@@ -90,7 +90,7 @@ public enum EngineRegistry {
             folder: "siglus", name: "Siglus",
             autodetect: DetectRule(files: ["Scene.pck", "Gameexe.dat"], allRequired: false)),
 
-        EngineDefinition(folder: "wine", name: "Wine（Windows 兼容）", autodetect: nil),
+        EngineDefinition(folder: "wine", name: L10n.string("Wine（Windows 兼容）"), autodetect: nil),
 
         EngineDefinition(
             folder: "godot", name: "Godot",

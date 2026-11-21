@@ -165,7 +165,7 @@ public enum GameMetaStore {
         // 保留旧版 DLsite 存储格式；外部作品使用独立的 workInfo。
         guard let data = try? JSONEncoder().encode(meta),
               let json = try? JSONDecoder().decode(JSONValue.self, from: data) else {
-            return "序列化元数据失败"
+            return L10n.string("序列化元数据失败")
         }
         // 保留新旧版本扩展字段，同时允许本次清空已知的可选字段。
         let key = meta.work.isExternal ? "workInfo" : "dlsite"

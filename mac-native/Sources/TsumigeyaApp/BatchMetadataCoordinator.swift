@@ -3,6 +3,8 @@ import Combine
 import TsumigeyaCore
 
 struct BatchMetaItem: Identifiable {
+    /// ⚠️ `rawValue` 必须是字面量（enum 语法限制），所以它是**中文原文**，
+    ///    只当文案来源用；界面显示走 `title`，切换界面语言才会变。
     enum State: String {
         case pending = "等待处理"
         case running = "正在处理"
@@ -10,6 +12,8 @@ struct BatchMetaItem: Identifiable {
         case needsConfirmation = "待确认"
         case failed = "失败"
         case skipped = "已跳过"
+
+        var title: String { L(rawValue) }
     }
     let game: GameRecord
     var id: String { game.id }
@@ -26,14 +30,14 @@ final class BatchMetadataCoordinator: ObservableObject {
 
     func confirmSaved(gameId: String) {
         if batchMetaItems.first(where: { $0.id == gameId })?.game == metadata.currentGame(gameId) {
-            setBatchMeta(gameId, state: .saved, message: "已确认关联并保存。")
+            setBatchMeta(gameId, state: .saved, message: L("已确认关联并保存。"))
         }
     }
 
     /// 游戏管理可以在删除部分失败前撤销队列快照，防止尚未开始的旧任务重新补回资料。
     func invalidateGame(gameId: String) {
         guard batchMetaItems.contains(where: { $0.id == gameId }) else { return }
-        setBatchMeta(gameId, state: .skipped, message: "游戏记录正在变更，该项已取消；请重新准备列表。")
+        setBatchMeta(gameId, state: .skipped, message: L("游戏记录正在变更，该项已取消；请重新准备列表。"))
     }
 
     @Published private(set) var batchMetaItems: [BatchMetaItem] = []
@@ -80,17 +84,17 @@ final class BatchMetadataCoordinator: ObservableObject {
                 guard !Task.isCancelled, batchMetaToken == token else { break }
                 let id = item.id
                 guard metadata.currentGame(id) == item.game else {
-                    setBatchMeta(id, state: .skipped, message: "游戏已移除或发生变化，请重新准备列表。")
+                    setBatchMeta(id, state: .skipped, message: L("游戏已移除或发生变化，请重新准备列表。"))
                     continue
                 }
                 guard !metadata.fetchingMeta.contains(id), !metadata.searchingGameIDs.contains(id), metadata.metaPreviews[id] == nil else {
-                    setBatchMeta(id, state: .skipped, message: "该游戏有未完成的查找或预览，请先处理。")
+                    setBatchMeta(id, state: .skipped, message: L("该游戏有未完成的查找或预览，请先处理。"))
                     continue
                 }
                 batchMetaCurrentID = id
                 setBatchMeta(id, state: .running)
                 if let associated = metadata.meta(for: id), associated.work.isExternal {
-                    setBatchMeta(id, state: .skipped, message: "外部作品请在详情中预览补全；批量任务不自动调用付费 AI。")
+                    setBatchMeta(id, state: .skipped, message: L("外部作品请在详情中预览补全；批量任务不自动调用付费 AI。"))
                 } else if let associated = metadata.meta(for: id) {
                     metadata.fetchMeta(gameId: id, rj: associated.work.rj, refresh: true, category: associated.work.category)
                     await metadata.waitForFetch(gameId: id)
@@ -104,13 +108,13 @@ final class BatchMetadataCoordinator: ObservableObject {
                         guard !Task.isCancelled, batchMetaToken == token else { break }
                         finishBatchFetch(item)
                     } else if numbers.count > 1 {
-                        setBatchMeta(id, state: .needsConfirmation, message: "检测到多个编号，请核对后关联：" + numbers.joined(separator: "、"))
+                        setBatchMeta(id, state: .needsConfirmation, message: L("检测到多个编号，请核对后关联：") + numbers.joined(separator: "、"))
                     } else {
                         let keyword = item.game.gameTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                             ? DlsiteLookup.fallbackKeyword(fromPath: item.game.gamePath)
                             : DlsiteLookup.searchKeyword(from: item.game.gameTitle)
                         guard !keyword.isEmpty else {
-                            setBatchMeta(id, state: .needsConfirmation, message: "没有可用的名称或编号，请手动查找。")
+                            setBatchMeta(id, state: .needsConfirmation, message: L("没有可用的名称或编号，请手动查找。"))
                             continue
                         }
                         metadata.searchMeta(gameId: id, keyword: keyword)
@@ -118,14 +122,14 @@ final class BatchMetadataCoordinator: ObservableObject {
                         guard !Task.isCancelled, batchMetaToken == token else { break }
                         guard batchMetaItems.first(where: { $0.id == id })?.state == .running else { continue }
                         guard metadata.currentGame(id) == item.game else {
-                            setBatchMeta(id, state: .skipped, message: "游戏已移除或发生变化。")
+                            setBatchMeta(id, state: .skipped, message: L("游戏已移除或发生变化。"))
                             continue
                         }
                         let hits = metadata.searchHits[id] ?? []
                         if !hits.isEmpty {
                             setBatchMeta(id, state: .needsConfirmation, message: "找到 \(hits.count) 个候选，请预览确认；尚未写入作品信息。")
                         } else {
-                            setBatchMeta(id, state: .failed, message: metadata.searchError[id] ?? "查找已中断，请重试。")
+                            setBatchMeta(id, state: .failed, message: metadata.searchError[id] ?? L("查找已中断，请重试。"))
                         }
                     }
                 }
@@ -137,15 +141,15 @@ final class BatchMetadataCoordinator: ObservableObject {
     private func finishBatchFetch(_ item: BatchMetaItem) {
         guard batchMetaItems.first(where: { $0.id == item.id })?.state == .running else { return }
         guard metadata.currentGame(item.id) == item.game else {
-            setBatchMeta(item.id, state: .skipped, message: "游戏已移除或发生变化。")
+            setBatchMeta(item.id, state: .skipped, message: L("游戏已移除或发生变化。"))
             return
         }
         if let error = metadata.metaError[item.id] {
             setBatchMeta(item.id, state: .failed, message: error)
         } else if metadata.metaNotice[item.id] != nil {
-            setBatchMeta(item.id, state: .saved, message: "已保存，手动修改已保留。")
+            setBatchMeta(item.id, state: .saved, message: L("已保存，手动修改已保留。"))
         } else {
-            setBatchMeta(item.id, state: .failed, message: "获取已中断，请重试。")
+            setBatchMeta(item.id, state: .failed, message: L("获取已中断，请重试。"))
         }
     }
 
@@ -168,9 +172,9 @@ final class BatchMetadataCoordinator: ObservableObject {
             } else if finishedFetch, let item = batchMetaItems.first(where: { $0.id == id }) {
                 finishBatchFetch(item)
             } else if finishedSearch {
-                setBatchMeta(id, state: .needsConfirmation, message: "候选已准备好，请预览确认。")
+                setBatchMeta(id, state: .needsConfirmation, message: L("候选已准备好，请预览确认。"))
             } else {
-                setBatchMeta(id, state: .pending, message: "已暂停，尚未保存；可继续。")
+                setBatchMeta(id, state: .pending, message: L("已暂停，尚未保存；可继续。"))
             }
         }
         batchMetaCurrentID = nil

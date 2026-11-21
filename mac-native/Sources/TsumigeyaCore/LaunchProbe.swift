@@ -109,7 +109,7 @@ public enum LaunchProbe {
                    let error = extractFatalError(from: text, engine: engine) {
                     return .stalled(error: error)
                 }
-                return .unknown(reason: "进程活着但 CPU 几乎不动（可能卡在错误弹窗上）")
+                return .unknown(reason: L10n.string("进程活着但 CPU 几乎不动（可能卡在错误弹窗上）"))
             }
         }
 
@@ -124,7 +124,7 @@ public enum LaunchProbe {
         }
 
         // 都没有 → 证据不足
-        return .unknown(reason: "看不到窗口，也没有日志/CPU 证据（可能是 SSH 会话限制）")
+        return .unknown(reason: L10n.string("看不到窗口，也没有日志/CPU 证据（可能是 SSH 会话限制）"))
     }
 
     /// 读进程累计 CPU 时间（纳秒）。读不到返回 nil。
@@ -191,10 +191,10 @@ public enum LaunchProbe {
         switch engine {
         case "mkxpz":
             if text.contains("Path cache completed") {
-                return "日志显示 Path cache completed（脚本层初始化完成）"
+                return L10n.string("日志显示 Path cache completed（脚本层初始化完成）")
             }
             if text.contains("RGSS version") {
-                return "日志显示 RGSS version 已识别"
+                return L10n.string("日志显示 RGSS version 已识别")
             }
             return nil
         default:

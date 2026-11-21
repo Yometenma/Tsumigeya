@@ -37,14 +37,14 @@ public enum SaveArchiveError: Error, Sendable, Equatable {
     public var message: String {
         switch self {
         case .blocked(let block): return block.message
-        case .noFilesToExport: return "存档目录里没有可导出的文件。"
+        case .noFilesToExport: return L10n.string("存档目录里没有可导出的文件。")
         case .writeFailed(let s): return "写入失败：\(s)"
         case .zipFailed(let s): return "打包失败：\(s)"
         case .notOurArchive:
-            return "这个 zip 不是 Tsumigeya 的存档包（缺少 manifest.json 或格式不对）。"
+            return L10n.string("这个 zip 不是 Tsumigeya 的存档包（缺少 manifest.json 或格式不对）。")
         case .checksumMismatch(let f):
             return "文件校验失败（内容与清单不符）：\(f)。包可能在传输中损坏了。"
-        case .nothingToImport: return "包里没有任何存档文件。"
+        case .nothingToImport: return L10n.string("包里没有任何存档文件。")
         case .readFailed(let s): return "读取失败：\(s)"
         }
     }

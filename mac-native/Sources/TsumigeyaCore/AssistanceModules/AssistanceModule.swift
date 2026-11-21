@@ -62,15 +62,15 @@ public enum AssistanceModules {
         for module in registered {
             if let project = try module.detect(root) { return project }
         }
-        throw AssistanceError.invalid("无法确认为支持的翻译与作弊引擎。")
+        throw AssistanceError.invalid(L10n.string("无法确认为支持的翻译与作弊引擎。"))
     }
     public static func extract(_ project: AssistanceProject) throws -> [TranslationEntry] {
         try module(for: project.engine).extract(project)
     }
     static func validate(_ options: AssistanceOptions, for project: AssistanceProject) throws {
         let info = forEngine(project.engine)
-        guard !options.translation || info.translation != nil else { throw AssistanceError.invalid("当前引擎模块尚未接入翻译。") }
-        guard !options.cheats || info.cheats != nil else { throw AssistanceError.invalid("当前引擎模块尚未接入作弊。") }
+        guard !options.translation || info.translation != nil else { throw AssistanceError.invalid(L10n.string("当前引擎模块尚未接入翻译。")) }
+        guard !options.cheats || info.cheats != nil else { throw AssistanceError.invalid(L10n.string("当前引擎模块尚未接入作弊。")) }
     }
 }
 
@@ -81,12 +81,12 @@ struct WebAssistanceEntry {
         guard FileManager.default.fileExists(atPath: root.appendingPathComponent("package.json").path) else { return nil }
         let package = root.appendingPathComponent("package.json")
         let json = try JSONDecoder().decode([String: JSONValue].self, from: Data(contentsOf: package))
-        guard let main = json["main"]?.stringValue else { throw AssistanceError.invalid("游戏缺少有效的启动页面。") }
+        guard let main = json["main"]?.stringValue else { throw AssistanceError.invalid(L10n.string("游戏缺少有效的启动页面。")) }
         let path = main.replacingOccurrences(of: "\\", with: "/").components(separatedBy: "?")[0].components(separatedBy: "#")[0]
-        guard !path.hasPrefix("/"), !path.contains(":"), !path.isEmpty else { throw AssistanceError.invalid("游戏启动页面必须是游戏目录内的文件。") }
+        guard !path.hasPrefix("/"), !path.contains(":"), !path.isEmpty else { throw AssistanceError.invalid(L10n.string("游戏启动页面必须是游戏目录内的文件。")) }
         let page = root.appendingPathComponent(path).standardizedFileURL.resolvingSymlinksInPath()
         guard page.path.hasPrefix(root.path + "/"), page.pathExtension.lowercased() == "html",
-              FileManager.default.fileExists(atPath: page.path) else { throw AssistanceError.invalid("游戏启动页面不存在或越出游戏目录。") }
+              FileManager.default.fileExists(atPath: page.path) else { throw AssistanceError.invalid(L10n.string("游戏启动页面不存在或越出游戏目录。")) }
         let content = page.deletingLastPathComponent()
         return .init(page: page, content: content)
     }

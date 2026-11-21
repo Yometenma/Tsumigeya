@@ -399,7 +399,7 @@ public enum Extract {
             .split(whereSeparator: \.isNewline)
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
-        guard !lines.isEmpty else { return "（tar 没有输出错误信息）" }
+        guard !lines.isEmpty else { return L10n.string("（tar 没有输出错误信息）") }
 
         let tail = lines.suffix(3).joined(separator: " | ")
         return tail.count > 400 ? String(tail.prefix(400)) + "…" : tail

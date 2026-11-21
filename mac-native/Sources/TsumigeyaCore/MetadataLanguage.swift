@@ -4,11 +4,11 @@ public enum MetadataLanguage: String, CaseIterable, Sendable, Codable {
     case simplifiedChinese = "zh_CN", traditionalChinese = "zh_TW", japanese = "ja_JP", english = "en_US", korean = "ko_KR"
     public var name: String {
         switch self {
-        case .simplifiedChinese: "简体中文"
-        case .traditionalChinese: "繁体中文"
-        case .japanese: "日文"
-        case .english: "英文"
-        case .korean: "韩文"
+        case .simplifiedChinese: L10n.string("简体中文")
+        case .traditionalChinese: L10n.string("繁体中文")
+        case .japanese: L10n.string("日文")
+        case .english: L10n.string("英文")
+        case .korean: L10n.string("韩文")
         }
     }
     public var httpLanguage: String { rawValue.replacingOccurrences(of: "_", with: "-") }

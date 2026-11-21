@@ -6,7 +6,7 @@ public enum NativeAssistance {
         guard url.standardizedFileURL.path == url.resolvingSymlinksInPath().path,
               url.standardizedFileURL.path.hasPrefix(root.path + "/"),
               try url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true else {
-            throw AssistanceError.invalid("游戏身份文件不存在或经过符号链接。")
+            throw AssistanceError.invalid(L10n.string("游戏身份文件不存在或经过符号链接。"))
         }
         // 加密归档可能很大，按块校验，不能把整份归档复制进内存。
         let stream = try FileHandle(forReadingFrom: url)
@@ -25,7 +25,7 @@ public enum NativeAssistance {
     private static func scriptFiles(_ p: AssistanceProject) -> [String] { AssistanceModules.module(for: p.engine).scripts.map(\.filename) }
     private static func directory(_ p: AssistanceProject) throws -> URL {
         let url = AssistanceInstaller.location(p)
-        guard url.path == url.resolvingSymlinksInPath().path else { throw AssistanceError.invalid("辅助目录不能是符号链接。") }
+        guard url.path == url.resolvingSymlinksInPath().path else { throw AssistanceError.invalid(L10n.string("辅助目录不能是符号链接。")) }
         return url
     }
     private static func checked(_ name: String, in dir: URL) throws -> URL {
@@ -36,13 +36,13 @@ public enum NativeAssistance {
     private static func manifest(_ p: AssistanceProject) throws -> [String: JSONValue] {
         let dir = try directory(p)
         let record = try JSONDecoder().decode([String: JSONValue].self, from: Data(contentsOf: checked("manifest.json", in: dir)))
-        guard record["schema"]?.intValue == 2, record["identity"]?.stringValue == p.identity else { throw AssistanceError.invalid("辅助记录不属于当前游戏。") }
+        guard record["schema"]?.intValue == 2, record["identity"]?.stringValue == p.identity else { throw AssistanceError.invalid(L10n.string("辅助记录不属于当前游戏。")) }
         for name in scriptFiles(p) {
             let url = try checked(name, in: dir)
             guard record[name]?.stringValue == SHA256.hexOfFile(at: url.path) else { throw AssistanceError.invalid("辅助脚本已被外部修改，停止覆盖：\(name)") }
         }
         if AssistanceModules.module(for: p.engine).entrySource != nil {
-            guard p.page.path == p.page.resolvingSymlinksInPath().path, record["entry"]?.stringValue == SHA256.hexOfFile(at: p.page.path) else { throw AssistanceError.invalid("Ren’Py 辅助入口已改变。") }
+            guard p.page.path == p.page.resolvingSymlinksInPath().path, record["entry"]?.stringValue == SHA256.hexOfFile(at: p.page.path) else { throw AssistanceError.invalid(L10n.string("Ren’Py 辅助入口已改变。")) }
         }
         return record
     }
@@ -54,8 +54,8 @@ public enum NativeAssistance {
         return .init(translation: json["translation"]?.boolValue ?? false, cheats: json["cheats"]?.boolValue ?? false)
     }
     static func configure(_ p: AssistanceProject, options: AssistanceOptions, translations: [String: String]?, running: Bool) throws {
-        guard try AssistanceProject.detect(folder: p.root.path) == p else { throw AssistanceError.invalid("游戏身份已改变。") }
-        guard !running, try !AssistanceProcesses.isRunning(p) else { throw AssistanceError.invalid("请先关闭游戏，再修改辅助功能。") }
+        guard try AssistanceProject.detect(folder: p.root.path) == p else { throw AssistanceError.invalid(L10n.string("游戏身份已改变。")) }
+        guard !running, try !AssistanceProcesses.isRunning(p) else { throw AssistanceError.invalid(L10n.string("请先关闭游戏，再修改辅助功能。")) }
         for (s,t) in translations ?? [:] { try TranslationTokens.validate(source: s, target: t) }
         let dir = try directory(p), fm = FileManager.default
         let exists = fm.fileExists(atPath: dir.path)
@@ -70,7 +70,7 @@ public enum NativeAssistance {
             prior.merge(config) { _, new in new }; config = prior
         } else if AssistanceModules.module(for: p.engine).entrySource != nil {
             for entry in [p.page, p.page.appendingPathExtension("bak"), p.page.deletingPathExtension().appendingPathExtension("rpyc")] {
-                guard entry.path == entry.resolvingSymlinksInPath().path, !fm.fileExists(atPath: entry.path) else { throw AssistanceError.invalid("同名辅助入口已存在，拒绝覆盖。") }
+                guard entry.path == entry.resolvingSymlinksInPath().path, !fm.fileExists(atPath: entry.path) else { throw AssistanceError.invalid(L10n.string("同名辅助入口已存在，拒绝覆盖。")) }
             }
         }
         let dictionary: [String: String]
@@ -95,7 +95,7 @@ public enum NativeAssistance {
             for (url, _) in writes {
                 if url.pathExtension == "json" { _ = try JSONDecoder().decode(JSONValue.self, from: Data(contentsOf: url)) }
                 let bak = url.appendingPathExtension("bak")
-                guard bak.path == bak.resolvingSymlinksInPath().path else { throw AssistanceError.invalid("辅助备份是符号链接。") }
+                guard bak.path == bak.resolvingSymlinksInPath().path else { throw AssistanceError.invalid(L10n.string("辅助备份是符号链接。")) }
                 try Data(contentsOf: url).write(to: bak, options: .atomic)
             }
         } else { try fm.createDirectory(at: dir, withIntermediateDirectories: false) }
@@ -105,7 +105,7 @@ public enum NativeAssistance {
         } catch { throw AssistanceError.invalid("已保存：\(saved.joined(separator: "、"))；其余辅助文件未完成：\(error.localizedDescription)") }
     }
     static func updateTranslations(_ p: AssistanceProject, _ translations: [String: String]) throws {
-        guard try AssistanceProject.detect(folder: p.root.path) == p else { throw AssistanceError.invalid("游戏身份已改变。") }
+        guard try AssistanceProject.detect(folder: p.root.path) == p else { throw AssistanceError.invalid(L10n.string("游戏身份已改变。")) }
         _ = try manifest(p)
         for (s,t) in translations { try TranslationTokens.validate(source: s, target: t) }
         let url = try checked("translations.json", in: directory(p))
@@ -115,20 +115,20 @@ public enum NativeAssistance {
         try JSONEncoder().encode(translations).write(to: url, options: .atomic)
     }
     static func restore(_ p: AssistanceProject, running: Bool) throws {
-        guard !running, try !AssistanceProcesses.isRunning(p) else { throw AssistanceError.invalid("请先关闭游戏，再移除辅助。") }
+        guard !running, try !AssistanceProcesses.isRunning(p) else { throw AssistanceError.invalid(L10n.string("请先关闭游戏，再移除辅助。")) }
         _ = try manifest(p)
         let dir = try directory(p), fm = FileManager.default
         let names = scriptFiles(p) + ["config.json", "translations.json", "manifest.json", "missing.json", "state.json", "command.json", "extracted.json"]
         let allowed = Set(names + names.map { $0 + ".bak" } + ["missing.tmp", "state.tmp", "command.tmp", "extracted.tmp", ".DS_Store"])
         for name in try fm.contentsOfDirectory(atPath: dir.path) {
             let url = try checked(name, in: dir)
-            guard allowed.contains(name), (try url.resourceValues(forKeys: [.isRegularFileKey])).isRegularFile == true else { throw AssistanceError.invalid("辅助目录含未知文件，未移除任何文件。") }
+            guard allowed.contains(name), (try url.resourceValues(forKeys: [.isRegularFileKey])).isRegularFile == true else { throw AssistanceError.invalid(L10n.string("辅助目录含未知文件，未移除任何文件。")) }
         }
         var targets: [URL] = []
         if AssistanceModules.module(for: p.engine).entrySource != nil {
             let compiled = p.page.deletingPathExtension().appendingPathExtension("rpyc")
             for url in [compiled, p.page.appendingPathExtension("bak")] where fm.fileExists(atPath: url.path) {
-                guard url.path == url.resolvingSymlinksInPath().path, (try url.resourceValues(forKeys: [.isRegularFileKey])).isRegularFile == true else { throw AssistanceError.invalid("辅助编译文件不安全。") }
+                guard url.path == url.resolvingSymlinksInPath().path, (try url.resourceValues(forKeys: [.isRegularFileKey])).isRegularFile == true else { throw AssistanceError.invalid(L10n.string("辅助编译文件不安全。")) }
                 targets.append(url)
             }
             targets.append(p.page)
@@ -175,20 +175,20 @@ public enum AssistanceBridge {
     public static func read(_ p: AssistanceProject, now: Date = .now) throws -> AssistanceSnapshot {
         _ = try NativeAssistance.options(p)
         let url = AssistanceInstaller.location(p).appendingPathComponent("state.json")
-        guard url.path == url.resolvingSymlinksInPath().path else { throw AssistanceError.invalid("运行状态是符号链接。") }
+        guard url.path == url.resolvingSymlinksInPath().path else { throw AssistanceError.invalid(L10n.string("运行状态是符号链接。")) }
         let data = try Data(contentsOf: url)
-        guard data.count <= 4 * 1024 * 1024 else { throw AssistanceError.invalid("运行状态过大。") }
+        guard data.count <= 4 * 1024 * 1024 else { throw AssistanceError.invalid(L10n.string("运行状态过大。")) }
         let state = try JSONDecoder().decode(AssistanceSnapshot.self, from: data)
         guard state.identity == p.identity, !state.session.isEmpty, abs(now.timeIntervalSince1970 - state.updated) < 6,
-              state.variables.count <= 10000, Set(state.variables.map(\.key)).count == state.variables.count else { throw AssistanceError.invalid("游戏尚未连接或状态已过期，请启动游戏并进入可操作画面。") }
+              state.variables.count <= 10000, Set(state.variables.map(\.key)).count == state.variables.count else { throw AssistanceError.invalid(L10n.string("游戏尚未连接或状态已过期，请启动游戏并进入可操作画面。")) }
         return state
     }
     @discardableResult public static func send(_ p: AssistanceProject, snapshot: AssistanceSnapshot, action: String, key: String, value: JSONValue = .null) throws -> String {
         let current = try read(p)
         guard current.session == snapshot.session, current.ready, ["set", "lock", "unlock", "reset"].contains(action),
-              action == "reset" || current.variables.contains(where: { $0.key == key }) else { throw AssistanceError.invalid("游戏状态已改变，请刷新后重试。") }
+              action == "reset" || current.variables.contains(where: { $0.key == key }) else { throw AssistanceError.invalid(L10n.string("游戏状态已改变，请刷新后重试。")) }
         let url = AssistanceInstaller.location(p).appendingPathComponent("command.json")
-        guard url.path == url.resolvingSymlinksInPath().path else { throw AssistanceError.invalid("命令文件是符号链接。") }
+        guard url.path == url.resolvingSymlinksInPath().path else { throw AssistanceError.invalid(L10n.string("命令文件是符号链接。")) }
         let id = UUID().uuidString
         let command: [String: JSONValue] = ["id": .string(id), "session": .string(current.session), "identity": .string(p.identity), "expires": .double(Date.now.timeIntervalSince1970 + 5), "action": .string(action), "key": .string(key), "value": value]
         try JSONEncoder().encode(command).write(to: url, options: .atomic)

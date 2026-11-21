@@ -135,8 +135,8 @@ public enum EngineStatus {
         //    所以文案要说清「这是上游的立场，不是我们的限制」。
         if definition.folder == "kirikiri" {
             return .upstreamGate(
-                reason: "krkrsdl2 作者声明：不支持用本运行时跑未修改的商业游戏（建议用 Wine / GameNative）。"
-                    + "这只是上游立场，实际通常能跑。")
+                reason: L10n.string("krkrsdl2 作者声明：不支持用本运行时跑未修改的商业游戏（建议用 Wine / GameNative）。")
+                    + L10n.string("这只是上游立场，实际通常能跑。"))
         }
 
         // D91 的四个新引擎：**还没有任何真实游戏样本验证过启动**

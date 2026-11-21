@@ -97,15 +97,15 @@ public enum DLsiteError: Error, Sendable, Equatable {
     public var message: String {
         switch self {
         case .storage(let detail): return "保存作品缓存失败，原件未覆盖：\(detail)"
-        case .cancelled: return "已取消获取，原有作品信息未更改。"
-        case .verificationRequired: return "站点返回了验证页面，并非没有该作品。请在浏览器中确认站点可访问后重试。"
+        case .cancelled: return L10n.string("已取消获取，原有作品信息未更改。")
+        case .verificationRequired: return L10n.string("站点返回了验证页面，并非没有该作品。请在浏览器中确认站点可访问后重试。")
         case .invalidURL(let url):
             return "RJ 号或分类不合法：\(url)"
         case .network(let detail):
             return "网络请求失败：\(detail)。检查网络连接，如果用代理请确认它开着。"
-        case .httpStatus(403): return "站点拒绝了请求（403）。请检查浏览器能否访问作品页及代理设置后重试。"
-        case .httpStatus(404): return "未找到该作品页（404）。请核对编号或尝试其他查找范围；作品也可能已下架。"
-        case .httpStatus(429): return "站点暂时限制了访问频率（429），请稍后重试。"
+        case .httpStatus(403): return L10n.string("站点拒绝了请求（403）。请检查浏览器能否访问作品页及代理设置后重试。")
+        case .httpStatus(404): return L10n.string("未找到该作品页（404）。请核对编号或尝试其他查找范围；作品也可能已下架。")
+        case .httpStatus(429): return L10n.string("站点暂时限制了访问频率（429），请稍后重试。")
         case .httpStatus(let code):
             return "DLsite 返回了 HTTP \(code)。可能是站点临时故障，稍后再试。"
         case .parseFailed(let rj):

@@ -107,8 +107,8 @@ struct RootView: View {
             }
             .buttonStyle(.plain)
             .keyboardShortcut("s", modifiers: [.command, .option])
-            .accessibilityLabel(sidebarVisible ? "收起侧边栏" : "显示侧边栏")
-            .help(sidebarVisible ? "收起侧边栏（⌘⌥S）" : "显示侧边栏（⌘⌥S）")
+            .accessibilityLabel(sidebarVisible ? L("收起侧边栏") : L("显示侧边栏"))
+            .help(sidebarVisible ? L("收起侧边栏（⌘⌥S）") : L("显示侧边栏（⌘⌥S）"))
 
             Label("Tsumigeya", systemImage: "gamecontroller.fill")
                 .font(.system(size: 15, weight: .bold))
@@ -123,10 +123,10 @@ struct RootView: View {
 
             if page == .library {
                 Button { store.openAddGame() } label: {
-                    Label("添加游戏", systemImage: "plus")
+                    Label(L("添加游戏"), systemImage: "plus")
                 }
                 .keyboardShortcut("o", modifiers: .command)
-                .help("添加游戏（⌘O）")
+                .help(L("添加游戏（⌘O）"))
             }
         }
         .padding(.horizontal, 16)
@@ -136,7 +136,7 @@ struct RootView: View {
     private var librarySidebar: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
-                Text("游戏库")
+                Text(L("游戏库"))
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 4)
@@ -180,7 +180,7 @@ struct RootView: View {
                     }
 
                     if store.groups.isEmpty && !store.games.isEmpty {
-                        Text("没有匹配的作品")
+                        Text(L("没有匹配的作品"))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .padding(12)
@@ -192,8 +192,8 @@ struct RootView: View {
             Spacer(minLength: 8)
             Divider()
             VStack(spacing: 2) {
-                sidebarNavigationButton(.engines, systemImage: "gearshape", title: "引擎管理")
-                sidebarNavigationButton(.settings, systemImage: "slider.horizontal.3", title: "设置")
+                sidebarNavigationButton(.engines, systemImage: "gearshape", title: L("引擎管理"))
+                sidebarNavigationButton(.settings, systemImage: "slider.horizontal.3", title: L("设置"))
             }
             .padding(8)
         }
@@ -203,7 +203,7 @@ struct RootView: View {
 
     private var libraryMenu: some View {
         Menu {
-            Button("全部作品") { store.activeCategory = nil }
+            Button(L("全部作品")) { store.activeCategory = nil }
             if !store.categories.isEmpty {
                 Divider()
                 ForEach(Categories.ordered(store.categories), id: \.id) { pair in
@@ -218,13 +218,13 @@ struct RootView: View {
                 }
             }
             Divider()
-            Button("收起所有分类") { collapsedGroups = Set(store.groups.map(\.id)) }
-            Button("展开所有分类") { collapsedGroups.removeAll() }
-            Button("新建分类…") { store.beginCreateCategory() }
+            Button(L("收起所有分类")) { collapsedGroups = Set(store.groups.map(\.id)) }
+            Button(L("展开所有分类")) { collapsedGroups.removeAll() }
+            Button(L("新建分类…")) { store.beginCreateCategory() }
             Divider()
-            Button("批量补全作品信息") { store.isBatchMetaPresented = true }
+            Button(L("批量补全作品信息")) { store.isBatchMetaPresented = true }
                 .disabled(store.games.isEmpty)
-            Button("批量入库") { store.isBatchAdding = true }
+            Button(L("批量入库")) { store.isBatchAdding = true }
         } label: {
             Image(systemName: "ellipsis")
                 .font(.system(size: 12, weight: .semibold))
@@ -232,8 +232,8 @@ struct RootView: View {
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
-        .accessibilityLabel("游戏库菜单")
-        .help("游戏库菜单")
+        .accessibilityLabel(L("游戏库菜单"))
+        .help(L("游戏库菜单"))
     }
 
     private func groupExpansion(for id: String) -> Binding<Bool> {
@@ -266,16 +266,16 @@ struct RootView: View {
         switch page {
         case .library:
             if store.isLoading {
-                ProgressView("正在加载游戏库…")
+                ProgressView(L("正在加载游戏库…"))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let error = store.loadError {
                 ContentUnavailableView {
-                    Label("游戏库读取失败", systemImage: "exclamationmark.triangle")
+                    Label(L("游戏库读取失败"), systemImage: "exclamationmark.triangle")
                 } description: {
                     Text(error).textSelection(.enabled)
                 } actions: {
-                    Button("重新加载") { Task { await store.load() } }
-                    Button("打开数据目录") {
+                    Button(L("重新加载")) { Task { await store.load() } }
+                    Button(L("打开数据目录")) {
                         NSWorkspace.shared.open(URL(fileURLWithPath: store.dataDir))
                     }
                 }
@@ -318,7 +318,7 @@ struct SidebarGameRow: View {
                         Circle()
                             .fill(isRunning ? Color.green : Color.secondary.opacity(0.35))
                             .frame(width: 5, height: 5)
-                        Text(isRunning ? "正在游玩" : (EngineRegistry.find(folder: game.gameEngine)?.name ?? game.gameEngine))
+                        Text(isRunning ? L("正在游玩") : (EngineRegistry.find(folder: game.gameEngine)?.name ?? game.gameEngine))
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
@@ -358,9 +358,9 @@ struct SearchField: View {
             }
             .buttonStyle(.plain)
             .keyboardShortcut("f", modifiers: .command)
-            .accessibilityLabel("搜索游戏")
-            .help("搜索游戏（⌘F）")
-            TextField("搜索名称、社团、标签或路径", text: $text)
+            .accessibilityLabel(L("搜索游戏"))
+            .help(L("搜索游戏（⌘F）"))
+            TextField(L("搜索名称、社团、标签或路径"), text: $text)
             .focused($isFocused)
             .textFieldStyle(.plain)
             .font(.system(size: 13))
@@ -373,7 +373,7 @@ struct SearchField: View {
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("清除搜索")
+                .accessibilityLabel(L("清除搜索"))
             }
         }
         .padding(.horizontal, 10)
@@ -392,10 +392,10 @@ struct LibraryNoResultsView: View {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 36))
                 .foregroundStyle(.secondary)
-            Text("没有匹配的游戏").font(.title2)
-            Text("试试其他关键词，或清除筛选。")
+            Text(L("没有匹配的游戏")).font(.title2)
+            Text(L("试试其他关键词，或清除筛选。"))
                 .foregroundStyle(.secondary)
-            Button("清除筛选") {
+            Button(L("清除筛选")) {
                 store.searchText = ""
                 store.activeCategory = nil
             }
@@ -467,47 +467,47 @@ private struct AppPresentations: ViewModifier {
             ManualRJSheet(gameId: target.id)
                 .environmentObject(store)
         }
-        .alert("操作未完成", isPresented: Binding(
+        .alert(L("操作未完成"), isPresented: Binding(
             get: { store.operationError != nil },
             set: { if !$0 { store.operationError = nil } }
         )) {
-            Button("好", role: .cancel) { store.operationError = nil }
+            Button(L("好"), role: .cancel) { store.operationError = nil }
         } message: {
             Text(store.operationError ?? "")
         }
         // 删除游戏确认
-        .alert("从游戏库移除？", isPresented: Binding(
+        .alert(L("从游戏库移除？"), isPresented: Binding(
             get: { store.pendingDelete != nil },
             set: { if !$0 { store.cancelPendingDelete() } }
         ), presenting: store.pendingDelete) { game in
             // ⚠️ **必须说清「不会删游戏文件」** ——
             //    用户最怕的是「点一下把游戏删没了」。
             //    实际只删库里的记录，游戏目录原样不动。
-            Button("移除", role: .destructive) {
+            Button(L("移除"), role: .destructive) {
                 store.confirmPendingDelete()
             }
-            Button("取消", role: .cancel) {
+            Button(L("取消"), role: .cancel) {
                 store.cancelPendingDelete()
             }
         } message: { game in
             Text("「\(store.displayTitle(for: game))」会从游戏库移除。\n\n"
-                 + "**游戏文件不会被删除**，只是不再显示在列表里。"
-                 + "游玩记录和分类归属也会一起清掉。")
+                 + L("**游戏文件不会被删除**，只是不再显示在列表里。")
+                 + L("游玩记录和分类归属也会一起清掉。"))
         }
         // 删除分类确认
-        .alert("删除分类？", isPresented: Binding(
+        .alert(L("删除分类？"), isPresented: Binding(
             get: { store.pendingDeleteCategory != nil },
             set: { if !$0 { store.cancelDeleteCategory() } }
         ), presenting: store.pendingDeleteCategory) { pair in
-            Button("删除", role: .destructive) {
+            Button(L("删除"), role: .destructive) {
                 store.confirmPendingDeleteCategory()
             }
-            Button("取消", role: .cancel) {
+            Button(L("取消"), role: .cancel) {
                 store.cancelDeleteCategory()
             }
         } message: { pair in
             Text("分类「\(pair.name)」会被删除。\n\n"
-                 + "**游戏不会被删除**，只是它们不再属于这个分类。作品类型分类删除后不会在刷新资料时自动重建；新建同名类型分类可重新启用。")
+                 + L("**游戏不会被删除**，只是它们不再属于这个分类。作品类型分类删除后不会在刷新资料时自动重建；新建同名类型分类可重新启用。"))
         }
     }
 }

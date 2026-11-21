@@ -165,7 +165,7 @@ public enum DownloadError: Error, Sendable, Equatable, LocalizedError {
         case .httpStatus(let code, let url):
             return "下载失败：HTTP \(code)\n地址：\(url)"
         case .cancelled:
-            return "下载已取消。"
+            return L10n.string("下载已取消。")
         case .transport(let reason):
             return "下载失败：\(reason)"
         case .writeFailed(let path, let reason):
@@ -413,7 +413,7 @@ final class BodyStreamDelegate: NSObject, URLSessionDataDelegate, @unchecked Sen
         if let pendingHead {
             pendingHead.resume(throwing: cancelled
                 ? DownloadError.cancelled
-                : DownloadError.transport(reason: error?.localizedDescription ?? "连接提前结束"))
+                : DownloadError.transport(reason: error?.localizedDescription ?? L10n.string("连接提前结束")))
         }
         if let pendingChunks {
             if cancelled {
@@ -453,7 +453,7 @@ final class FileSink: @unchecked Sendable {
             throw DownloadError.writeFailed(path: path, reason: error.localizedDescription)
         }
         guard FileManager.default.createFile(atPath: path, contents: nil) else {
-            throw DownloadError.writeFailed(path: path, reason: "无法创建文件")
+            throw DownloadError.writeFailed(path: path, reason: L10n.string("无法创建文件"))
         }
         do {
             handle = try FileHandle(forWritingTo: url)

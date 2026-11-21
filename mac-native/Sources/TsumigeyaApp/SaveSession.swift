@@ -32,19 +32,19 @@ final class SaveSession: ObservableObject {
             overrideDirectory: overridePath)
     }
 
-    func reportCopiedPath() { message = ("已复制存档目录路径。", false) }
+    func reportCopiedPath() { message = (L("已复制存档目录路径。"), false) }
 
     /// 文件选择窗口会让出事件循环，返回后必须重新核对游戏身份及运行状态。
     private func allowMutation() -> Bool {
         guard isCurrent else {
-            message = ("游戏已移除或发生变化，请重新打开存档页。", true)
+            message = (L("游戏已移除或发生变化，请重新打开存档页。"), true)
             return false
         }
         guard let store else { return false }
         guard !isWorking else { return false }
         store.refreshRunning()
         guard store.runningGames[game.id] == nil else {
-            message = ("游戏正在运行，先关掉它再操作存档。", true)
+            message = (L("游戏正在运行，先关掉它再操作存档。"), true)
             return false
         }
         return true
@@ -54,11 +54,11 @@ final class SaveSession: ObservableObject {
         guard allowMutation(), let store else { return }
         guard store.setSaveDirectoryOverride(gameId: game.id, path: path),
               let updated = store.game(id: game.id) else {
-            message = (store.lastAddGameError ?? "保存存档目录失败。", true)
+            message = (store.lastAddGameError ?? L("保存存档目录失败。"), true)
             return
         }
         game = updated
-        message = (path == nil ? "已恢复自动探测。" : "已指定存档目录。", false)
+        message = (path == nil ? L("已恢复自动探测。") : L("已指定存档目录。"), false)
         reload()
     }
 

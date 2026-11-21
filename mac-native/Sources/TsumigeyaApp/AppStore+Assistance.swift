@@ -18,7 +18,7 @@ final class AssistanceSession: ObservableObject {
     @Published var message = ""
     @Published var error: String?
     @Published var liveState: AssistanceSnapshot?
-    @Published var liveMessage = "请应用辅助后通过启动器进入游戏。"
+    @Published var liveMessage = L("请应用辅助后通过启动器进入游戏。")
     @Published var pendingCommand: String?
     private var sentAt: Date?
 
@@ -37,7 +37,7 @@ final class AssistanceSession: ObservableObject {
         guard !busy else { return }
         project = nil; catalog = nil
         operation {
-            guard ["nwjs", "mkxpz", "renpy", "tyrano"].contains(game.gameEngine) else { throw AssistanceError.invalid("当前引擎尚未接入翻译与作弊；可启动不代表可修改游戏状态。") }
+            guard ["nwjs", "mkxpz", "renpy", "tyrano"].contains(game.gameEngine) else { throw AssistanceError.invalid(L("当前引擎尚未接入翻译与作弊；可启动不代表可修改游戏状态。")) }
             let project = try RPGMakerProject.detect(folder: DetectPath.gameDirForFiles(game.gamePath))
             let loaded = try TranslationFiles.load(project: project, dataDir: store?.dataDir ?? "")
             let installedOptions = try AssistanceInstaller.options(project)
@@ -49,7 +49,7 @@ final class AssistanceSession: ObservableObject {
                 serviceRaw = try JSONDecoder().decode([String: JSONValue].self, from: Data(contentsOf: url))
                 service.endpoint = serviceRaw["endpoint"]?.stringValue ?? ""
                 service.model = serviceRaw["model"]?.stringValue ?? ""
-                service.targetLanguage = serviceRaw["targetLanguage"]?.stringValue ?? "简体中文"
+                service.targetLanguage = serviceRaw["targetLanguage"]?.stringValue ?? L("简体中文")
             }
             key = try TranslationCredential.read(account: service.endpoint)
         }
@@ -61,15 +61,15 @@ final class AssistanceSession: ObservableObject {
             liveState = snapshot
             if let pendingCommand, snapshot.ack == pendingCommand {
                 self.pendingCommand = nil
-                liveMessage = snapshot.error ?? "游戏已确认操作。"
+                liveMessage = snapshot.error ?? L("游戏已确认操作。")
             } else if pendingCommand != nil, let sentAt, Date.now.timeIntervalSince(sentAt) > 6 {
-                pendingCommand = nil; liveMessage = "游戏未确认操作，请刷新数值后核对，勿直接重复修改。"
-            } else if pendingCommand == nil { liveMessage = snapshot.ready ? (snapshot.error ?? "已连接当前游戏。") : "请先进入游戏或读取存档。" }
+                pendingCommand = nil; liveMessage = L("游戏未确认操作，请刷新数值后核对，勿直接重复修改。")
+            } else if pendingCommand == nil { liveMessage = snapshot.ready ? (snapshot.error ?? L("已连接当前游戏。")) : L("请先进入游戏或读取存档。") }
         } catch {
             liveState = nil; liveMessage = error.localizedDescription
             if pendingCommand != nil, let sentAt, Date.now.timeIntervalSince(sentAt) > 6 {
                 pendingCommand = nil
-                liveMessage = "连接已中断，无法确认刚才的操作；重连后请先核对数值。"
+                liveMessage = L("连接已中断，无法确认刚才的操作；重连后请先核对数值。")
             }
         }
     }
@@ -78,7 +78,7 @@ final class AssistanceSession: ObservableObject {
         do {
             let parsed = action == "reset" || action == "unlock" ? JSONValue.null : try JSONDecoder().decode(JSONValue.self, from: Data(value.utf8))
             pendingCommand = try AssistanceBridge.send(project, snapshot: liveState, action: action, key: key, value: parsed)
-            sentAt = .now; liveMessage = "等待游戏确认……"
+            sentAt = .now; liveMessage = L("等待游戏确认……")
         } catch { liveMessage = error.localizedDescription }
     }
     private var serviceURL: URL { URL(fileURLWithPath: store?.dataDir ?? "").appendingPathComponent("translation-service.json") }
@@ -90,19 +90,19 @@ final class AssistanceSession: ObservableObject {
     func saveService() {
         operation {
             guard isCurrent, service.url != nil, !service.model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                  !service.targetLanguage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw AssistanceError.invalid("请填写完整接口地址、模型和目标语言；只允许 HTTPS 或本机 HTTP。") }
+                  !service.targetLanguage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw AssistanceError.invalid(L("请填写完整接口地址、模型和目标语言；只允许 HTTPS 或本机 HTTP。")) }
             let url = serviceURL
             if FileManager.default.fileExists(atPath: url.path) { serviceRaw = try JSONDecoder().decode([String: JSONValue].self, from: Data(contentsOf: url)) }
             serviceRaw["endpoint"] = .string(service.endpoint); serviceRaw["model"] = .string(service.model)
             serviceRaw["targetLanguage"] = .string(service.targetLanguage)
             try TranslationCredential.save(key, account: service.endpoint)
             if let error = JSONStore.save(serviceRaw, to: url) { throw AssistanceError.invalid("密钥已保存在钥匙串，但接口设置未保存：\(error)") }
-            message = "翻译接口已保存；密钥只存放在系统钥匙串。"
+            message = L("翻译接口已保存；密钥只存放在系统钥匙串。")
         }
     }
     func extract() {
         guard !busy, let project else { return }
-        busy = true; error = nil; message = "正在提取对话、选项和数据库文字……"
+        busy = true; error = nil; message = L("正在提取对话、选项和数据库文字……")
         task = Task { [weak self] in
             do {
                 let entries = try await Task.detached(priority: .userInitiated) { try AssistanceModules.extract(project) }.value
@@ -115,11 +115,11 @@ final class AssistanceSession: ObservableObject {
         }
     }
     private func persist(_ next: TranslationCatalog) throws {
-        guard isCurrent, let store, let project else { throw AssistanceError.invalid("游戏已移除或路径已改变，已停止写入。") }
+        guard isCurrent, let store, let project else { throw AssistanceError.invalid(L("游戏已移除或路径已改变，已停止写入。")) }
         let gameURL = URL(fileURLWithPath: store.dataDir).appendingPathComponent("games.json")
         guard case .loaded(let map) = JSONStore.load(GameMap.self, from: gameURL, quarantineCorrupt: false),
               map.games[game.id]?.gamePath == game.gamePath, map.games[game.id]?.gameEngine == game.gameEngine else {
-            throw AssistanceError.invalid("磁盘上的游戏记录已改变，已停止保存译文。")
+            throw AssistanceError.invalid(L("磁盘上的游戏记录已改变，已停止保存译文。"))
         }
         try TranslationFiles.save(next, project: project, dataDir: store.dataDir)
         catalog = next
@@ -134,28 +134,28 @@ final class AssistanceSession: ObservableObject {
         }
     }
     func exportFile(_ url: URL) {
-        operation { guard let catalog else { return }; try JSONStore.defaultEncoder.encode(catalog.dictionary).write(to: url, options: .atomic); message = "译文字典已导出。" }
+        operation { guard let catalog else { return }; try JSONStore.defaultEncoder.encode(catalog.dictionary).write(to: url, options: .atomic); message = L("译文字典已导出。") }
     }
     func edit(source: String, target: String) {
         operation {
             guard !busy, var next = catalog, let i = next.entries.firstIndex(where: { $0.source == source }) else { return }
             if !target.isEmpty { try TranslationTokens.validate(source: source, target: target) }
             next.entries[i].target = target; next.entries[i].failure = nil
-            try persist(next); message = "修订已保存。点击「应用到游戏」更新游戏中的译文。"
+            try persist(next); message = L("修订已保存。点击「应用到游戏」更新游戏中的译文。")
         }
     }
-    func pause() { task?.cancel(); message = "正在暂停；已保存的译文会保留。" }
+    func pause() { task?.cancel(); message = L("正在暂停；已保存的译文会保留。") }
     func translate(onlyFailures: Bool = false, followGame: Bool = false) {
         guard !busy, let catalog, (!catalog.entries.isEmpty || followGame) else { return }
         guard service.url != nil, !service.model.isEmpty,
               serviceRaw["endpoint"]?.stringValue == service.endpoint,
               serviceRaw["model"]?.stringValue == service.model,
-              serviceRaw["targetLanguage"]?.stringValue == service.targetLanguage else { error = "请先保存翻译接口；更改服务地址后需重新核对密钥。"; return }
-        if followGame && (!installed || !options.translation) { error = "请先启用文字翻译并应用到游戏。"; return }
+              serviceRaw["targetLanguage"]?.stringValue == service.targetLanguage else { error = L("请先保存翻译接口；更改服务地址后需重新核对密钥。"); return }
+        if followGame && (!installed || !options.translation) { error = L("请先启用文字翻译并应用到游戏。"); return }
         let service = TranslationService(settings: service, key: key)
         let translateText = store?.translateAssistanceText ?? { service, source in try await service.translate(source) }
         var pending = catalog.entries.filter { $0.target.isEmpty && (!onlyFailures || $0.failure != nil) }.map(\.source)
-        guard !pending.isEmpty || followGame else { message = "没有需要翻译的条目。"; return }
+        guard !pending.isEmpty || followGame else { message = L("没有需要翻译的条目。"); return }
         busy = true; error = nil
         task = Task { [weak self] in
             var position = 0
@@ -172,7 +172,7 @@ final class AssistanceSession: ObservableObject {
                         pending = next.entries.filter { $0.target.isEmpty && !attempted.contains($0.source) }.map(\.source)
                         position = 0
                         if pending.isEmpty {
-                            self.message = "正在等待游戏中的新文本；已缓存译文可离线使用。可点击暂停结束跟随补译。"
+                            self.message = L("正在等待游戏中的新文本；已缓存译文可离线使用。可点击暂停结束跟随补译。")
                             try await Task.sleep(for: .seconds(2)); continue
                         }
                     } catch {
@@ -199,12 +199,12 @@ final class AssistanceSession: ObservableObject {
                     try self.persist(next)
                     if followGame, let project = self.project { try AssistanceInstaller.updateTranslations(project, translations: next.dictionary) }
                 } catch { self.error = "已停止翻译：\(error.localizedDescription)"; break }
-                if stopForService { self.error = "翻译服务拒绝请求，已停止队列。请检查地址、模型、余额或密钥后重试。"; break }
+                if stopForService { self.error = L("翻译服务拒绝请求，已停止队列。请检查地址、模型、余额或密钥后重试。"); break }
                 try? await Task.sleep(for: .milliseconds(800))
             }
             guard let self, self.isCurrent else { return }
             self.busy = false
-            if Task.isCancelled { self.message = "已暂停，继续时只处理未完成的条目。" }
+            if Task.isCancelled { self.message = L("已暂停，继续时只处理未完成的条目。") }
             else if self.error == nil { self.message = "翻译任务结束。已完成 \(self.catalog?.completed ?? 0) 条，失败 \(self.catalog?.entries.filter { $0.failure != nil }.count ?? 0) 条。点击「应用到游戏」生效。" }
         }
     }
@@ -214,7 +214,7 @@ final class AssistanceSession: ObservableObject {
             store.refreshRunning()
             try AssistanceInstaller.configure(project, options: options, translations: catalog?.dictionary ?? [:], running: running)
             installed = true
-            message = project.usesFileBridge ? "辅助功能已应用，下次启动游戏生效。进入游戏后，在下方作弊工具中搜索和编辑数值。" : "辅助功能已应用，下次启动游戏生效。作弊面板可在游戏右上角或按 ⇧F8 打开。"
+            message = project.usesFileBridge ? L("辅助功能已应用，下次启动游戏生效。进入游戏后，在下方作弊工具中搜索和编辑数值。") : L("辅助功能已应用，下次启动游戏生效。作弊面板可在游戏右上角或按 ⇧F8 打开。")
         }
     }
     func restore() {
@@ -222,7 +222,7 @@ final class AssistanceSession: ObservableObject {
             guard isCurrent, let project, let store else { return }
             store.refreshRunning(); try AssistanceInstaller.restore(project, running: running)
             installed = false; options = .init(); liveState = nil; pendingCommand = nil
-            message = "辅助功能已移除；译文目录仍保留。存档里的修改不会因此撤销。"
+            message = L("辅助功能已移除；译文目录仍保留。存档里的修改不会因此撤销。")
         }
     }
 }
@@ -246,12 +246,12 @@ private enum TranslationCredential {
         var q = query(account); q[kSecReturnData as String] = true; q[kSecMatchLimit as String] = kSecMatchLimitOne
         var result: CFTypeRef?; let status = SecItemCopyMatching(q as CFDictionary, &result)
         if status == errSecItemNotFound { return "" }
-        guard status == errSecSuccess, let data = result as? Data, let value = String(data: data, encoding: .utf8) else { throw AssistanceError.invalid("无法读取翻译密钥，请检查系统钥匙串权限。") }
+        guard status == errSecSuccess, let data = result as? Data, let value = String(data: data, encoding: .utf8) else { throw AssistanceError.invalid(L("无法读取翻译密钥，请检查系统钥匙串权限。")) }
         return value
     }
     static func save(_ value: String, account: String) throws {
         let q = query(account)
-        if value.isEmpty { let status = SecItemDelete(q as CFDictionary); guard status == errSecSuccess || status == errSecItemNotFound else { throw AssistanceError.invalid("无法删除钥匙串密钥。") }; return }
+        if value.isEmpty { let status = SecItemDelete(q as CFDictionary); guard status == errSecSuccess || status == errSecItemNotFound else { throw AssistanceError.invalid(L("无法删除钥匙串密钥。")) }; return }
         let attrs = [kSecValueData as String: Data(value.utf8)]
         var status = SecItemUpdate(q as CFDictionary, attrs as CFDictionary)
         if status == errSecItemNotFound { var item = q; item.merge(attrs) { _, new in new }; item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly; status = SecItemAdd(item as CFDictionary, nil) }

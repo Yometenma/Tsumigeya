@@ -69,7 +69,7 @@ public enum MkxpzConfig {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .withoutEscapingSlashes, .sortedKeys]
         guard let data = try? encoder.encode(config) else {
-            return "序列化失败"
+            return L10n.string("序列化失败")
         }
         // 4 空格缩进：JSONEncoder 的 prettyPrinted 用的是 2 空格，
         // 这里替换成 4（与 mkxp-z 示例一致）。

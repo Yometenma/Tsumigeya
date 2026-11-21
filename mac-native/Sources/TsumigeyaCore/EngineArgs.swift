@@ -81,7 +81,7 @@ public enum EngineArgs {
         case "select":
             // select 与 dropdown 的区别：选项来自外部（版本列表）
             return availableVersions.isEmpty
-                ? .unsupported(type: "select（选项来源为空）")
+                ? .unsupported(type: L10n.string("select（选项来源为空）"))
                 : .dropdown(availableVersions)
         case "multi-version":
             return .multiVersion(availableVersions)

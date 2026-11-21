@@ -20,10 +20,10 @@ struct CreateCategorySheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("新建分类")
+            Text(L("新建分类"))
                 .font(.title3.weight(.semibold))
 
-            TextField("分类名", text: $name)
+            TextField(L("分类名"), text: $name)
                 .textFieldStyle(.roundedBorder)
                 .focused($focused)
                 .onSubmit { create() }
@@ -41,12 +41,12 @@ struct CreateCategorySheet: View {
 
             HStack {
                 Spacer()
-                Button("取消") {
+                Button(L("取消")) {
                     store.closeCreateCategory()
                 }
                 .keyboardShortcut(.cancelAction)
 
-                Button("创建") {
+                Button(L("创建")) {
                     create()
                 }
                 .buttonStyle(.borderedProminent)
@@ -67,19 +67,19 @@ struct CreateCategorySheet: View {
         //    用户需要知道具体是哪一条，否则只能乱试。
         if Categories.validateName(name) != nil {
             errorMessage = Categories.validateName(name) == .empty
-                ? "分类名不能为空"
+                ? L("分类名不能为空")
                 : "分类名太长了（最多 \(Categories.nameMax) 个字）"
             return
         }
         if Categories.isDuplicateName(store.categories, raw: name) {
-            errorMessage = "已经有同名分类了"
+            errorMessage = L("已经有同名分类了")
             return
         }
 
         if store.createCategory(name: name) {
             store.closeCreateCategory()
         } else {
-            errorMessage = "创建失败"
+            errorMessage = L("创建失败")
         }
     }
 }

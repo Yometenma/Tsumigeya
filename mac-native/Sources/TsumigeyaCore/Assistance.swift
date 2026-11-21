@@ -43,7 +43,7 @@ public enum AssistanceProcesses {
         process.arguments = ["-axo", "pid=,command="]
         let pipe = Pipe(); process.standardOutput = pipe; process.standardError = FileHandle.nullDevice
         try process.run(); let data = pipe.fileHandleForReading.readDataToEndOfFile(); process.waitUntilExit()
-        guard process.terminationStatus == 0 else { throw AssistanceError.invalid("无法核对游戏进程，未修改辅助文件。") }
+        guard process.terminationStatus == 0 else { throw AssistanceError.invalid(L10n.string("无法核对游戏进程，未修改辅助文件。")) }
         return String(decoding: data, as: UTF8.self).components(separatedBy: .newlines).contains { line in
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
             let parts = trimmed.split(maxSplits: 1, whereSeparator: { $0.isWhitespace })
@@ -78,7 +78,7 @@ public enum AssistanceInstaller {
 
     private static func checkedDirectory(_ project: RPGMakerProject) throws -> URL {
         let dir = location(project)
-        guard dir.resolvingSymlinksInPath().path == dir.path else { throw AssistanceError.invalid("辅助目录是符号链接，拒绝写入。") }
+        guard dir.resolvingSymlinksInPath().path == dir.path else { throw AssistanceError.invalid(L10n.string("辅助目录是符号链接，拒绝写入。")) }
         return dir
     }
 
@@ -103,16 +103,16 @@ public enum AssistanceInstaller {
               value["page"]?.stringValue == project.page.path,
               value["original"]?.stringValue == SHA256.hexOfFile(at: dir.appendingPathComponent("original.html").path),
               value["installed"]?.stringValue == SHA256.hexOfFile(at: project.page.path) else {
-            throw AssistanceError.invalid("游戏入口或备份已改变，不能覆盖。请先手动核对原件与辅助目录。")
+            throw AssistanceError.invalid(L10n.string("游戏入口或备份已改变，不能覆盖。请先手动核对原件与辅助目录。"))
         }
         return value
     }
 
     private static func safeWrite(_ data: Data, to url: URL) throws {
-        guard url.resolvingSymlinksInPath().path == url.path else { throw AssistanceError.invalid("目标文件是符号链接，拒绝写入。") }
+        guard url.resolvingSymlinksInPath().path == url.path else { throw AssistanceError.invalid(L10n.string("目标文件是符号链接，拒绝写入。")) }
         if FileManager.default.fileExists(atPath: url.path) {
             let backup = url.appendingPathExtension("bak")
-            guard backup.resolvingSymlinksInPath().path == backup.path else { throw AssistanceError.invalid("备份文件是符号链接，拒绝写入。") }
+            guard backup.resolvingSymlinksInPath().path == backup.path else { throw AssistanceError.invalid(L10n.string("备份文件是符号链接，拒绝写入。")) }
             let old = try Data(contentsOf: url)
             if url.pathExtension == "json" { _ = try JSONDecoder().decode(JSONValue.self, from: old) }
             try old.write(to: backup, options: .atomic)
@@ -124,8 +124,8 @@ public enum AssistanceInstaller {
                                  translations: [String: String]? = nil, running: Bool) throws {
         try AssistanceModules.validate(options, for: project)
         if project.usesFileBridge { try NativeAssistance.configure(project, options: options, translations: translations, running: running); return }
-        guard try RPGMakerProject.detect(folder: project.root.path) == project else { throw AssistanceError.invalid("游戏目录或数据库已改变，请重新读取配置。") }
-        guard !running, try !AssistanceProcesses.isRunning(project) else { throw AssistanceError.invalid("请先关闭游戏，再更改辅助功能。") }
+        guard try RPGMakerProject.detect(folder: project.root.path) == project else { throw AssistanceError.invalid(L10n.string("游戏目录或数据库已改变，请重新读取配置。")) }
+        guard !running, try !AssistanceProcesses.isRunning(project) else { throw AssistanceError.invalid(L10n.string("请先关闭游戏，再更改辅助功能。")) }
         for (source, target) in translations ?? [:] { try TranslationTokens.validate(source: source, target: target) }
         let fm = FileManager.default
         let dir = try checkedDirectory(project)
@@ -145,7 +145,7 @@ public enum AssistanceInstaller {
             updates.append((dir.appendingPathComponent("config.json"), try JSONEncoder().encode(config)))
             for (url, _) in updates {
                 let backup = url.appendingPathExtension("bak")
-                guard backup.resolvingSymlinksInPath().path == backup.path else { throw AssistanceError.invalid("备份是符号链接。") }
+                guard backup.resolvingSymlinksInPath().path == backup.path else { throw AssistanceError.invalid(L10n.string("备份是符号链接。")) }
                 try Data(contentsOf: url).write(to: backup, options: .atomic)
             }
             var saved: [String] = []
@@ -158,7 +158,7 @@ public enum AssistanceInstaller {
         guard let html = String(data: original, encoding: .utf8),
               !html.contains("data-tsumigeya-assist"),
               let end = html.range(of: "</body>", options: [.caseInsensitive, .backwards]) else {
-            throw AssistanceError.invalid("启动页面不是可识别的 UTF-8 HTML，不能安全添加辅助入口。")
+            throw AssistanceError.invalid(L10n.string("启动页面不是可识别的 UTF-8 HTML，不能安全添加辅助入口。"))
         }
         let installed = Data((String(html[..<end.lowerBound]) + tag + "\n" + String(html[end.lowerBound...])).utf8)
         var payload: [String: Data] = [:]
@@ -175,7 +175,7 @@ public enum AssistanceInstaller {
                 "page": .string(project.page.path), "original": .string(SHA256.hex(Array(original))),
                 "installed": .string(SHA256.hex(Array(installed)))]
             try JSONEncoder().encode(record).write(to: dir.appendingPathComponent("manifest.json"), options: .withoutOverwriting)
-            guard try Data(contentsOf: project.page) == original else { throw AssistanceError.invalid("安装期间游戏入口发生变化，已停止。") }
+            guard try Data(contentsOf: project.page) == original else { throw AssistanceError.invalid(L10n.string("安装期间游戏入口发生变化，已停止。")) }
             try installed.write(to: project.page, options: .atomic)
         } catch {
             // 入口最后提交；之前失败只清理这次创建的目录，不碰游戏文件。
@@ -186,7 +186,7 @@ public enum AssistanceInstaller {
 
     public static func updateTranslations(_ project: RPGMakerProject, translations: [String: String]) throws {
         if project.usesFileBridge { try NativeAssistance.updateTranslations(project, translations); return }
-        guard try RPGMakerProject.detect(folder: project.root.path) == project else { throw AssistanceError.invalid("游戏身份已改变，已停止更新译文。") }
+        guard try RPGMakerProject.detect(folder: project.root.path) == project else { throw AssistanceError.invalid(L10n.string("游戏身份已改变，已停止更新译文。")) }
         _ = try manifest(project)
         for (source, target) in translations { try TranslationTokens.validate(source: source, target: target) }
         try safeWrite(JSONEncoder().encode(translations), to: location(project).appendingPathComponent("translations.json"))
@@ -196,17 +196,17 @@ public enum AssistanceInstaller {
         if project.usesFileBridge { _ = try NativeAssistance.options(project) } else { _ = try manifest(project) }
         let url = location(project).appendingPathComponent("missing.json")
         guard FileManager.default.fileExists(atPath: url.path) else { return [] }
-        guard url.resolvingSymlinksInPath().path == url.path else { throw AssistanceError.invalid("待译文本文件是符号链接。") }
+        guard url.resolvingSymlinksInPath().path == url.path else { throw AssistanceError.invalid(L10n.string("待译文本文件是符号链接。")) }
         let data = try Data(contentsOf: url)
-        guard data.count <= 32 * 1024 * 1024 else { throw AssistanceError.invalid("待译文本文件过大。") }
+        guard data.count <= 32 * 1024 * 1024 else { throw AssistanceError.invalid(L10n.string("待译文本文件过大。")) }
         let texts = try JSONDecoder().decode([String].self, from: data)
-        guard texts.count <= 5000, texts.allSatisfy({ !$0.isEmpty && $0.count <= 4096 }) else { throw AssistanceError.invalid("待译文本超出限制。") }
-        return texts.map { TranslationEntry(source: $0, contexts: ["游戏运行时捕获"]) }
+        guard texts.count <= 5000, texts.allSatisfy({ !$0.isEmpty && $0.count <= 4096 }) else { throw AssistanceError.invalid(L10n.string("待译文本超出限制。")) }
+        return texts.map { TranslationEntry(source: $0, contexts: [L10n.string("游戏运行时捕获")]) }
     }
 
     public static func restore(_ project: RPGMakerProject, running: Bool) throws {
         if project.usesFileBridge { try NativeAssistance.restore(project, running: running); return }
-        guard !running, try !AssistanceProcesses.isRunning(project) else { throw AssistanceError.invalid("请先关闭游戏，再恢复原始入口。") }
+        guard !running, try !AssistanceProcesses.isRunning(project) else { throw AssistanceError.invalid(L10n.string("请先关闭游戏，再恢复原始入口。")) }
         _ = try manifest(project)
         let dir = try checkedDirectory(project)
         let allowed = Set(files(project) + files(project).map { $0 + ".bak" } + ["manifest.json", "original.html", "config.json", "config.json.bak", "translations.json", "translations.json.bak", "missing.json", "missing.tmp", ".DS_Store"])
@@ -215,7 +215,7 @@ public enum AssistanceInstaller {
             var isDirectory: ObjCBool = false
             _ = FileManager.default.fileExists(atPath: dir.appendingPathComponent(name).path, isDirectory: &isDirectory)
             return allowed.contains(name) && !isDirectory.boolValue
-        }) else { throw AssistanceError.invalid("辅助目录包含未识别文件，已保留全部文件。请先移走自添文件再恢复。") }
+        }) else { throw AssistanceError.invalid(L10n.string("辅助目录包含未识别文件，已保留全部文件。请先移走自添文件再恢复。")) }
         let original = try Data(contentsOf: dir.appendingPathComponent("original.html"))
         try original.write(to: project.page, options: .atomic)
         do { try FileManager.default.removeItem(at: dir) }

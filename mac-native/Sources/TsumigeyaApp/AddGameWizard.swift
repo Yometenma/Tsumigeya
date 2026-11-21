@@ -57,7 +57,7 @@ struct AddGameWizard: View {
 
     private var header: some View {
         HStack(spacing: 8) {
-            Text("添加游戏")
+            Text(L("添加游戏"))
                 .font(.title3.weight(.semibold))
             Spacer()
             ForEach([Step.pickFile, .confirmEngine, .nameAndSave], id: \.rawValue) { s in
@@ -82,9 +82,9 @@ struct AddGameWizard: View {
 
     private func stepLabel(_ s: Step) -> String {
         switch s {
-        case .pickFile: return "选文件"
-        case .confirmEngine: return "确认引擎"
-        case .nameAndSave: return "命名"
+        case .pickFile: return L("选文件")
+        case .confirmEngine: return L("确认引擎")
+        case .nameAndSave: return L("命名")
         }
     }
 
@@ -115,22 +115,22 @@ struct AddGameWizard: View {
 
     private var pickFileStep: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("选择游戏里的任意一个文件")
+            Text(L("选择游戏里的任意一个文件"))
                 .font(.headline)
-            Text("不用非得是可执行文件 —— 引擎会按「这个目录里有什么」来认。\n选错文件也没关系，会自动往上找一层。")
+            Text(L("不用非得是可执行文件 —— 引擎会按「这个目录里有什么」来认。\n选错文件也没关系，会自动往上找一层。"))
                 .font(.callout)
                 .foregroundStyle(.secondary)
 
             Button {
                 pickFile()
             } label: {
-                Label("选择文件…", systemImage: "folder")
+                Label(L("选择文件…"), systemImage: "folder")
             }
             .controlSize(.large)
 
             if !pickedPath.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("已选")
+                    Text(L("已选"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Text(pickedPath)
@@ -165,10 +165,10 @@ struct AddGameWizard: View {
                             .textSelection(.enabled)
                     }
                 } else {
-                    Label("没认出来", systemImage: "questionmark.circle.fill")
+                    Label(L("没认出来"), systemImage: "questionmark.circle.fill")
                         .foregroundStyle(.orange)
                         .font(.headline)
-                    Text("这个目录的文件特征不匹配任何已知引擎。可以手动选一个 —— 或者点「取消」去看看是不是选错目录了。")
+                    Text(L("这个目录的文件特征不匹配任何已知引擎。可以手动选一个 —— 或者点「取消」去看看是不是选错目录了。"))
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
@@ -180,12 +180,12 @@ struct AddGameWizard: View {
                 //    即使识别对了也让用户能改 —— 因为识别是推测，可能错。
                 //    这比「识别错了就卡住」好得多。
                 HStack(spacing: 10) {
-                    Text("引擎")
+                    Text(L("引擎"))
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .frame(width: 44, alignment: .leading)
                     Picker("", selection: $selectedEngine) {
-                        Text("请选择引擎").tag("")
+                        Text(L("请选择引擎")).tag("")
                         ForEach(EngineRegistry.all, id: \.folder) { e in
                             Text(e.launchable ? e.name : "\(e.name)（仅识别）")
                                 .tag(e.folder)
@@ -196,13 +196,13 @@ struct AddGameWizard: View {
                 }
 
                 if selectedEngine == "wine" {
-                    Picker("Windows 启动文件", selection: $windowsEntry) {
-                        Text("请选择启动文件").tag("")
+                    Picker(L("Windows 启动文件"), selection: $windowsEntry) {
+                        Text(L("请选择启动文件")).tag("")
                         ForEach(WineRuntime.executables(in: outcome.resolvedFolder), id: \.self) { file in
                             Text((file as NSString).lastPathComponent).tag(file)
                         }
                     }
-                    Text("请选择游戏本体的 EXE，不要选择安装、卸载或配置程序。首次启动需要初始化独立的 Windows 环境。")
+                    Text(L("请选择游戏本体的 EXE，不要选择安装、卸载或配置程序。首次启动需要初始化独立的 Windows 环境。"))
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 engineStatus
@@ -219,22 +219,22 @@ struct AddGameWizard: View {
             EmptyView()
         } else if let e = EngineRegistry.find(folder: folder), !e.launchable {
             // ⚠️ **只识别的引擎要明确说「跑不了」**（D88）
-            Label("这个引擎 Tsumigeya 只能识别，不能启动（需要 Windows 兼容层）",
+            Label(L("这个引擎 Tsumigeya 只能识别，不能启动（需要 Windows 兼容层）"),
                   systemImage: "exclamationmark.triangle.fill")
                 .font(.callout)
                 .foregroundStyle(.orange)
         } else if installed {
-            Label("引擎组件已准备好，可以直接保存", systemImage: "checkmark.circle.fill")
+            Label(L("引擎组件已准备好，可以直接保存"), systemImage: "checkmark.circle.fill")
                 .font(.callout)
                 .foregroundStyle(.secondary)
         } else {
             // ⚠️ **没装也要能继续**（断网不能卡死用户）—— 这是 S4 的判据。
             //    但要说清「现在存进去还跑不起来」。
             VStack(alignment: .leading, spacing: 8) {
-                Label("这个引擎组件还没准备好", systemImage: "exclamationmark.circle.fill")
+                Label(L("这个引擎组件还没准备好"), systemImage: "exclamationmark.circle.fill")
                     .font(.callout)
                     .foregroundStyle(.orange)
-                Text("可以先保存游戏，之后到「引擎管理」准备好组件再启动。")
+                Text(L("可以先保存游戏，之后到「引擎管理」准备好组件再启动。"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -245,15 +245,15 @@ struct AddGameWizard: View {
 
     private var nameStep: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("给这个游戏起个名字")
+            Text(L("给这个游戏起个名字"))
                 .font(.headline)
 
-            TextField("游戏名", text: $gameTitle)
+            TextField(L("游戏名"), text: $gameTitle)
                 .textFieldStyle(.roundedBorder)
                 .font(.system(size: 14))
 
             VStack(alignment: .leading, spacing: 4) {
-                Text("游戏目录")
+                Text(L("游戏目录"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Text(outcome?.resolvedFolder ?? "")
@@ -262,7 +262,7 @@ struct AddGameWizard: View {
             }
 
             HStack(spacing: 6) {
-                Text("引擎")
+                Text(L("引擎"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Text(EngineRegistry.find(folder: selectedEngine)?.name ?? selectedEngine)
@@ -275,7 +275,7 @@ struct AddGameWizard: View {
 
     private var footer: some View {
         HStack {
-            Button("取消") {
+            Button(L("取消")) {
                 store.closeAddGame()
             }
             .keyboardShortcut(.cancelAction)
@@ -284,21 +284,21 @@ struct AddGameWizard: View {
 
             switch step {
             case .pickFile:
-                Button("下一步") { moveToConfirm() }
+                Button(L("下一步")) { moveToConfirm() }
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.defaultAction)
                     .disabled(pickedPath.isEmpty)
 
             case .confirmEngine:
-                Button("上一步") { step = .pickFile }
-                Button("下一步") { moveToName() }
+                Button(L("上一步")) { step = .pickFile }
+                Button(L("下一步")) { moveToName() }
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.defaultAction)
                     .disabled(selectedEngine.isEmpty)
 
             case .nameAndSave:
-                Button("上一步") { step = .confirmEngine }
-                Button("保存") { save() }
+                Button(L("上一步")) { step = .confirmEngine }
+                Button(L("保存")) { save() }
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.defaultAction)
                     .disabled(gameTitle.trimmingCharacters(in: .whitespaces).isEmpty)
@@ -316,7 +316,7 @@ struct AddGameWizard: View {
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
-        panel.message = "选游戏目录里的任意一个文件（.app 包也行）"
+        panel.message = L("选游戏目录里的任意一个文件（.app 包也行）")
 
         guard panel.runModal() == .OK, let url = panel.url else { return }
         pickedPath = url.path
@@ -334,7 +334,7 @@ struct AddGameWizard: View {
     private func moveToConfirm() {
         errorMessage = nil
         guard outcome != nil else {
-            errorMessage = "还没选文件"
+            errorMessage = L("还没选文件")
             return
         }
         step = .confirmEngine
@@ -343,11 +343,11 @@ struct AddGameWizard: View {
     private func moveToName() {
         errorMessage = nil
         guard !selectedEngine.isEmpty else {
-            errorMessage = "请选择一个引擎"
+            errorMessage = L("请选择一个引擎")
             return
         }
         if selectedEngine == "wine" && windowsEntry.isEmpty {
-            errorMessage = "请选择 Windows 启动文件"
+            errorMessage = L("请选择 Windows 启动文件")
             return
         }
         step = .nameAndSave
@@ -365,7 +365,7 @@ struct AddGameWizard: View {
         if ok {
             store.closeAddGame()
         } else {
-            errorMessage = store.lastAddGameError ?? "保存失败"
+            errorMessage = store.lastAddGameError ?? L("保存失败")
         }
     }
 }

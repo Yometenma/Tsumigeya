@@ -30,12 +30,12 @@ struct EnginesPage: View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    Text("引擎管理").font(.system(size: 24, weight: .bold))
+                    Text(L("引擎管理")).font(.system(size: 24, weight: .bold))
                     Spacer()
                     Text("已就绪 \(EngineStatus.installedCount(store.engineEntries)) / \(EngineRegistry.launchable.count)")
                         .font(.callout).foregroundStyle(.secondary)
                 }
-                Text("准备游戏所需的引擎组件即可，无需全部安装。Windows 程序可选择 Wine；重装与移除位于更多菜单中。")
+                Text(L("准备游戏所需的引擎组件即可，无需全部安装。Windows 程序可选择 Wine；重装与移除位于更多菜单中。"))
                     .font(.callout).foregroundStyle(.secondary)
             }
             .padding(24)
@@ -46,7 +46,7 @@ struct EnginesPage: View {
                         EngineRow(entry: entry)
                     }
                 } header: {
-                    Text("可用引擎组件")
+                    Text(L("可用引擎组件"))
                 }
             }
             .listStyle(.inset)
@@ -78,7 +78,7 @@ struct EngineRow: View {
                     .font(.system(size: 13, weight: .medium))
 
                 if !entry.definition.launchable {
-                    Text("仅识别")
+                    Text(L("仅识别"))
                         .font(.caption2)
                         .padding(.horizontal, 5)
                         .padding(.vertical, 1)
@@ -116,9 +116,9 @@ struct EngineRow: View {
             }
         }
         .padding(.vertical, 12)
-        .alert("移除引擎组件？", isPresented: $confirmsUninstall) {
-            Button("卸载", role: .destructive) { store.uninstallEngine(entry.id) }
-            Button("取消", role: .cancel) {}
+        .alert(L("移除引擎组件？"), isPresented: $confirmsUninstall) {
+            Button(L("卸载"), role: .destructive) { store.uninstallEngine(entry.id) }
+            Button(L("取消"), role: .cancel) {}
         } message: {
             Text("使用 \(entry.definition.name) 的游戏将暂时无法启动。游戏文件和存档不会删除，之后可重新安装。")
         }
@@ -141,7 +141,7 @@ struct EngineRow: View {
     private var actionArea: some View {
         // 只识别引擎（D88）：没有运行时可装，只给一句说明
         if !entry.definition.launchable {
-            Text("需要 Windows 兼容层")
+            Text(L("需要 Windows 兼容层"))
                 .font(.caption)
                 .foregroundStyle(.secondary)
         } else if let reused = EngineStatus.reusesRuntime(of: entry.definition) {
@@ -159,18 +159,18 @@ struct EngineRow: View {
                     .foregroundStyle(entry.installed ? .green : .orange)
             }
         } else if store.engineProgress[entry.id] != nil {
-            Button("取消") {
+            Button(L("取消")) {
                 store.cancelEngineInstall(entry.id)
             }
             .controlSize(.small)
         } else if entry.installed {
             HStack(spacing: 6) {
-                Text("已装")
+                Text(L("已装"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Menu {
-                    Button("重新安装") { store.installEngine(entry.id, force: true) }
-                    Button("移除组件…", role: .destructive) { confirmsUninstall = true }
+                    Button(L("重新安装")) { store.installEngine(entry.id, force: true) }
+                    Button(L("移除组件…"), role: .destructive) { confirmsUninstall = true }
                         .disabled(!store.runningGames.isEmpty)
                 } label: {
                     Image(systemName: "ellipsis.circle")
@@ -179,10 +179,10 @@ struct EngineRow: View {
                 .menuIndicator(.hidden)
                 .fixedSize()
                 .accessibilityLabel("\(entry.definition.name)的更多操作")
-                .help(store.runningGames.isEmpty ? "重新安装或移除组件" : "请先停止游戏再移除组件")
+                .help(store.runningGames.isEmpty ? L("重新安装或移除组件") : L("请先停止游戏再移除组件"))
             }
         } else {
-            Button("安装") {
+            Button(L("安装")) {
                 store.installEngine(entry.id, force: false)
             }
             .buttonStyle(.borderedProminent)
@@ -202,16 +202,16 @@ struct EngineRow: View {
                 case .unverified:
                     // ⚠️ 这条是**自我披露**（D91）：路径是从真下载包实测的，
                     //    但启动参数没在真实游戏上验过。说清楚，别让用户以为是「坏了」。
-                    Text("未在真实游戏上验证过启动")
+                    Text(L("未在真实游戏上验证过启动"))
                         .font(.caption)
-                    Text("运行时的安装路径已实测；启动参数沿用通用约定，还没有真实游戏样本。")
+                    Text(L("运行时的安装路径已实测；启动参数沿用通用约定，还没有真实游戏样本。"))
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 case .unverifiedLaunchOnly:
                     // Tyrano：运行时（NW.js）是验过的，没验的是「怎么把 Tyrano 游戏拉起来」
-                    Text("启动参数未在真实游戏上验证")
+                    Text(L("启动参数未在真实游戏上验证"))
                         .font(.caption)
-                    Text("运行时（NW.js）已在 5 个真实游戏上验证过；TyranoScript 的启动方式还没样本。")
+                    Text(L("运行时（NW.js）已在 5 个真实游戏上验证过；TyranoScript 的启动方式还没样本。"))
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 case .upstreamGate(let reason):

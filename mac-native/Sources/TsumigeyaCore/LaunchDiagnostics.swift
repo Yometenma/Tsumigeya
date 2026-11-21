@@ -96,28 +96,28 @@ public enum LaunchDiagnostics {
         let folderPresent = isDirectory(folder)
         if folderPresent {
             if canReadDirectory(folder) {
-                add("game-folder", .good, "游戏目录存在", folder)
+                add("game-folder", .good, L10n.string("游戏目录存在"), folder)
             } else {
-                add("game-folder-readable", .blocking, "游戏目录无法读取", folder,
-                    action: "检查文件权限，或重新定位到一个可读取的目录。")
+                add("game-folder-readable", .blocking, L10n.string("游戏目录无法读取"), folder,
+                    action: L10n.string("检查文件权限，或重新定位到一个可读取的目录。"))
             }
         } else {
-            add("game-folder", .blocking, "游戏目录不存在", folder,
-                action: "确认游戏没有被移动或删除；如果已经移动，请使用“重新定位游戏目录”。")
+            add("game-folder", .blocking, L10n.string("游戏目录不存在"), folder,
+                action: L10n.string("确认游戏没有被移动或删除；如果已经移动，请使用“重新定位游戏目录”。"))
         }
 
         guard let definition = EngineRegistry.find(folder: game.gameEngine) else {
-            add("engine-known", .blocking, "当前版本不认识这个引擎", game.gameEngine,
-                action: "更新启动器，或检查游戏记录中的引擎设置。")
+            add("engine-known", .blocking, L10n.string("当前版本不认识这个引擎"), game.gameEngine,
+                action: L10n.string("更新启动器，或检查游戏记录中的引擎设置。"))
             return LaunchDiagnosis(gameID: game.id, engine: game.gameEngine,
                                    folder: folder, items: items, plan: nil)
         }
 
         if definition.launchable {
-            add("engine-known", .good, "引擎已接入启动流程", definition.name)
+            add("engine-known", .good, L10n.string("引擎已接入启动流程"), definition.name)
         } else {
-            add("engine-launchable", .blocking, "这个引擎目前只能识别，不能启动", definition.name,
-                action: "请使用对应的 macOS 运行方式，或等待启动器接入该引擎。")
+            add("engine-launchable", .blocking, L10n.string("这个引擎目前只能识别，不能启动"), definition.name,
+                action: L10n.string("请使用对应的 macOS 运行方式，或等待启动器接入该引擎。"))
         }
 
         var args = GameArgs.prepare(
@@ -143,34 +143,34 @@ public enum LaunchDiagnostics {
             preview = LaunchPlanPreview(plan: launchPlan)
             if fileExists(launchPlan.binary) {
                 if isExecutable(launchPlan.binary) {
-                    add("runtime-binary", .good, "运行时已找到且可执行", launchPlan.binary)
+                    add("runtime-binary", .good, L10n.string("运行时已找到且可执行"), launchPlan.binary)
                 } else {
-                    add("runtime-executable", .blocking, "运行时没有执行权限", launchPlan.binary,
-                        action: "请在运行时页面重装该引擎。")
+                    add("runtime-executable", .blocking, L10n.string("运行时没有执行权限"), launchPlan.binary,
+                        action: L10n.string("请在运行时页面重装该引擎。"))
                 }
             } else {
-                add("runtime-binary", .blocking, "运行时文件不存在", launchPlan.binary,
-                    action: "去“运行时”页面安装或修复这个引擎。")
+                add("runtime-binary", .blocking, L10n.string("运行时文件不存在"), launchPlan.binary,
+                    action: L10n.string("去“运行时”页面安装或修复这个引擎。"))
             }
         }
 
         if game.gameEngine == "wine" {
-            add("wine-prefix", .notice, "独立 Windows 环境",
+            add("wine-prefix", .notice, L10n.string("独立 Windows 环境"),
                 WineRuntime.prefix(dataDir: dataDir, folder: folder, gameID: game.wineEnvironmentIdentity))
-            add("wine-compatibility", .notice, "Windows 兼容运行",
-                "支持通过 Wine 运行 Windows 程序；具体游戏兼容性取决于程序及其依赖，不支持 Windows 专用驱动。首次启动会初始化环境。")
+            add("wine-compatibility", .notice, L10n.string("Windows 兼容运行"),
+                L10n.string("支持通过 Wine 运行 Windows 程序；具体游戏兼容性取决于程序及其依赖，不支持 Windows 专用驱动。首次启动会初始化环境。"))
             if arch == "arm64" && !WineRuntime.rosettaAvailable() {
-                add("wine-rosetta", .blocking, "需要 Rosetta 2", "此 Wine 运行时使用 Intel 架构。", action: "在运行时页面重新安装 Wine，按提示安装 Rosetta 2。")
+                add("wine-rosetta", .blocking, L10n.string("需要 Rosetta 2"), L10n.string("此 Wine 运行时使用 Intel 架构。"), action: L10n.string("在运行时页面重新安装 Wine，按提示安装 Rosetta 2。"))
             }
         }
         if let runningPID {
-            add("already-running", .notice, "游戏已经在运行", "进程 PID \(runningPID)",
-                action: "如需重新启动，请先停止当前游戏。")
+            add("already-running", .notice, L10n.string("游戏已经在运行"), "进程 PID \(runningPID)",
+                action: L10n.string("如需重新启动，请先停止当前游戏。"))
         }
 
         if game.gamePath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            add("record-path", .blocking, "游戏记录没有路径", "空路径",
-                action: "重新添加游戏。")
+            add("record-path", .blocking, L10n.string("游戏记录没有路径"), L10n.string("空路径"),
+                action: L10n.string("重新添加游戏。"))
         }
 
         return LaunchDiagnosis(gameID: game.id, engine: game.gameEngine,
@@ -188,11 +188,11 @@ public enum LaunchDiagnostics {
 
     private static func failureTitle(_ failure: LaunchFailure) -> String {
         switch failure {
-        case .engineBinaryMissing: return "找不到引擎运行时"
-        case .gameFolderMissing: return "游戏目录不存在"
-        case .notExecutable: return "引擎运行时不可执行"
-        case .unsupportedEngine: return "引擎不支持启动"
-        case .spawnFailed: return "启动准备失败"
+        case .engineBinaryMissing: return L10n.string("找不到引擎运行时")
+        case .gameFolderMissing: return L10n.string("游戏目录不存在")
+        case .notExecutable: return L10n.string("引擎运行时不可执行")
+        case .unsupportedEngine: return L10n.string("引擎不支持启动")
+        case .spawnFailed: return L10n.string("启动准备失败")
         }
     }
 
@@ -208,11 +208,11 @@ public enum LaunchDiagnostics {
 
     private static func failureAction(_ failure: LaunchFailure) -> String {
         switch failure {
-        case .engineBinaryMissing: return "去“运行时”页面安装或修复这个引擎。"
-        case .gameFolderMissing: return "确认游戏没有被移动或删除；如果已经移动，请重新定位。"
-        case .notExecutable: return "请在运行时页面重装该引擎。"
-        case .unsupportedEngine: return "这个引擎当前没有可用的 macOS 启动流程。"
-        case .spawnFailed: return "检查游戏目录权限和运行时配置后重试。"
+        case .engineBinaryMissing: return L10n.string("去“运行时”页面安装或修复这个引擎。")
+        case .gameFolderMissing: return L10n.string("确认游戏没有被移动或删除；如果已经移动，请重新定位。")
+        case .notExecutable: return L10n.string("请在运行时页面重装该引擎。")
+        case .unsupportedEngine: return L10n.string("这个引擎当前没有可用的 macOS 启动流程。")
+        case .spawnFailed: return L10n.string("检查游戏目录权限和运行时配置后重试。")
         }
     }
 }

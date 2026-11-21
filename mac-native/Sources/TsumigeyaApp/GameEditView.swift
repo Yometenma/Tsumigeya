@@ -88,11 +88,11 @@ struct GameEditView: View {
             .background(.bar)
         }
         .interactiveDismissDisabled(isDirty)
-        .alert("放弃未保存的修改？", isPresented: $confirmsDiscard) {
-            Button("放弃修改", role: .destructive, action: onDone)
-            Button("继续编辑", role: .cancel) {}
+        .alert(L("放弃未保存的修改？"), isPresented: $confirmsDiscard) {
+            Button(L("放弃修改"), role: .destructive, action: onDone)
+            Button(L("继续编辑"), role: .cancel) {}
         } message: {
-            Text("尚未保存的信息会丢失。分类归属为即时保存，不会撤销。")
+            Text(L("尚未保存的信息会丢失。分类归属为即时保存，不会撤销。"))
         }
         .onAppear {
             loadIfNeeded()
@@ -110,14 +110,14 @@ struct GameEditView: View {
                 if isDirty { confirmsDiscard = true }
                 else { onDone() }
             } label: {
-                Text("完成")
+                Text(L("完成"))
             }
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
 
             Divider().frame(height: 16)
 
-            Text("编辑游戏")
+            Text(L("编辑游戏"))
                 .font(.system(size: 15, weight: .semibold))
             Text(store.displayTitle(for: game))
                 .font(.callout)
@@ -127,7 +127,7 @@ struct GameEditView: View {
             Spacer()
 
             if isDirty {
-                Text("有未保存的改动")
+                Text(L("有未保存的改动"))
                     .font(.caption)
                     .foregroundStyle(.orange)
             }
@@ -139,12 +139,12 @@ struct GameEditView: View {
                     .lineLimit(2)
             }
 
-            Button("还原") {
+            Button(L("还原")) {
                 restore()
             }
             .disabled(!isDirty)
 
-            Button("保存") {
+            Button(L("保存")) {
                 save()
             }
             .buttonStyle(.borderedProminent)
@@ -168,11 +168,11 @@ struct GameEditView: View {
             //    ⚠️ 这类「只改装饰不改行为」的错误很难被截图发现（
             //       静态图里图标和内容都"正常"），只能靠用户点一下才知道。
             if localOpen {
-            TextField("游戏名", text: $title)
+            TextField(L("游戏名"), text: $title)
                 .textFieldStyle(.roundedBorder)
 
             HStack(spacing: 10) {
-                Text("引擎")
+                Text(L("引擎"))
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .frame(width: 44, alignment: .leading)
@@ -189,7 +189,7 @@ struct GameEditView: View {
             }
 
             HStack(spacing: 10) {
-                Text("路径")
+                Text(L("路径"))
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .frame(width: 44, alignment: .leading)
@@ -200,12 +200,12 @@ struct GameEditView: View {
                     .truncationMode(.middle)
             }
             // 路径更新走重新定位校验，不允许直接把任意文本当成有效入口。
-            Text("要换路径，请在游戏详情的更多菜单中选择「重新定位游戏目录」。")
+            Text(L("要换路径，请在游戏详情的更多菜单中选择「重新定位游戏目录」。"))
                 .font(.caption2)
                 .foregroundStyle(.secondary)
             }
         } header: {
-            headerRow("本地信息", "游戏名、引擎、路径", isOpen: $localOpen)
+            headerRow(L("本地信息"), L("游戏名、引擎、路径"), isOpen: $localOpen)
         }
     }
 
@@ -222,14 +222,14 @@ struct GameEditView: View {
                 if let meta = metaDraft {
                     metaEditFields(meta)
                 } else {
-                    Label("还没有作品信息。可先到详情页查找 DLsite，或选择其他游戏进行 AI 补全／手动填写。",
+                    Label(L("还没有作品信息。可先到详情页查找 DLsite，或选择其他游戏进行 AI 补全／手动填写。"),
                           systemImage: "info.circle")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
         } header: {
-            headerRow("作品信息", "标题 / 社团 / 简介（手改的值不会被刷新覆盖）",
+            headerRow(L("作品信息"), L("标题 / 社团 / 简介（手改的值不会被刷新覆盖）"),
                       isOpen: $metaOpen)
         }
     }
@@ -245,7 +245,7 @@ struct GameEditView: View {
     private func metaEditFields(_ meta: GameDlsiteMeta) -> some View {
         // 标题
         HStack(spacing: 10) {
-            Text("标题")
+            Text(L("标题"))
                 .font(.callout).foregroundStyle(.secondary)
                 .frame(width: 44, alignment: .leading)
             TextField("", text: Binding(
@@ -257,7 +257,7 @@ struct GameEditView: View {
 
         // 社团
         HStack(spacing: 10) {
-            Text("社团")
+            Text(L("社团"))
                 .font(.callout).foregroundStyle(.secondary)
                 .frame(width: 44, alignment: .leading)
             TextField("", text: Binding(
@@ -269,7 +269,7 @@ struct GameEditView: View {
 
         // 简介（多行）
         VStack(alignment: .leading, spacing: 4) {
-            Text("简介")
+            Text(L("简介"))
                 .font(.callout).foregroundStyle(.secondary)
             TextEditor(text: Binding(
                 get: { meta.work.description ?? "" },
@@ -284,15 +284,15 @@ struct GameEditView: View {
                 .strokeBorder(Color.secondary.opacity(0.25)))
         }
 
-        DisclosureGroup("更多作品信息") {
-            metaTextField("发售日期", field: "releaseDate", keyPath: \.releaseDate)
-            metaTextField("系列", field: "series", keyPath: \.series)
-            metaListField("题材标签", field: "tags", keyPath: \.tags)
-            metaListField("语言代码", field: "languages", keyPath: \.languages)
-            metaListField("制作", field: "creators", keyPath: \.creators)
-            metaListField("配音", field: "voiceActors", keyPath: \.voiceActors)
-            metaTextField("原版系统", field: "supportedSystems", keyPath: \.supportedSystems)
-            Text("多项内容用顿号或逗号分隔；语言代码如 JPN、ENG、CHI_HANS。手动修改后刷新会保留。")
+        DisclosureGroup(L("更多作品信息")) {
+            metaTextField(L("发售日期"), field: "releaseDate", keyPath: \.releaseDate)
+            metaTextField(L("系列"), field: "series", keyPath: \.series)
+            metaListField(L("题材标签"), field: "tags", keyPath: \.tags)
+            metaListField(L("语言代码"), field: "languages", keyPath: \.languages)
+            metaListField(L("制作"), field: "creators", keyPath: \.creators)
+            metaListField(L("配音"), field: "voiceActors", keyPath: \.voiceActors)
+            metaTextField(L("原版系统"), field: "supportedSystems", keyPath: \.supportedSystems)
+            Text(L("多项内容用顿号或逗号分隔；语言代码如 JPN、ENG、CHI_HANS。手动修改后刷新会保留。"))
                 .font(.caption).foregroundStyle(.secondary)
         }
 
@@ -311,16 +311,16 @@ struct GameEditView: View {
                     .foregroundStyle(.tertiary)
             }
         }
-        Text("需要更换作品时，请在详情页选择「更换关联」，无需重新添加游戏。")
+        Text(L("需要更换作品时，请在详情页选择「更换关联」，无需重新添加游戏。"))
             .font(.caption2)
             .foregroundStyle(.secondary)
     }
 
     private func metadataFieldName(_ field: String) -> String {
-        ["title": "标题", "titleSub": "副标题", "circle": "社团", "description": "简介",
-         "coverUrl": "封面", "workType": "作品类型", "ageRating": "年龄分级", "releaseDate": "发售日期",
-         "series": "系列", "tags": "标签", "languages": "语言", "creators": "制作", "voiceActors": "配音",
-         "supportedSystems": "原版系统"][field] ?? "其他字段"
+        ["title": L("标题"), "titleSub": L("副标题"), "circle": L("社团"), "description": L("简介"),
+         "coverUrl": L("封面"), "workType": L("作品类型"), "ageRating": L("年龄分级"), "releaseDate": L("发售日期"),
+         "series": L("系列"), "tags": L("标签"), "languages": L("语言"), "creators": L("制作"), "voiceActors": L("配音"),
+         "supportedSystems": L("原版系统")][field] ?? L("其他字段")
     }
 
     private func metaTextField(_ title: String, field: String, keyPath: WritableKeyPath<DlsiteWork, String?>) -> some View {
@@ -360,7 +360,7 @@ struct GameEditView: View {
             // ⚠️ 按 `argsOpen` 显隐（同 `localSection` 的注释：只改图标不改内容 = 假折叠）
             if argsOpen {
             if engine == "wine" {
-                Button("选择 Windows 启动文件…") {
+                Button(L("选择 Windows 启动文件…")) {
                     let panel = NSOpenPanel()
                     panel.canChooseDirectories = false
                     panel.canChooseFiles = true
@@ -369,14 +369,14 @@ struct GameEditView: View {
                     panel.begin { response in
                         guard response == .OK, let url = panel.url else { return }
                         guard WineRuntime.isExecutable(url.path) else {
-                            saveError = "请选择有效的 Windows EXE。"
+                            saveError = L("请选择有效的 Windows EXE。")
                             return
                         }
                         gameArgs["executable"] = .string(url.path)
                     }
                 }
                 .disabled(store.runningGames[game.id] != nil)
-                Text("Wine 为每个游戏保留独立的 Windows 环境。依赖 Windows 专用驱动或反作弊的程序可能无法运行。")
+                Text(L("Wine 为每个游戏保留独立的 Windows 环境。依赖 Windows 专用驱动或反作弊的程序可能无法运行。"))
                     .font(.caption).foregroundStyle(.secondary)
             }
             if let manifest = store.manifest(for: engine),
@@ -401,18 +401,18 @@ struct GameEditView: View {
             } else if store.manifest(for: engine) == nil {
                 // ⚠️ **引擎没装时要明确说**，不是显示空白。
                 //    用户会以为「这个引擎没有参数」，而实际是「还没装所以读不到 schema」。
-                Label("这个引擎还没装，读不到参数定义。去「引擎」页装好后再回来。",
+                Label(L("这个引擎还没装，读不到参数定义。去「引擎」页装好后再回来。"),
                       systemImage: "info.circle")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
-                Text("这个引擎没有可调参数。")
+                Text(L("这个引擎没有可调参数。"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
             }
         } header: {
-            headerRow("引擎参数", "与启动方式相关的设置", isOpen: $argsOpen)
+            headerRow(L("引擎参数"), L("与启动方式相关的设置"), isOpen: $argsOpen)
         }
     }
 
@@ -422,7 +422,7 @@ struct GameEditView: View {
         Section {
             if categoriesOpen { GameClassificationEditor(gameID: game.id) }
         } header: {
-            headerRow("分类", "自动归类，手动调整立刻保存", isOpen: $categoriesOpen)
+            headerRow(L("分类"), L("自动归类，手动调整立刻保存"), isOpen: $categoriesOpen)
         }
     }
 
@@ -506,7 +506,7 @@ struct GameEditView: View {
         guard store.updateGame(
             id: game.id, title: title, engine: engine, gameArgs: gameArgs)
         else {
-            saveError = store.lastAddGameError ?? "保存失败"
+            saveError = store.lastAddGameError ?? L("保存失败")
             return
         }
 
@@ -629,7 +629,7 @@ struct EngineArgRow: View {
                     labelText
                     if versions.isEmpty {
                         // ⚠️ **没有可选版本时明确说**，不是画一个空下拉
-                        Text("磁盘上还没有可选版本")
+                        Text(L("磁盘上还没有可选版本"))
                             .font(.caption)
                             .foregroundStyle(.orange)
                     } else {
@@ -651,7 +651,7 @@ struct EngineArgRow: View {
                         .font(.system(size: 11, design: .monospaced))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
-                    Text("（在 P7 的配置文件里编辑）")
+                    Text(L("（在 P7 的配置文件里编辑）"))
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                 }

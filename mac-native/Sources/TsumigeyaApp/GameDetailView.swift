@@ -15,11 +15,11 @@ struct GameDetailView: View {
         var id: String { rawValue }
         var title: String {
             switch self {
-            case .overview: return "作品介绍"
-            case .saves: return "存档"
-            case .translation: return "翻译"
-            case .assistance: return "辅助"
-            case .runtime: return "引擎管理"
+            case .overview: return L("作品介绍")
+            case .saves: return L("存档")
+            case .translation: return L("翻译")
+            case .assistance: return L("辅助")
+            case .runtime: return L("引擎管理")
             }
         }
     }
@@ -50,7 +50,7 @@ struct GameDetailView: View {
                         .padding(.top, 18)
                 }
                 HStack(alignment: .center, spacing: 16) {
-                    Picker("游戏信息", selection: $tab) {
+                    Picker(L("游戏信息"), selection: $tab) {
                         ForEach(DetailTab.allCases) { item in Text(item.title).tag(item) }
                     }
                     .pickerStyle(.segmented)
@@ -102,7 +102,7 @@ struct GameDetailView: View {
     private var dlsiteSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
-                Text("作品信息")
+                Text(L("作品信息"))
                     .font(.system(size: 15, weight: .semibold))
                 if let rj = store.meta(for: game.id)?.work.rj ?? lookup.rj, !rj.isEmpty {
                     Text(rj)
@@ -116,14 +116,14 @@ struct GameDetailView: View {
             if store.fetchingMeta.contains(game.id) {
                 HStack {
                     ProgressView().controlSize(.small)
-                    Text("正在更新作品信息…").font(.caption).foregroundStyle(.secondary)
-                    Button("取消") { store.cancelLookup(gameId: game.id) }.controlSize(.small)
+                    Text(L("正在更新作品信息…")).font(.caption).foregroundStyle(.secondary)
+                    Button(L("取消")) { store.cancelLookup(gameId: game.id) }.controlSize(.small)
                 }
             }
             if let error = store.metaError[game.id] {
                 Label(error, systemImage: "exclamationmark.triangle.fill")
                     .font(.caption).foregroundStyle(.orange)
-                Text("原有作品信息未更改，可重试刷新或重新查找作品。")
+                Text(L("原有作品信息未更改，可重试刷新或重新查找作品。"))
                     .font(.caption).foregroundStyle(.secondary)
             }
             if let notice = store.metaNotice[game.id] {
@@ -143,17 +143,17 @@ struct GameDetailView: View {
     ///    「自动识别如果有直接能找到 rj 号就用 rj 号，不能就按名字来」
     private var noMetaHint: String {
         guard let step = lookup.step else {
-            return "可通过「查找作品」关联作品信息。"
+            return L("可通过「查找作品」关联作品信息。")
         }
         switch step {
         case .byRJ(let rj):
             return "检测到 RJ 号 \(rj)。点「查找作品」可预览并关联作品信息。"
         case .byKeyword(let keyword):
             return "路径里没有 RJ 号，可以按名字搜索「\(keyword)」，"
-                + "从结果里选一个作品。"
+                + L("从结果里选一个作品。")
         case .manual:
-            return "路径里没有 RJ 号，标题也没法当关键词。请手动输入 RJ（"
-                + "从 DLsite 作品页地址里找 product_id/RJ…）。"
+            return L("路径里没有 RJ 号，标题也没法当关键词。请手动输入 RJ（")
+                + L("从 DLsite 作品页地址里找 product_id/RJ…）。")
         }
     }
 
@@ -162,14 +162,14 @@ struct GameDetailView: View {
         let busy = store.fetchingMeta.contains(game.id)
         if let meta = store.meta(for: game.id) {
             if !meta.work.isExternal {
-            Button("刷新信息") {
+            Button(L("刷新信息")) {
                 store.fetchMeta(gameId: game.id, rj: meta.work.rj, refresh: true, category: meta.work.category)
             }.controlSize(.small).disabled(busy)
             }
-            Button(meta.work.isExternal ? "补全／更换资料…" : "更换关联…") { store.beginManualRJ(gameId: game.id) }
+            Button(meta.work.isExternal ? L("补全／更换资料…") : L("更换关联…")) { store.beginManualRJ(gameId: game.id) }
                 .controlSize(.small).disabled(busy)
         } else {
-            Button("查找作品…") { store.beginManualRJ(gameId: game.id) }
+            Button(L("查找作品…")) { store.beginManualRJ(gameId: game.id) }
                 .controlSize(.small).disabled(busy)
         }
     }
@@ -203,24 +203,24 @@ struct GameDetailView: View {
         VStack(alignment: .leading, spacing: 24) {
             HStack {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("引擎信息").font(.headline)
+                    Text(L("引擎信息")).font(.headline)
                     Text("此游戏使用 \(engineDisplayName)。如果启动异常，可以检查下方的启动参数。")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 12)
                 if let onManageEngines {
-                    Button("管理引擎", action: onManageEngines)
+                    Button(L("管理引擎"), action: onManageEngines)
                 }
             }
             if game.gameEngine == "wine" {
                 HStack {
-                    Button("Windows 环境设置…") { store.configureWine(game: game) }
+                    Button(L("Windows 环境设置…")) { store.configureWine(game: game) }
                         .disabled(store.runningGames[game.id] != nil)
-                    Text("可调整 Windows 版本、显示、音频及 DLL 设置。")
+                    Text(L("可调整 Windows 版本、显示、音频及 DLL 设置。"))
                         .font(.caption).foregroundStyle(.secondary)
                 }
-                Text("Wine 不是安全沙盒，只运行可信来源的程序。游戏可能把存档保存在游戏目录或独立 Windows 环境中；无法自动定位时请手动指定。")
+                Text(L("Wine 不是安全沙盒，只运行可信来源的程序。游戏可能把存档保存在游戏目录或独立 Windows 环境中；无法自动定位时请手动指定。"))
                     .font(.caption).foregroundStyle(.secondary)
             }
             Divider()
@@ -239,7 +239,7 @@ struct GameDetailView: View {
                 if isRunning { store.stop(game: game) }
                 else { store.launch(game: game) }
             } label: {
-                Label(isStopping ? "正在停止…" : (isRunning ? "停止游戏" : "开始游戏"),
+                Label(isStopping ? L("正在停止…") : (isRunning ? L("停止游戏") : L("开始游戏")),
                       systemImage: isRunning ? "stop.fill" : "play.fill")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.white)
@@ -255,17 +255,17 @@ struct GameDetailView: View {
             .keyboardShortcut(.defaultAction)
 
             if let onEdit {
-                Button(action: onEdit) { Label("编辑游戏", systemImage: "slider.horizontal.3") }
+                Button(action: onEdit) { Label(L("编辑游戏"), systemImage: "slider.horizontal.3") }
             }
             Menu {
-                Button("检查启动条件…") { showsDiagnostics = true }
+                Button(L("检查启动条件…")) { showsDiagnostics = true }
                 Divider()
-                Button("重新定位游戏目录…") { showsRelocation = true }
+                Button(L("重新定位游戏目录…")) { showsRelocation = true }
                     .disabled(store.runningGames[game.id] != nil)
-                Button("在访达中显示") { store.revealInFinder(game: game) }
-                Button("查找并关联作品…") { store.beginManualRJ(gameId: game.id) }
+                Button(L("在访达中显示")) { store.revealInFinder(game: game) }
+                Button(L("查找并关联作品…")) { store.beginManualRJ(gameId: game.id) }
                 Divider()
-                Button("从游戏库移除…", role: .destructive) { store.confirmDelete(game: game) }
+                Button(L("从游戏库移除…"), role: .destructive) { store.confirmDelete(game: game) }
             } label: {
                 Image(systemName: "ellipsis")
                     .frame(width: 20, height: 20)
@@ -276,8 +276,8 @@ struct GameDetailView: View {
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
             .fixedSize()
-            .accessibilityLabel("更多游戏操作")
-            .help("更多游戏操作")
+            .accessibilityLabel(L("更多游戏操作"))
+            .help(L("更多游戏操作"))
         }
     }
 
@@ -291,7 +291,7 @@ struct GameDetailView: View {
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 8)
-                Button("检查启动条件") { showsDiagnostics = true }
+                Button(L("检查启动条件")) { showsDiagnostics = true }
                     .buttonStyle(.bordered)
             }
             .padding(.bottom, 8)
@@ -302,13 +302,13 @@ struct GameDetailView: View {
 
     private var infoRows: some View {
         VStack(alignment: .leading, spacing: 10) {
-            infoRow("路径", game.gamePath, mono: true)
+            infoRow(L("路径"), game.gamePath, mono: true)
             if !store.gameFolderExists(game) {
-                Label("游戏目录不存在，请从更多菜单重新定位。", systemImage: "folder.badge.questionmark")
+                Label(L("游戏目录不存在，请从更多菜单重新定位。"), systemImage: "folder.badge.questionmark")
                     .foregroundStyle(.orange)
             }
             if let pid = store.runningGames[game.id] {
-                infoRow("进程", "运行中（pid \(pid)）")
+                infoRow(L("进程"), "运行中（pid \(pid)）")
             }
         }
     }
@@ -334,7 +334,7 @@ struct GameDetailView: View {
         let args = game.gameArgs ?? [:]
         if !args.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
-                Text("引擎参数")
+                Text(L("引擎参数"))
                     .font(.headline)
 
                 // ⚠️ **参数名与值不能横跨整个窗口**（用户截图反馈：
@@ -370,16 +370,16 @@ struct GameDetailView: View {
     /// 把 JSONValue 描述成可读文本。
     private func describe(_ value: JSONValue) -> String {
         switch value {
-        case .null: return "（空）"
-        case .bool(let b): return b ? "开" : "关"
+        case .null: return L("（空）")
+        case .bool(let b): return b ? L("开") : L("关")
         case .int(let i): return "\(i)"
         case .double(let d): return "\(d)"
-        case .string(let s): return s.isEmpty ? "（空）" : s
+        case .string(let s): return s.isEmpty ? L("（空）") : s
         case .array(let items):
-            if items.isEmpty { return "（空）" }
+            if items.isEmpty { return L("（空）") }
             return items.compactMap { $0.stringValue }.joined(separator: ", ")
         case .object:
-            return "（对象）"
+            return L("（对象）")
         }
     }
 

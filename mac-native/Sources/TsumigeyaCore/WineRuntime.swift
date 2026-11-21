@@ -51,7 +51,7 @@ public enum WineRuntime {
         if let override, !override.isEmpty {
             let entry = (override as NSString).isAbsolutePath ? override : (folder as NSString).appendingPathComponent(override)
             guard fileExists(entry), isExecutable(entry) else {
-                return .failure(.spawnFailed(message: "指定的 Windows 启动文件不存在或不是有效的 EXE，请在游戏设置中重新选择。"))
+                return .failure(.spawnFailed(message: L10n.string("指定的 Windows 启动文件不存在或不是有效的 EXE，请在游戏设置中重新选择。")))
             }
             return .success(entry)
         }
@@ -59,8 +59,8 @@ public enum WineRuntime {
         let candidates = listDir(folder).map { (folder as NSString).appendingPathComponent($0) }.filter(isExecutable)
         guard candidates.count == 1, let entry = candidates.first else {
             return .failure(.spawnFailed(message: candidates.isEmpty
-                ? "游戏目录中没有有效的 Windows EXE，请选择游戏的启动文件。"
-                : "游戏目录有多个 EXE，请在游戏设置的“Windows 启动文件”中选择正确入口，不会自动运行安装或卸载程序。"))
+                ? L10n.string("游戏目录中没有有效的 Windows EXE，请选择游戏的启动文件。")
+                : L10n.string("游戏目录有多个 EXE，请在游戏设置的“Windows 启动文件”中选择正确入口，不会自动运行安装或卸载程序。")))
         }
         return .success(entry)
     }
@@ -80,13 +80,13 @@ public enum WineRuntime {
         let arguments: [String]
         if let value = ctx.gameArgs["arguments"] {
             guard let array = value.arrayValue, array.allSatisfy({ $0.stringValue != nil }) else {
-                return .failure(.spawnFailed(message: "Wine 启动参数必须是字符串列表，每一项单独填写。"))
+                return .failure(.spawnFailed(message: L10n.string("Wine 启动参数必须是字符串列表，每一项单独填写。")))
             }
             arguments = array.compactMap(\.stringValue)
         } else { arguments = [] }
         let locale = ctx.gameArgs["locale"]?.stringValue ?? "zh_CN.UTF-8"
         guard ["zh_CN.UTF-8", "ja_JP.UTF-8", "en_US.UTF-8"].contains(locale) else {
-            return .failure(.spawnFailed(message: "请选择受支持的 Windows 语言环境。"))
+            return .failure(.spawnFailed(message: L10n.string("请选择受支持的 Windows 语言环境。")))
         }
         let prefix = prefix(dataDir: ctx.dataDir, folder: ctx.folder, gameID: ctx.gameID)
         return .success(LaunchPlan(binary: binary, args: [entry] + arguments,
@@ -126,7 +126,7 @@ public enum WineRuntime {
     public static func prepareHost(arch: String, acceptRosettaLicense: Bool) throws {
         guard arch == "arm64", !rosettaAvailable() else { return }
         guard acceptRosettaLicense else {
-            throw InstallError.invalidManifest(module: "Wine", reason: "需要 Rosetta 2。请在应用中确认 Apple 许可后安装，或为命令行安装添加 --accept-rosetta-license。")
+            throw InstallError.invalidManifest(module: "Wine", reason: L10n.string("需要 Rosetta 2。请在应用中确认 Apple 许可后安装，或为命令行安装添加 --accept-rosetta-license。"))
         }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/sbin/softwareupdate")
@@ -137,14 +137,14 @@ public enum WineRuntime {
         try process.run()
         process.waitUntilExit()
         guard process.terminationStatus == 0, rosettaAvailable() else {
-            throw InstallError.invalidManifest(module: "Wine", reason: "Rosetta 2 安装未完成，请检查网络或系统权限后重试。")
+            throw InstallError.invalidManifest(module: "Wine", reason: L10n.string("Rosetta 2 安装未完成，请检查网络或系统权限后重试。"))
         }
     }
 
     public static let argumentSchema: [String: JSONValue] = [
-        "executable": .object(["type": .string("text"), "label": .string("Windows 启动文件"), "default": .string("")]),
-        "arguments": .object(["type": .string("array"), "label": .string("启动参数（每行一项）"), "default": .array([])]),
-        "locale": .object(["type": .string("dropdown"), "label": .string("Windows 语言环境"), "default": .string("zh_CN.UTF-8"),
+        "executable": .object(["type": .string("text"), "label": .string(L10n.string("Windows 启动文件")), "default": .string("")]),
+        "arguments": .object(["type": .string("array"), "label": .string(L10n.string("启动参数（每行一项）")), "default": .array([])]),
+        "locale": .object(["type": .string("dropdown"), "label": .string(L10n.string("Windows 语言环境")), "default": .string("zh_CN.UTF-8"),
                            "options": .array(["zh_CN.UTF-8", "ja_JP.UTF-8", "en_US.UTF-8"].map(JSONValue.string))])
     ]
 }

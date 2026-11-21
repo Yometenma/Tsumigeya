@@ -200,7 +200,7 @@ struct CachedRemoteImage: View {
     let url: URL
     var contentMode: ContentMode = .fit
     var external = false
-    var retryLabel = "重试图片"
+    var retryLabel = L("重试图片")
     var maxPixelSize = 2048
     @State private var image: CGImage?
     @State private var failed = false
@@ -210,7 +210,7 @@ struct CachedRemoteImage: View {
         Group {
             if let image {
                 Image(decorative: image, scale: 1).resizable().aspectRatio(contentMode: contentMode)
-                    .accessibilityLabel("作品图片已加载")
+                    .accessibilityLabel(L("作品图片已加载"))
             } else if failed {
                 Button {
                     failed = false

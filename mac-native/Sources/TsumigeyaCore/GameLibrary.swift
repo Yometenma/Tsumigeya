@@ -27,10 +27,10 @@ public enum GameLibrary {
 
         public var message: String {
             switch self {
-            case .emptyTitle: return "游戏名不能为空"
-            case .emptyPath: return "游戏路径不能为空"
+            case .emptyTitle: return L10n.string("游戏名不能为空")
+            case .emptyPath: return L10n.string("游戏路径不能为空")
             case .duplicateTitle(let existing): return "已经有同名游戏了（id \(existing)）"
-            case .invalidId: return "游戏 id 不合法"
+            case .invalidId: return L10n.string("游戏 id 不合法")
             }
         }
     }

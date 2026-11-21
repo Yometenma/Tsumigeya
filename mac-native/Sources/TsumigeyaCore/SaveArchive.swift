@@ -108,14 +108,14 @@ public enum ExportBlock: Sendable, Equatable {
     public var message: String {
         switch self {
         case .running:
-            return "游戏正在运行，请先关掉游戏再导出。"
-                + "运行中的存档可能正在写，导出的包会是**半截文件** —— "
-                + "带着它换机会丢档。"
+            return L10n.string("游戏正在运行，请先关掉游戏再导出。")
+                + L10n.string("运行中的存档可能正在写，导出的包会是**半截文件** —— ")
+                + L10n.string("带着它换机会丢档。")
         case .noLocation:
-            return "找不到这个游戏的存档目录。可能是引擎的存档位置还没实现，"
-                + "或者游戏目录结构不常见。"
+            return L10n.string("找不到这个游戏的存档目录。可能是引擎的存档位置还没实现，")
+                + L10n.string("或者游戏目录结构不常见。")
         case .empty:
-            return "这个游戏的存档目录是空的 —— 先去游戏里存一次档，再回来导出。"
+            return L10n.string("这个游戏的存档目录是空的 —— 先去游戏里存一次档，再回来导出。")
         }
     }
 }

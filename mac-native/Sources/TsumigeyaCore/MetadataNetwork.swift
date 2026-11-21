@@ -30,14 +30,14 @@ public enum MetadataNetwork {
     }
     public static func checkPublicHost(_ url: URL) async throws {
         guard publicURL(url.absoluteString) != nil, let host = url.host else {
-            throw MetadataFailure("只允许公开的 HTTPS 页面，不读取本机、内网或文件地址。")
+            throw MetadataFailure(L10n.string("只允许公开的 HTTPS 页面，不读取本机、内网或文件地址。"))
         }
         let safe = await Task.detached(priority: .utility) {
             let addresses = Host(name: host).addresses
             return !addresses.isEmpty && addresses.allSatisfy(globalAddress)
         }.value
         try Task.checkCancellation()
-        guard safe else { throw MetadataFailure("页面域名无法解析为公开网络地址，已停止读取。") }
+        guard safe else { throw MetadataFailure(L10n.string("页面域名无法解析为公开网络地址，已停止读取。")) }
     }
 
     public static func request(_ request: URLRequest, maxBytes: Int) async throws -> (Data, HTTPURLResponse) {
@@ -49,18 +49,18 @@ public enum MetadataNetwork {
         do {
             let (bytes, response) = try await session.bytes(for: request)
             guard let http = response as? HTTPURLResponse, http.expectedContentLength <= Int64(maxBytes) else {
-                throw MetadataFailure("服务器返回内容过大或响应无效。")
+                throw MetadataFailure(L10n.string("服务器返回内容过大或响应无效。"))
             }
             var data = Data()
             for try await byte in bytes {
-                if data.count >= maxBytes { throw MetadataFailure("服务器返回内容超过大小限制。") }
+                if data.count >= maxBytes { throw MetadataFailure(L10n.string("服务器返回内容超过大小限制。")) }
                 data.append(byte)
             }
             try Task.checkCancellation()
             return (data, http)
         } catch let error as URLError {
             if error.code == .cancelled { throw CancellationError() }
-            if error.code == .timedOut { throw MetadataFailure("请求超时；模型较慢时可在作品信息设置中延长等待上限。原有资料未修改。") }
+            if error.code == .timedOut { throw MetadataFailure(L10n.string("请求超时；模型较慢时可在作品信息设置中延长等待上限。原有资料未修改。")) }
             throw MetadataFailure("网络连接未完成（错误码 \(error.code.rawValue)），请检查页面可达性、接口地址、代理或服务监听地址。原有资料未修改。")
         }
     }
@@ -79,11 +79,11 @@ public enum MetadataNetwork {
             guard response.statusCode == 200 else { throw MetadataFailure("页面读取失败（HTTP \(response.statusCode)），未修改原信息。") }
             let mime = response.mimeType?.lowercased() ?? ""
             guard mime == "text/html" || mime == "application/xhtml+xml", let html = String(data: data, encoding: .utf8) else {
-                throw MetadataFailure("目前只支持可直接读取的 UTF-8 网页；不读取下载文件或执行网页脚本。")
+                throw MetadataFailure(L10n.string("目前只支持可直接读取的 UTF-8 网页；不读取下载文件或执行网页脚本。"))
             }
             return (current, html)
         }
-        throw MetadataFailure("页面重定向次数过多，请粘贴最终商品页地址。")
+        throw MetadataFailure(L10n.string("页面重定向次数过多，请粘贴最终商品页地址。"))
     }
 }
 

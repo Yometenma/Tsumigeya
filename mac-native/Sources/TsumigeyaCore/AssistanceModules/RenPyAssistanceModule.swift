@@ -2,9 +2,9 @@ import Foundation
 
 struct RenPyAssistanceModule: AssistanceEngineModule {
     let info = AssistanceModuleInfo(id: .renpy, runtime: "renpy", title: "Ren’Py", transport: .fileBridge,
-        translation: "剧本台词与显示文字；特殊语法由运行时捕获", cheats: "简单变量编辑、锁定与数值筛选",
-        installationNote: "两项独立启用。应用前需退出游戏；添加独立辅助剧本，不替换原始剧本或数据库。译文修订完成后需重新应用。",
-        cheatInstructions: "进入游戏后，在这里搜索和编辑简单变量。支持数字、布尔值和短文字；不执行任意脚本，也不修改复杂对象。")
+        translation: L10n.string("剧本台词与显示文字；特殊语法由运行时捕获"), cheats: L10n.string("简单变量编辑、锁定与数值筛选"),
+        installationNote: L10n.string("两项独立启用。应用前需退出游戏；添加独立辅助剧本，不替换原始剧本或数据库。译文修订完成后需重新应用。"),
+        cheatInstructions: L10n.string("进入游戏后，在这里搜索和编辑简单变量。支持数字、布尔值和短文字；不执行任意脚本，也不修改复杂对象。"))
     let scripts = [AssistanceScript(filename: "renpy.py", resource: "renpy.py")]
     let entrySource: String? = """
     init 999 python hide:
@@ -26,8 +26,8 @@ struct RenPyAssistanceModule: AssistanceEngineModule {
         let fm = FileManager.default
         let game = root.appendingPathComponent("game")
         if fm.fileExists(atPath: root.appendingPathComponent("renpy").path), fm.fileExists(atPath: game.path) {
-            guard game.resolvingSymlinksInPath().path == game.path else { throw AssistanceError.invalid("Ren’Py 游戏数据目录不能是符号链接。") }
-            guard let enumerator = fm.enumerator(at: game, includingPropertiesForKeys: [.isSymbolicLinkKey, .isRegularFileKey], options: [.skipsHiddenFiles]) else { throw AssistanceError.invalid("无法读取 Ren’Py 游戏目录。") }
+            guard game.resolvingSymlinksInPath().path == game.path else { throw AssistanceError.invalid(L10n.string("Ren’Py 游戏数据目录不能是符号链接。")) }
+            guard let enumerator = fm.enumerator(at: game, includingPropertiesForKeys: [.isSymbolicLinkKey, .isRegularFileKey], options: [.skipsHiddenFiles]) else { throw AssistanceError.invalid(L10n.string("无法读取 Ren’Py 游戏目录。")) }
             var files: [URL] = []
             for case let url as URL in enumerator {
                 let values = try url.resourceValues(forKeys: [.isSymbolicLinkKey, .isRegularFileKey])
@@ -36,9 +36,9 @@ struct RenPyAssistanceModule: AssistanceEngineModule {
                       url.deletingPathExtension().lastPathComponent != "zz_tsumigeya_assist",
                       !(url.pathExtension == "rpyc" && fm.fileExists(atPath: url.deletingPathExtension().appendingPathExtension("rpy").path)) else { continue }
                 files.append(url.standardizedFileURL)
-                guard files.count <= 10000 else { throw AssistanceError.invalid("Ren’Py 身份文件数量超出限制。") }
+                guard files.count <= 10000 else { throw AssistanceError.invalid(L10n.string("Ren’Py 身份文件数量超出限制。")) }
             }
-            guard !files.isEmpty else { throw AssistanceError.invalid("未找到 Ren’Py 剧本或资源归档。") }
+            guard !files.isEmpty else { throw AssistanceError.invalid(L10n.string("未找到 Ren’Py 剧本或资源归档。")) }
             let signature = try files.sorted { $0.path < $1.path }.map {
                 String($0.path.dropFirst(game.path.count + 1)) + ":" + (try NativeAssistance.hash($0, within: root))
             }.joined(separator: "\0")

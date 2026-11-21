@@ -76,7 +76,7 @@ struct TsumigeyaApp: App {
         }
 
         if !box.done {
-            print("❌ 快照渲染超时（60 秒）")
+            print(L("❌ 快照渲染超时（60 秒）"))
             exit(1)
         }
         exit(box.value == 0 ? 0 : 1)

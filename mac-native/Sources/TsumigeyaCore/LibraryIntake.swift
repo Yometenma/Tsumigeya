@@ -48,7 +48,7 @@ public enum LibraryIntake {
     public static func inspectFolder(_ folder: String) throws -> Candidate? {
         let url = URL(fileURLWithPath: folder).standardizedFileURL
         let values = try url.resourceValues(forKeys: [.isDirectoryKey])
-        guard values.isDirectory == true else { throw Failure("请选择游戏目录。") }
+        guard values.isDirectory == true else { throw Failure(L10n.string("请选择游戏目录。")) }
         let files = try FileManager.default.contentsOfDirectory(
             at: url, includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey], options: [.skipsHiddenFiles])
         let probe = DetectPath.isAppBundle(url.path) ? url.path : url.appendingPathComponent("Game.exe").path
@@ -70,7 +70,7 @@ public enum LibraryIntake {
                             maxCandidates: Int = 200, cancelled: () -> Bool = { false }) throws -> Scan {
         let start = URL(fileURLWithPath: canonicalFolder(root))
         guard try start.resourceValues(forKeys: [.isDirectoryKey]).isDirectory == true else {
-            throw Failure("请选择要扫描的目录。")
+            throw Failure(L10n.string("请选择要扫描的目录。"))
         }
         var report = Scan()
         var queue: [(URL, Int)] = [(start, 0)]
@@ -107,7 +107,7 @@ public enum LibraryIntake {
 
     /// 先验证整个选择集，再返回一份新 map；调用方只需原子写入一次 games.json。
     public static func adding(_ candidates: [Candidate], to map: GameMap) throws -> GameMap {
-        guard !candidates.isEmpty else { throw Failure("请先勾选要添加的游戏。") }
+        guard !candidates.isEmpty else { throw Failure(L10n.string("请先勾选要添加的游戏。")) }
         var result = map
         for candidate in candidates {
             guard let detected = try inspectFolder(candidate.folder), detected.engine == candidate.engine else {
@@ -136,12 +136,12 @@ public enum LibraryIntake {
 
     /// 只改变原记录的路径；编号、参数、未知字段与所有旁挂数据保持不变。
     public static func relocating(_ expected: GameRecord, to folder: String, in map: GameMap) throws -> GameMap {
-        guard map.games[expected.id] == expected else { throw Failure("游戏记录已变化，请关闭后重新打开定位窗口。") }
+        guard map.games[expected.id] == expected else { throw Failure(L10n.string("游戏记录已变化，请关闭后重新打开定位窗口。")) }
         guard let detected = try inspectFolder(folder), detected.engine == expected.gameEngine else {
-            throw Failure("所选目录无法识别为原引擎，请确认选择的是同一个游戏。")
+            throw Failure(L10n.string("所选目录无法识别为原引擎，请确认选择的是同一个游戏。"))
         }
         guard duplicateFolder(folder, in: map, excluding: expected.id) == nil else {
-            throw Failure("此目录已关联到其他游戏，不能重复定位。")
+            throw Failure(L10n.string("此目录已关联到其他游戏，不能重复定位。"))
         }
         var result = map
         var game = expected

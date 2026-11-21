@@ -53,13 +53,13 @@ public enum EngineArgsOptions {
     /// 用户不改的话等于**替所有游戏强制选了 XP**（对 VX Ace 游戏是错的）。
     public static let builtin: [String: [String: [Option]]] = [
         "wine": ["locale": [
-            Option(value: "zh_CN.UTF-8", label: "简体中文"),
-            Option(value: "ja_JP.UTF-8", label: "日文"),
-            Option(value: "en_US.UTF-8", label: "英文"),
+            Option(value: "zh_CN.UTF-8", label: L10n.string("简体中文")),
+            Option(value: "ja_JP.UTF-8", label: L10n.string("日文")),
+            Option(value: "en_US.UTF-8", label: L10n.string("英文")),
         ]],
         "mkxpz": [
             "rgssVersion": [
-                Option(value: "0", label: "自动（按游戏文件判断）"),
+                Option(value: "0", label: L10n.string("自动（按游戏文件判断）")),
                 Option(value: "1", label: "RPG Maker XP（RGSS 1）"),
                 Option(value: "2", label: "RPG Maker VX（RGSS 2）"),
                 Option(value: "3", label: "RPG Maker VX Ace（RGSS 3）"),

@@ -18,7 +18,7 @@ struct LaunchDiagnosticsView: View {
             } else {
                 VStack(spacing: 12) {
                     ProgressView()
-                    Text("正在检查启动条件…").foregroundStyle(.secondary)
+                    Text(L("正在检查启动条件…")).foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -27,7 +27,7 @@ struct LaunchDiagnosticsView: View {
                 Button {
                     dismiss()
                 } label: {
-                    Text("关闭").foregroundStyle(.black)
+                    Text(L("关闭")).foregroundStyle(.black)
                 }
                 .buttonStyle(.bordered)
                 .keyboardShortcut(.cancelAction)
@@ -37,14 +37,14 @@ struct LaunchDiagnosticsView: View {
                     Button {
                         onManageEngines()
                     } label: {
-                        Text("管理引擎").foregroundStyle(.black)
+                        Text(L("管理引擎")).foregroundStyle(.black)
                     }
                     .buttonStyle(.bordered)
                 }
                 Button {
                     check()
                 } label: {
-                    Text("重新检查").foregroundStyle(.black)
+                    Text(L("重新检查")).foregroundStyle(.black)
                 }
                 .buttonStyle(.borderedProminent)
             }
@@ -58,7 +58,7 @@ struct LaunchDiagnosticsView: View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             Image(systemName: "stethoscope")
                 .foregroundStyle(Color.tsumigeyaAccent)
-            Text("启动诊断")
+            Text(L("启动诊断"))
                 .font(.title2.weight(.semibold))
             Text(game.gameTitle)
                 .font(.callout)
@@ -78,7 +78,7 @@ struct LaunchDiagnosticsView: View {
             HStack(spacing: 8) {
                 Image(systemName: diagnosis.isReady ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
                     .foregroundStyle(diagnosis.isReady ? .green : .orange)
-                Text(diagnosis.isReady ? "启动条件看起来正常" : "发现 \(blocking.count) 项需要处理的问题")
+                Text(diagnosis.isReady ? L("启动条件看起来正常") : "发现 \(blocking.count) 项需要处理的问题")
                     .font(.headline)
                 Spacer()
                 Text(EngineRegistry.find(folder: diagnosis.engine)?.name ?? diagnosis.engine)
@@ -128,10 +128,10 @@ struct LaunchDiagnosticsView: View {
 
     private func planSection(_ plan: LaunchPlanPreview) -> some View {
         VStack(alignment: .leading, spacing: 7) {
-            Text("本次启动计划").font(.callout.weight(.medium))
+            Text(L("本次启动计划")).font(.callout.weight(.medium))
             Text("运行时：\(plan.binary)")
             if let cwd = plan.workingDirectory { Text("工作目录：\(cwd)") }
-            Text(plan.arguments.isEmpty ? "参数：无" : "参数：\(plan.arguments.joined(separator: "  "))")
+            Text(plan.arguments.isEmpty ? L("参数：无") : "参数：\(plan.arguments.joined(separator: "  "))")
         }
         .font(.caption)
         .foregroundStyle(.secondary)

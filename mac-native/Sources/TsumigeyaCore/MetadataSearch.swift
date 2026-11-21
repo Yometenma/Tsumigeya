@@ -52,16 +52,16 @@ public struct MetadataSearchService: Sendable {
     }
     public func search(name: String, language: MetadataLanguage) async throws -> [MetadataCandidate] {
         let query = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty, query.count <= 500 else { throw MetadataFailure("请输入不超过 500 字的游戏名称及必要线索。") }
+        guard !query.isEmpty, query.count <= 500 else { throw MetadataFailure(L10n.string("请输入不超过 500 字的游戏名称及必要线索。")) }
         guard [.tavily, .searxng, .custom].contains(settings.provider), let endpoint = settings.url else {
-            throw MetadataFailure("请配置独立搜索接口；局域网 HTTP 地址须单独授权。")
+            throw MetadataFailure(L10n.string("请配置独立搜索接口；局域网 HTTP 地址须单独授权。"))
         }
         let limit = min(12, max(1, settings.limit))
         var parameters: [String: JSONValue]
         var method: String
         switch settings.provider {
         case .tavily:
-            guard !key.isEmpty else { throw MetadataFailure("请先保存独立搜索密钥。") }
+            guard !key.isEmpty else { throw MetadataFailure(L10n.string("请先保存独立搜索密钥。")) }
             method = "POST"
             let locale: String
             switch language {
@@ -81,9 +81,9 @@ public struct MetadataSearchService: Sendable {
                   settings.parameters.utf8.count <= 8000,
                   let data = settings.parameters.data(using: .utf8),
                   let object = try? JSONDecoder().decode(JSONValue.self, from: data).objectValue,
-                  !Self.containsSecret(object) else { throw MetadataFailure("自定义搜索参数须为不含密钥的 JSON 对象，请检查请求方式和关键词参数名。") }
+                  !Self.containsSecret(object) else { throw MetadataFailure(L10n.string("自定义搜索参数须为不含密钥的 JSON 对象，请检查请求方式和关键词参数名。")) }
             parameters = object; parameters[settings.queryKey] = .string(query)
-        default: throw MetadataFailure("未启用独立搜索。")
+        default: throw MetadataFailure(L10n.string("未启用独立搜索。"))
         }
         var request = URLRequest(url: endpoint, timeoutInterval: 45)
         request.httpMethod = method
@@ -100,7 +100,7 @@ public struct MetadataSearchService: Sendable {
             }
             let encodedQuery = components?.percentEncodedQuery
             components?.percentEncodedQuery = encodedQuery?.replacingOccurrences(of: "+", with: "%2B")
-            guard let url = components?.url else { throw MetadataFailure("搜索请求地址无效。") }
+            guard let url = components?.url else { throw MetadataFailure(L10n.string("搜索请求地址无效。")) }
             request.url = url
         }
         request.setValue("application/json", forHTTPHeaderField: "Accept")
@@ -115,21 +115,21 @@ public struct MetadataSearchService: Sendable {
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             throw MetadataFailure("搜索接口请求失败（HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0)）。请检查配置、JSON 输出权限或余额；不会自动切换到其他收费服务。")
         }
-        guard data.count <= 2 * 1024 * 1024, let json = try? JSONDecoder().decode(JSONValue.self, from: data) else { throw MetadataFailure("搜索接口未返回有效 JSON。") }
+        guard data.count <= 2 * 1024 * 1024, let json = try? JSONDecoder().decode(JSONValue.self, from: data) else { throw MetadataFailure(L10n.string("搜索接口未返回有效 JSON。")) }
         let custom = settings.provider == .custom
         guard let results = Self.at(json, path: custom ? settings.resultsPath : "results")?.arrayValue else {
-            throw MetadataFailure("搜索结果数组不存在，请检查接口格式或自定义字段路径。")
+            throw MetadataFailure(L10n.string("搜索结果数组不存在，请检查接口格式或自定义字段路径。"))
         }
         var seen: Set<String> = []; var candidates: [MetadataCandidate] = []
         for result in results.prefix(100) {
             guard let address = Self.at(result, path: custom ? settings.urlPath : "url")?.stringValue,
                   let url = MetadataNetwork.publicURL(address), seen.insert(url.absoluteString).inserted else { continue }
-            let title = Self.at(result, path: custom ? settings.titlePath : "title")?.stringValue ?? url.host ?? "作品页面"
+            let title = Self.at(result, path: custom ? settings.titlePath : "title")?.stringValue ?? url.host ?? L10n.string("作品页面")
             let summary = Self.at(result, path: custom ? settings.summaryPath : "content")?.stringValue ?? ""
             candidates.append(.init(title: String(title.prefix(250)), url: url.absoluteString, summary: String(summary.prefix(800))))
             if candidates.count >= limit { break }
         }
-        guard !candidates.isEmpty else { throw MetadataFailure("搜索没有返回可用的公开 HTTPS 来源，请调整游戏名或手动指定页面。") }
+        guard !candidates.isEmpty else { throw MetadataFailure(L10n.string("搜索没有返回可用的公开 HTTPS 来源，请调整游戏名或手动指定页面。")) }
         return candidates
     }
     public static func containsSecret(_ object: [String: JSONValue]) -> Bool {

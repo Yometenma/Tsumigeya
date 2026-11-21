@@ -31,10 +31,10 @@ struct SettingsPage: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 8) {
-                Text("设置").font(.system(size: 24, weight: .bold))
-                Text(selectedGroup == .metadata ? "语言与接口选项自动保存；密钥和自定义参数需单独确认。" : "更改后自动保存，无需另外确认。")
+                Text(L("设置")).font(.system(size: 24, weight: .bold))
+                Text(selectedGroup == .metadata ? L("语言与接口选项自动保存；密钥和自定义参数需单独确认。") : L("更改后自动保存，无需另外确认。"))
                     .font(.callout).foregroundStyle(.secondary)
-                Picker("设置分组", selection: $selectedGroup) {
+                Picker(L("设置分组"), selection: $selectedGroup) {
                     ForEach(SettingsGroups.groups, id: \.id) { group in
                         Text(group.id.title).tag(group.id)
                     }
@@ -131,7 +131,7 @@ struct SettingRow: View {
             if let note = pendingNote {
                 HStack(spacing: 6) {
                     if note.isNotImplemented {
-                        Text("尚未实现")
+                        Text(L("尚未实现"))
                             .font(.system(size: 9, weight: .medium))
                             .padding(.horizontal, 5)
                             .padding(.vertical, 1)
@@ -146,150 +146,150 @@ struct SettingRow: View {
 
             switch key {
             case .metadataPreferredLanguage, .metadataFallbackLanguage:
-                Picker(key == .metadataPreferredLanguage ? "作品信息优先语言" : "缺失时回退语言", selection: Binding(
+                Picker(key == .metadataPreferredLanguage ? L("作品信息优先语言") : L("缺失时回退语言"), selection: Binding(
                     get: { store.settingString(key) }, set: { store.setSetting(key, .string($0)) }
                 )) {
-                    if key == .metadataFallbackLanguage { Text("不回退").tag("none") }
+                    if key == .metadataFallbackLanguage { Text(L("不回退")).tag("none") }
                     ForEach(MetadataLanguage.allCases, id: \.rawValue) { Text($0.name).tag($0.rawValue) }
                 }
-                Text("只选择商品页面语言，不代表游戏支持该语言；未翻译的字段可能保留原文。已有资料请手动刷新。")
+                Text(L("只选择商品页面语言，不代表游戏支持该语言；未翻译的字段可能保留原文。已有资料请手动刷新。"))
                     .font(.caption).foregroundStyle(.secondary)
             case .metadataEndpoint, .metadataModel:
-                TextField(key == .metadataEndpoint ? "AI 接口完整地址" : "模型名称", text: Binding(
+                TextField(key == .metadataEndpoint ? L("AI 接口完整地址") : L("模型名称"), text: Binding(
                     get: { store.settingString(key) }, set: { store.setSetting(key, .string($0)) }
                 ))
             case .metadataMode:
-                Picker("AI 接口协议", selection: Binding(get: { store.settingString(key) }, set: { store.setSetting(key, .string($0)) })) {
-                    Text("兼容聊天接口 · 可配独立搜索").tag("chat")
-                    Text("Responses · 支持原生或独立搜索").tag("responses")
+                Picker(L("AI 接口协议"), selection: Binding(get: { store.settingString(key) }, set: { store.setSetting(key, .string($0)) })) {
+                    Text(L("兼容聊天接口 · 可配独立搜索")).tag("chat")
+                    Text(L("Responses · 支持原生或独立搜索")).tag("responses")
                 }
             case .metadataLANEndpoint, .metadataSearchLANEndpoint:
                 MetadataLANPermissionView(search: key == .metadataSearchLANEndpoint)
             case .metadataTimeout, .metadataInputLimit, .metadataSearchLimit:
-                Picker(key == .metadataTimeout ? "模型等待上限" : key == .metadataInputLimit ? "单次正文长度上限" : "搜索候选数量上限", selection: Binding(get: { store.settingString(key) }, set: { store.setSetting(key, .string($0)) })) {
+                Picker(key == .metadataTimeout ? L("模型等待上限") : key == .metadataInputLimit ? L("单次正文长度上限") : L("搜索候选数量上限"), selection: Binding(get: { store.settingString(key) }, set: { store.setSetting(key, .string($0)) })) {
                     if key == .metadataTimeout {
-                        Text("九十秒").tag("90"); Text("三分钟").tag("180"); Text("五分钟").tag("300"); Text("十分钟").tag("600")
+                        Text(L("九十秒")).tag("90"); Text(L("三分钟")).tag("180"); Text(L("五分钟")).tag("300"); Text(L("十分钟")).tag("600")
                     } else if key == .metadataInputLimit {
-                        Text("八千字").tag("8000"); Text("一万六千字").tag("16000"); Text("三万字").tag("30000"); Text("四万五千字").tag("45000")
+                        Text(L("八千字")).tag("8000"); Text(L("一万六千字")).tag("16000"); Text(L("三万字")).tag("30000"); Text(L("四万五千字")).tag("45000")
                     } else {
-                        Text("三条").tag("3"); Text("五条").tag("5"); Text("十条").tag("10")
+                        Text(L("三条")).tag("3"); Text(L("五条")).tag("5"); Text(L("十条")).tag("10")
                     }
                 }
             case .metadataJSONOutput:
-                Toggle("请求模型输出 JSON 对象", isOn: boolBinding(key))
-                Text("仅在服务支持结构化输出时启用；不支持时请关闭，不会自动重试产生额外调用。") .font(.caption).foregroundStyle(.secondary)
+                Toggle(L("请求模型输出 JSON 对象"), isOn: boolBinding(key))
+                Text(L("仅在服务支持结构化输出时启用；不支持时请关闭，不会自动重试产生额外调用。")) .font(.caption).foregroundStyle(.secondary)
             case .metadataDisableThinking:
-                Toggle("关闭兼容模型的思考模式", isOn: boolBinding(key))
-                Text("仅聊天协议发送模板参数；需服务支持 enable_thinking。默认不发送，避免与其他服务不兼容。") .font(.caption).foregroundStyle(.secondary)
+                Toggle(L("关闭兼容模型的思考模式"), isOn: boolBinding(key))
+                Text(L("仅聊天协议发送模板参数；需服务支持 enable_thinking。默认不发送，避免与其他服务不兼容。")) .font(.caption).foregroundStyle(.secondary)
             case .metadataSearchProvider:
-                Picker("按名称搜索的方式", selection: stringBinding(key)) {
-                    Text("关闭联网搜索").tag("disabled"); Text("模型原生联网").tag("native")
-                    Text("独立搜索 · Tavily").tag("tavily"); Text("独立搜索 · SearXNG").tag("searxng"); Text("独立搜索 · 自定义接口").tag("custom")
+                Picker(L("按名称搜索的方式"), selection: stringBinding(key)) {
+                    Text(L("关闭联网搜索")).tag("disabled"); Text(L("模型原生联网")).tag("native")
+                    Text(L("独立搜索 · Tavily")).tag("tavily"); Text(L("独立搜索 · SearXNG")).tag("searxng"); Text(L("独立搜索 · 自定义接口")).tag("custom")
                 }
-                Text("独立搜索不要求模型支持联网或工具调用。先搜索并选来源，再由模型读取正文整理。搜索失败不切换其他收费服务。") .font(.caption).foregroundStyle(.secondary)
+                Text(L("独立搜索不要求模型支持联网或工具调用。先搜索并选来源，再由模型读取正文整理。搜索失败不切换其他收费服务。")) .font(.caption).foregroundStyle(.secondary)
             case .metadataSearchEndpoint:
                 if !["disabled", "native"].contains(store.settingString(.metadataSearchProvider)) {
-                    TextField("搜索接口完整地址（Tavily 留空使用官方地址）", text: stringBinding(key))
-                    Text("SearXNG 请填完整搜索路径并在服务端启用 JSON；自定义接口仅支持 JSON 响应和 Bearer 认证。") .font(.caption).foregroundStyle(.secondary)
+                    TextField(L("搜索接口完整地址（Tavily 留空使用官方地址）"), text: stringBinding(key))
+                    Text(L("SearXNG 请填完整搜索路径并在服务端启用 JSON；自定义接口仅支持 JSON 响应和 Bearer 认证。")) .font(.caption).foregroundStyle(.secondary)
                 }
             case .metadataSearchMethod:
                 if store.settingString(.metadataSearchProvider) == "custom" {
-                    Picker("自定义搜索请求方式", selection: stringBinding(key)) { Text("GET · 查询参数").tag("GET"); Text("POST · JSON 正文").tag("POST") }
+                    Picker(L("自定义搜索请求方式"), selection: stringBinding(key)) { Text(L("GET · 查询参数")).tag("GET"); Text(L("POST · JSON 正文")).tag("POST") }
                 }
             case .metadataSearchParameters:
                 if store.settingString(.metadataSearchProvider) == "custom" { MetadataSearchParametersEditor() }
             case .metadataSearchQueryKey, .metadataSearchResultsPath, .metadataSearchTitlePath, .metadataSearchURLPath, .metadataSearchSummaryPath:
                 if store.settingString(.metadataSearchProvider) == "custom" {
                     TextField(searchFieldLabel, text: stringBinding(key))
-                    if key == .metadataSearchResultsPath { Text("字段路径使用点号分隔，结果路径留空表示根数组。") .font(.caption).foregroundStyle(.secondary) }
+                    if key == .metadataSearchResultsPath { Text(L("字段路径使用点号分隔，结果路径留空表示根数组。")) .font(.caption).foregroundStyle(.secondary) }
                 }
             case .appearance:
-                Picker("外观", selection: Binding(
+                Picker(L("外观"), selection: Binding(
                     get: { store.settingString(.appearance) },
                     set: { store.setSetting(.appearance, .string($0)) }
                 )) {
-                    Text("跟随系统").tag("system")
-                    Text("浅色").tag("light")
-                    Text("深色").tag("dark")
+                    Text(L("跟随系统")).tag("system")
+                    Text(L("浅色")).tag("light")
+                    Text(L("深色")).tag("dark")
                 }
                 .pickerStyle(.segmented)
                 .frame(maxWidth: 260)
 
             case .language:
-                Picker("界面语言", selection: Binding(
+                Picker(L("界面语言"), selection: Binding(
                     get: { store.interfaceLanguage.settingValue },
                     set: { store.setInterfaceLanguage(InterfaceLanguage.fromSetting($0)) }
                 )) {
-                    Text("跟随系统").tag(InterfaceLanguage.system.settingValue)
-                    Text("简体中文").tag(InterfaceLanguage.simplifiedChinese.settingValue)
+                    Text(L("跟随系统")).tag(InterfaceLanguage.system.settingValue)
+                    Text(L("简体中文")).tag(InterfaceLanguage.simplifiedChinese.settingValue)
                     Text("English").tag(InterfaceLanguage.english.settingValue)
-                    Text("日本語").tag(InterfaceLanguage.japanese.settingValue)
+                    Text(L("日本語")).tag(InterfaceLanguage.japanese.settingValue)
                 }
                 .pickerStyle(.segmented)
                 .frame(maxWidth: 420)
-                Text("默认跟随系统语言；系统语言不是中文、英文或日文时显示英文。切换后界面立即更新。")
+                Text(L("默认跟随系统语言；系统语言不是中文、英文或日文时显示英文。切换后界面立即更新。"))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
 
             case .deletionConfirmation:
-                Toggle("删除游戏前弹确认", isOn: Binding(
+                Toggle(L("删除游戏前弹确认"), isOn: Binding(
                     get: { store.settingBool(.deletionConfirmation) },
                     set: { store.setSetting(.deletionConfirmation, .bool($0)) }
                 ))
 
             case .saveSyncMode:
-                LabeledContent("存档备份", value: "手动导入导出")
-                Text("在游戏详情的「存档」页操作，无需另外启用。备份文件只保存在你选择的位置。")
+                LabeledContent(L("存档备份"), value: L("手动导入导出"))
+                Text(L("在游戏详情的「存档」页操作，无需另外启用。备份文件只保存在你选择的位置。"))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
 
             case .preferredLanguage:
-                Picker("首选语言版本", selection: Binding(
+                Picker(L("首选语言版本"), selection: Binding(
                     get: { store.settingString(.preferredLanguage) },
                     set: { store.setSetting(.preferredLanguage, .string($0)) }
                 )) {
-                    Text("不启用").tag("none")
-                    Text("中文").tag("zh")
-                    Text("日文").tag("ja")
-                    Text("英文").tag("en")
-                    Text("韩文").tag("ko")
+                    Text(L("不启用")).tag("none")
+                    Text(L("中文")).tag("zh")
+                    Text(L("日文")).tag("ja")
+                    Text(L("英文")).tag("en")
+                    Text(L("韩文")).tag("ko")
                 }
 
             case .fallbackLanguage:
-                Picker("次选语言版本", selection: Binding(
+                Picker(L("次选语言版本"), selection: Binding(
                     get: { store.settingString(.fallbackLanguage) },
                     set: { store.setSetting(.fallbackLanguage, .string($0)) }
                 )) {
-                    Text("不启用").tag("none")
-                    Text("中文").tag("zh")
-                    Text("日文").tag("ja")
-                    Text("英文").tag("en")
-                    Text("韩文").tag("ko")
+                    Text(L("不启用")).tag("none")
+                    Text(L("中文")).tag("zh")
+                    Text(L("日文")).tag("ja")
+                    Text(L("英文")).tag("en")
+                    Text(L("韩文")).tag("ko")
                 }
 
             case .languageSwitchPrompt:
-                Toggle("启动非偏好语言版时提示", isOn: Binding(
+                Toggle(L("启动非偏好语言版时提示"), isOn: Binding(
                     get: { store.settingBool(.languageSwitchPrompt) },
                     set: { store.setSetting(.languageSwitchPrompt, .bool($0)) }
                 ))
 
             case .nonInstalledAutodetect:
-                Toggle("自动识别未装引擎的游戏", isOn: Binding(
+                Toggle(L("自动识别未装引擎的游戏"), isOn: Binding(
                     get: { store.settingBool(.nonInstalledAutodetect) },
                     set: { store.setSetting(.nonInstalledAutodetect, .bool($0)) }
                 ))
 
             case .diagnoseBeforeLaunch:
-                Toggle("启动前自动诊断", isOn: Binding(
+                Toggle(L("启动前自动诊断"), isOn: Binding(
                     get: { store.settingBool(.diagnoseBeforeLaunch) },
                     set: { store.setSetting(.diagnoseBeforeLaunch, .bool($0)) }
                 ))
-                Text("诊断是纯本地文件扫描，毫秒级。关掉它启动会略快一点。")
+                Text(L("诊断是纯本地文件扫描，毫秒级。关掉它启动会略快一点。"))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
 
             case .checkModuleUpdatesOnStartup:
-                Toggle("启动时检查引擎更新", isOn: Binding(
+                Toggle(L("启动时检查引擎更新"), isOn: Binding(
                     get: { store.settingBool(.checkModuleUpdatesOnStartup) },
                     set: { store.setSetting(.checkModuleUpdatesOnStartup, .bool($0)) }
                 ))
@@ -325,12 +325,12 @@ struct SettingRow: View {
     }
     private var searchFieldLabel: String {
         switch key {
-        case .metadataSearchQueryKey: "关键词参数名"
-        case .metadataSearchResultsPath: "结果数组路径"
-        case .metadataSearchTitlePath: "结果标题路径"
-        case .metadataSearchURLPath: "结果链接路径"
-        case .metadataSearchSummaryPath: "结果摘要路径"
-        default: "附加参数（JSON，不含密钥）"
+        case .metadataSearchQueryKey: L("关键词参数名")
+        case .metadataSearchResultsPath: L("结果数组路径")
+        case .metadataSearchTitlePath: L("结果标题路径")
+        case .metadataSearchURLPath: L("结果链接路径")
+        case .metadataSearchSummaryPath: L("结果摘要路径")
+        default: L("附加参数（JSON，不含密钥）")
         }
     }
     var isAvailable: Bool { pendingNote?.isNotImplemented != true }
@@ -361,12 +361,12 @@ struct InfoRows: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            InfoRow("数据目录", store.dataDir, mono: true)
-            Button("在访达中打开数据目录") {
+            InfoRow(L("数据目录"), store.dataDir, mono: true)
+            Button(L("在访达中打开数据目录")) {
                 NSWorkspace.shared.open(URL(fileURLWithPath: store.dataDir))
             }
-            InfoRow("版本", appVersion)
-            InfoRow("平台", "macOS \(platformString)")
+            InfoRow(L("版本"), appVersion)
+            InfoRow(L("平台"), "macOS \(platformString)")
         }
     }
 
@@ -376,7 +376,7 @@ struct InfoRows: View {
            !v.isEmpty {
             return v
         }
-        return "3.0.0（开发构建，未打包）"
+        return L("3.0.0（开发构建，未打包）")
     }
 
     private var platformString: String {

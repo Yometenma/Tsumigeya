@@ -45,7 +45,7 @@ public enum SaveIOError: Error, Sendable, Equatable {
         case .invalidArchive(let r): return "存档包格式不对：\(r)"
         case .checksumMismatch(let f): return "文件校验失败（内容与清单不符）：\(f)"
         case .writeFailed(let f, let r): return "写 \(f) 失败：\(r)"
-        case .cancelled: return "操作已取消"
+        case .cancelled: return L10n.string("操作已取消")
         }
     }
 }

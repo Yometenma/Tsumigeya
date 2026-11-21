@@ -62,7 +62,7 @@ final class GameLibraryState: ObservableObject {
     func game(id: String) -> GameRecord? { games.first { $0.id == id } }
 
     private func perform(_ operation: (GameLibraryFile) throws -> GameMap) throws {
-        guard loadError == nil else { throw LibraryIntake.Failure("游戏库加载失败，请先处理读取错误。") }
+        guard loadError == nil else { throw LibraryIntake.Failure(L("游戏库加载失败，请先处理读取错误。")) }
         let updated = try operation(file)
         games = updated.ordered
         reloadRelatedData()
@@ -133,12 +133,12 @@ final class GameLibraryState: ObservableObject {
             return ids.isEmpty || ids.allSatisfy { categories[$0] == nil }
         }
         if !unassigned.isEmpty {
-            result.append(Group(id: "__unassigned", title: "未分类", games: unassigned))
+            result.append(Group(id: "__unassigned", title: L("未分类"), games: unassigned))
         }
 
         // 如果既没分类也没未归类（比如全都归到已过滤掉的分类里）→ 兜底显示全部
         if result.isEmpty && !filtered.isEmpty {
-            result.append(Group(id: "__all", title: "全部", games: filtered))
+            result.append(Group(id: "__all", title: L("全部"), games: filtered))
         }
         return result
     }

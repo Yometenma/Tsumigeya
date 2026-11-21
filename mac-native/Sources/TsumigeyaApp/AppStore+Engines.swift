@@ -32,16 +32,16 @@ extension AppStore {
             return
         }
         if !runningGames.isEmpty {
-            engineErrors[folder] = "请先停止游戏，再安装或重新安装运行时。"
+            engineErrors[folder] = L("请先停止游戏，再安装或重新安装运行时。")
             return
         }
         var acceptRosettaLicense = false
         if folder == "wine", Arch.current().rawValue == "arm64", !WineRuntime.rosettaAvailable() {
             let alert = NSAlert()
-            alert.messageText = "安装 Wine 所需的 Rosetta 2？"
-            alert.informativeText = "此 Wine 运行时需要 Rosetta 2。继续即表示同意 Apple 的 Rosetta 2 软件许可，启动器将调用系统安装程序。取消不会安装。"
-            alert.addButton(withTitle: "同意并安装")
-            alert.addButton(withTitle: "取消")
+            alert.messageText = L("安装 Wine 所需的 Rosetta 2？")
+            alert.informativeText = L("此 Wine 运行时需要 Rosetta 2。继续即表示同意 Apple 的 Rosetta 2 软件许可，启动器将调用系统安装程序。取消不会安装。")
+            alert.addButton(withTitle: L("同意并安装"))
+            alert.addButton(withTitle: L("取消"))
             guard alert.runModal() == .alertFirstButtonReturn else { return }
             acceptRosettaLicense = true
         }
@@ -50,7 +50,7 @@ extension AppStore {
         installTokens[folder] = token
 
         let deps = EngineDependencies.dependencies(for: folder)
-        engineProgress[folder] = .step(label: "准备中")
+        engineProgress[folder] = .step(label: L("准备中"))
 
         let task = Task { [weak self] in
             guard let self else { return }
@@ -154,14 +154,14 @@ extension AppStore {
     func cancelEngineInstall(_ folder: String) {
         guard let task = installTasks[folder] else { return }
         task.cancel()
-        engineProgress[folder] = .step(label: "正在取消…")
+        engineProgress[folder] = .step(label: L("正在取消…"))
     }
 
     /// 卸载引擎（删掉整个模块目录）。
     func uninstallEngine(_ folder: String) {
         refreshRunning()
         guard runningGames.isEmpty, installTasks[folder] == nil else {
-            engineErrors[folder] = "请先停止游戏并等待安装结束，再卸载运行时。"
+            engineErrors[folder] = L("请先停止游戏并等待安装结束，再卸载运行时。")
             return
         }
         let root = BinaryPaths.moduleDir(dataDir, folder)

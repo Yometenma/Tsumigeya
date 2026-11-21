@@ -277,7 +277,7 @@ public actor DLsiteService {
                 case .failure(.cancelled): return .failure(.cancelled)
                 case .failure(let error):
                     firstError = firstError ?? error
-                    let scope = category == "home" ? "一般向" : (category == "pro" ? "商业作品" : "成人向同人")
+                    let scope = category == "home" ? L10n.string("一般向") : (category == "pro" ? L10n.string("商业作品") : L10n.string("成人向同人"))
                     warnings.append("\(scope)未完成：\(error.message)")
                 }
             }
@@ -290,7 +290,7 @@ public actor DLsiteService {
 
     private static func isVerificationPage(_ html: String) -> Bool {
         let title = DLsiteSearch.extractTitle(html)?.lowercased() ?? ""
-        return title.contains("just a moment") || title.contains("captcha") || title.contains("年齢確認")
+        return title.contains("just a moment") || title.contains("captcha") || title.contains(L10n.string("年齢確認"))
     }
 
     /// 页面 URL（**唯一有效的格式**）。

@@ -127,7 +127,7 @@ public enum RJNumber {
         var out: [String] = []
         for name in names.sorted() {
             let lower = name.lowercased()
-            let prefixes = ["readme", "read me", "read_me", "お読み", "はじめに", "说明", "説明", "讀我", "必读"]
+            let prefixes = ["readme", "read me", "read_me", L10n.string("お読み"), "はじめに", L10n.string("说明"), L10n.string("説明"), L10n.string("讀我"), L10n.string("必读")]
             guard prefixes.contains(where: { lower.hasPrefix($0) }) || lower.hasSuffix(".url") else { continue }
             let full = (dir as NSString).appendingPathComponent(name)
             var isDir: ObjCBool = false
@@ -196,7 +196,7 @@ public struct DlsiteWork: Sendable, Equatable {
     public var fieldEvidence: [String: String] = [:]
     public var isExternal: Bool { source == "external" || source == "manual" }
     public var identity: String { isExternal ? "external:" + (externalID ?? sourceURLs.first ?? "") : "dlsite:" + rj }
-    public var sourceLabel: String { source == "manual" ? "手动填写" : (isExternal ? "外部页面 · AI 整理" : "DLsite") }
+    public var sourceLabel: String { source == "manual" ? L10n.string("手动填写") : (isExternal ? L10n.string("外部页面 · AI 整理") : "DLsite") }
     public var pageURL: String? { isExternal ? sourceURLs.first : DLsiteService.pageURL(category: category ?? "maniax", rj: rj, language: metadataLanguage.flatMap(MetadataLanguage.init(rawValue:))) }
 
 

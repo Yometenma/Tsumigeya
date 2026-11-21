@@ -6,21 +6,21 @@ public enum AdditionalTextExtractor {
     }
     static func scripts(_ project: AssistanceProject, root: URL, extension ext: String,
                         parse: (String) -> [String]) throws -> [TranslationEntry] {
-        guard let enumerator = FileManager.default.enumerator(at: root, includingPropertiesForKeys: [.isSymbolicLinkKey, .isRegularFileKey, .fileSizeKey], options: [.skipsHiddenFiles]) else { throw AssistanceError.invalid("无法读取剧本目录。") }
+        guard let enumerator = FileManager.default.enumerator(at: root, includingPropertiesForKeys: [.isSymbolicLinkKey, .isRegularFileKey, .fileSizeKey], options: [.skipsHiddenFiles]) else { throw AssistanceError.invalid(L10n.string("无法读取剧本目录。")) }
         var catalog = TranslationCatalog(identity: project.identity), visited = 0
         for case let url as URL in enumerator {
             let values = try url.resourceValues(forKeys: [.isSymbolicLinkKey, .isRegularFileKey, .fileSizeKey])
             if values.isSymbolicLink == true { enumerator.skipDescendants(); continue }
             guard values.isRegularFile == true, url.pathExtension == ext, url != project.page else { continue }
             visited += 1
-            guard visited <= 5000, (values.fileSize ?? 0) <= 8 * 1024 * 1024 else { throw AssistanceError.invalid("剧本数量或文件大小超出提取限制，未保存部分结果。") }
+            guard visited <= 5000, (values.fileSize ?? 0) <= 8 * 1024 * 1024 else { throw AssistanceError.invalid(L10n.string("剧本数量或文件大小超出提取限制，未保存部分结果。")) }
             let source = try String(contentsOf: url, encoding: .utf8)
             let strings = parse(source)
             catalog.merge(strings.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && $0.count <= 4096 }.map { .init(source: $0, contexts: [url.lastPathComponent]) })
         }
         if catalog.entries.isEmpty {
             if let captured = try? AssistanceInstaller.capturedText(project), !captured.isEmpty { return captured }
-            throw AssistanceError.invalid("未找到可直接读取的剧本台词。归档、动态拼接或特殊语法请应用辅助后使用跟随补译。")
+            throw AssistanceError.invalid(L10n.string("未找到可直接读取的剧本台词。归档、动态拼接或特殊语法请应用辅助后使用跟随补译。"))
         }
         return catalog.entries
     }

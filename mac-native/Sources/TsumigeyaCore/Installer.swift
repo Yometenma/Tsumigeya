@@ -109,11 +109,11 @@ public enum InstallError: Error, Sendable, Equatable {
         case .extract(let d, let r):
             return "解压「\(d)」失败：\(r)"
         case .unsafeArchive:
-            return "压缩包里的路径不安全，已拒绝解压。"
+            return L10n.string("压缩包里的路径不安全，已拒绝解压。")
         case .invalidDependency(let n):
             return "依赖名不合法：\(n)"
         case .cancelled:
-            return "操作已取消。"
+            return L10n.string("操作已取消。")
         }
     }
 }
@@ -287,7 +287,7 @@ public enum EngineInstaller {
                 }
                 let actual = hash.finalize().map { String(format: "%02x", $0) }.joined()
                 guard actual == expected.lowercased() else {
-                    throw InstallError.download(dependency: name, url: build.link, reason: "下载文件的 SHA-256 校验失败，未解压或运行。请重新安装。")
+                    throw InstallError.download(dependency: name, url: build.link, reason: L10n.string("下载文件的 SHA-256 校验失败，未解压或运行。请重新安装。"))
                 }
             }
 
@@ -308,7 +308,7 @@ public enum EngineInstaller {
                 let wine = depDir + "/Wine Devel.app/Contents/Resources/wine/bin/wine"
                 let server = WineRuntime.server(for: wine)
                 guard env.fileManager.isExecutableFile(atPath: wine), env.fileManager.isExecutableFile(atPath: server) else {
-                    throw InstallError.extract(dependency: name, reason: "Wine 包缺少可执行的 wine 或 wineserver，原有运行时未替换。")
+                    throw InstallError.extract(dependency: name, reason: L10n.string("Wine 包缺少可执行的 wine 或 wineserver，原有运行时未替换。"))
                 }
                 try await Task.detached {
                     let process = Process()
@@ -320,7 +320,7 @@ public enum EngineInstaller {
                     try process.run()
                     process.waitUntilExit()
                     guard process.terminationStatus == 0 else {
-                        throw InstallError.extract(dependency: "wine", reason: "Wine 无法运行，请检查系统许可或 Rosetta 2。原有运行时未替换。")
+                        throw InstallError.extract(dependency: "wine", reason: L10n.string("Wine 无法运行，请检查系统许可或 Rosetta 2。原有运行时未替换。"))
                     }
                 }.value
                 try Task.checkCancellation()
@@ -464,7 +464,7 @@ extension EngineInstaller {
                 moved.append((relative, destination))
             }
         } catch {
-            throw InstallError.extract(dependency: "多版本保留", reason: error.localizedDescription)
+            throw InstallError.extract(dependency: L10n.string("多版本保留"), reason: error.localizedDescription)
         }
 
         // ⚠️ 用 defer 保证「失败也搬回」。

@@ -31,7 +31,7 @@ private struct SaveSessionContent: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
-                Text("存档")
+                Text(L("存档"))
                     .font(.system(size: 13, weight: .semibold))
                 Spacer()
                 actionButtons
@@ -65,26 +65,26 @@ private struct SaveSessionContent: View {
             Button {
                 doExport()
             } label: {
-                Label("导出", systemImage: "square.and.arrow.up")
+                Label(L("导出"), systemImage: "square.and.arrow.up")
                     .font(.system(size: 11))
             }
             .controlSize(.small)
             .disabled(isRunning || !canExport)
             .help(isRunning
-                  ? "游戏正在运行，先关掉它再导出（运行中的存档可能正在写）"
-                  : (canExport ? "把存档打包成一个 zip" : "没有可导出的存档"))
+                  ? L("游戏正在运行，先关掉它再导出（运行中的存档可能正在写）")
+                  : (canExport ? L("把存档打包成一个 zip") : L("没有可导出的存档")))
 
             Button {
                 doImport()
             } label: {
-                Label("导入", systemImage: "square.and.arrow.down")
+                Label(L("导入"), systemImage: "square.and.arrow.down")
                     .font(.system(size: 11))
             }
             .controlSize(.small)
             .disabled(isRunning || listing?.dir == nil)
             .help(isRunning
-                  ? "游戏正在运行，先关掉它再导入"
-                  : "从 zip 恢复存档（会先备份现有存档）")
+                  ? L("游戏正在运行，先关掉它再导入")
+                  : L("从 zip 恢复存档（会先备份现有存档）"))
         }
     }
 
@@ -103,17 +103,17 @@ private struct SaveSessionContent: View {
                 stateRow(
                     icon: "questionmark.circle",
                     tint: .orange,
-                    title: overridePath == nil ? "不知道这个游戏的存档在哪" : "手动指定的存档目录不可用",
+                    title: overridePath == nil ? L("不知道这个游戏的存档在哪") : L("手动指定的存档目录不可用"),
                     detail: overridePath == nil
-                        ? "这个引擎的存档位置可能还没实现，或者游戏目录结构不常见。"
-                        : "目录可能已被移动、删除或无法读取；请选择一个仍然存在的目录。")
+                        ? L("这个引擎的存档位置可能还没实现，或者游戏目录结构不常见。")
+                        : L("目录可能已被移动、删除或无法读取；请选择一个仍然存在的目录。"))
             } else if listing.items.isEmpty {
                 // **empty**（还没存过档）—— 正常状态
                 stateRow(
                     icon: "tray",
                     tint: .secondary,
-                    title: "还没有存档",
-                    detail: "先去游戏里存一次档，回来这里就能看到。")
+                    title: L("还没有存档"),
+                    detail: L("先去游戏里存一次档，回来这里就能看到。"))
             } else {
                 saveList(listing)
             }
@@ -204,7 +204,7 @@ private struct SaveSessionContent: View {
                     .foregroundStyle(.secondary)
                     .padding(.top, 2)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(overridePath == nil ? "自动探测存档目录" : "使用手动指定目录")
+                    Text(overridePath == nil ? L("自动探测存档目录") : L("使用手动指定目录"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     if let directory = listing?.dir {
@@ -222,7 +222,7 @@ private struct SaveSessionContent: View {
                             .truncationMode(.middle)
                             .help(overridePath)
                     } else {
-                        Text("尚未确定目录")
+                        Text(L("尚未确定目录"))
                             .font(.caption2)
                             .foregroundStyle(.tertiary)
                     }
@@ -232,10 +232,10 @@ private struct SaveSessionContent: View {
                     Button {
                         revealDirectory(directory)
                     } label: {
-                        Label("在访达中显示", systemImage: "folder")
+                        Label(L("在访达中显示"), systemImage: "folder")
                     }
                     .controlSize(.small)
-                    .help("在访达中打开这个存档目录")
+                    .help(L("在访达中打开这个存档目录"))
 
                     Button {
                         copyDirectoryPath(directory)
@@ -243,18 +243,18 @@ private struct SaveSessionContent: View {
                         Image(systemName: "doc.on.doc")
                     }
                     .controlSize(.small)
-                    .help("复制存档目录路径")
-                    .accessibilityLabel("复制存档目录路径")
+                    .help(L("复制存档目录路径"))
+                    .accessibilityLabel(L("复制存档目录路径"))
                 }
-                Button(overridePath == nil ? "选择存档目录…" : "更改目录…") {
+                Button(overridePath == nil ? L("选择存档目录…") : L("更改目录…")) {
                     chooseSaveDirectory()
                 }
                 .controlSize(.small)
                 .disabled(isRunning || isWorking)
-                .help(isRunning ? "游戏正在运行，不能更改存档目录" : "只记录目录位置，不会移动存档文件")
+                .help(isRunning ? L("游戏正在运行，不能更改存档目录") : L("只记录目录位置，不会移动存档文件"))
             }
             if overridePath != nil {
-                Button("恢复自动探测") {
+                Button(L("恢复自动探测")) {
                     clearSaveDirectoryOverride()
                 }
                 .controlSize(.small)
@@ -285,8 +285,8 @@ private struct SaveSessionContent: View {
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
         panel.canCreateDirectories = true
-        panel.prompt = "选择目录"
-        panel.message = "选择存档目录（不会移动现有文件）"
+        panel.prompt = L("选择目录")
+        panel.message = L("选择存档目录（不会移动现有文件）")
         if let overridePath {
             panel.directoryURL = URL(fileURLWithPath: overridePath)
         }
@@ -309,7 +309,7 @@ private struct SaveSessionContent: View {
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
         panel.allowedContentTypes = [.zip]
-        panel.message = "选择要导入的存档包（现有存档会先备份）"
+        panel.message = L("选择要导入的存档包（现有存档会先备份）")
         guard panel.runModal() == .OK, let url = panel.url else { return }
         session.importArchive(at: url)
     }

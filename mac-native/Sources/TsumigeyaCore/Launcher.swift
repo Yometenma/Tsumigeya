@@ -82,7 +82,7 @@ public enum Launcher {
         let process = Process()
         if plan.engine == "wine" {
             guard let prefix = plan.environment["WINEPREFIX"] else {
-                return .failure(.spawnFailed(message: "Wine 运行环境缺失。"))
+                return .failure(.spawnFailed(message: L10n.string("Wine 运行环境缺失。")))
             }
             do {
                 try FileManager.default.createDirectory(atPath: (prefix as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
@@ -150,7 +150,7 @@ public enum Launcher {
 
         let pid = process.processIdentifier
         guard pid > 0 else {
-            return .failure(.spawnFailed(message: "进程没有拿到 pid"))
+            return .failure(.spawnFailed(message: L10n.string("进程没有拿到 pid")))
         }
 
         // ⚠️ **不要 wait**：wait 会阻塞到游戏退出，等于启动器卡死。

@@ -49,7 +49,7 @@ public struct GameLibraryFile: Sendable {
 
     public func update(id: String, title: String, engine: String, gameArgs: [String: JSONValue]) throws -> GameMap {
         try modify { map in
-            guard var draft = map.games[id] else { throw LibraryIntake.Failure("游戏已移除。") }
+            guard var draft = map.games[id] else { throw LibraryIntake.Failure(L10n.string("游戏已移除。")) }
             draft.gameTitle = title
             draft.gameEngine = engine
             draft.gameArgs = gameArgs
@@ -99,7 +99,7 @@ public struct GameLibraryFile: Sendable {
         public let map: GameMap?
         public var message: String? {
             guard let failure else { return nil }
-            let saved = completed.isEmpty ? "尚未保存任何删除步骤。" : "已保存：" + completed.map(\.rawValue).joined(separator: "、") + "。"
+            let saved = completed.isEmpty ? L10n.string("尚未保存任何删除步骤。") : L10n.string("已保存：") + completed.map(\.rawValue).joined(separator: "、") + "。"
             return "移除游戏未完成：\(failure)\n\(saved)游戏库记录仍保留，可排除问题后重试；不会删除游戏目录或存档。"
         }
     }
@@ -115,7 +115,7 @@ public struct GameLibraryFile: Sendable {
         do {
             let map = try read()
             guard map.games[expected.id] == expected else {
-                throw LibraryIntake.Failure("游戏已移除或记录发生变化，请刷新游戏库。")
+                throw LibraryIntake.Failure(L10n.string("游戏已移除或记录发生变化，请刷新游戏库。"))
             }
             _ = try GameMetaStore.readRawForUpdate(dataDir: dataDir)
             let statsURL = URL(fileURLWithPath: dataDir).appendingPathComponent("play-stats.json")

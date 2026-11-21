@@ -27,13 +27,13 @@ final class AppStore: ObservableObject {
                 fallback: MetadataLanguage(rawValue: self.settingString(.metadataFallbackLanguage)))
         }
         metadata.aiService = { [weak self] in
-            guard let self else { throw MetadataFailure("游戏库已关闭。") }
+            guard let self else { throw MetadataFailure(L("游戏库已关闭。")) }
             return MetadataAIService(settings: self.metadataAPISettings,
                                      key: try MetadataCredential.read(endpoint: self.metadataAPISettings.endpoint))
         }
         metadata.searchProvider = { [weak self] in self?.metadataSearchSettings.provider ?? .disabled }
         metadata.searchService = { [weak self] in
-            guard let self else { throw MetadataFailure("游戏库已关闭。") }
+            guard let self else { throw MetadataFailure(L("游戏库已关闭。")) }
             let settings = self.metadataSearchSettings
             return MetadataSearchService(settings: settings, key: try MetadataCredential.read(endpoint: settings.effectiveEndpoint, search: true))
         }
@@ -152,7 +152,7 @@ final class AppStore: ObservableObject {
         guard runningGames[game.id] == nil, !stoppingGames.contains(game.id) else { return }
         lastLaunchFailure.removeValue(forKey: game.id)
         if game.gameEngine == "wine", installTasks["wine"] != nil {
-            lastLaunchFailure[game.id] = "Wine 正在安装，请等待安装结束后再启动。"
+            lastLaunchFailure[game.id] = L("Wine 正在安装，请等待安装结束后再启动。")
             return
         }
 
@@ -196,7 +196,7 @@ final class AppStore: ObservableObject {
     func configureWine(game: GameRecord) {
         guard game.gameEngine == "wine", runningGames[game.id] == nil, self.game(id: game.id) == game else { return }
         if installTasks["wine"] != nil {
-            lastLaunchFailure[game.id] = "Wine 正在安装，请等待安装结束后再打开环境设置。"
+            lastLaunchFailure[game.id] = L("Wine 正在安装，请等待安装结束后再打开环境设置。")
             return
         }
         lastLaunchFailure.removeValue(forKey: game.id)
@@ -384,7 +384,7 @@ final class AppStore: ObservableObject {
         operationError = nil
         refreshRunning()
         guard runningGames[id] == nil else {
-            operationError = "游戏仍在运行，请先停止游戏再移除。"
+            operationError = L("游戏仍在运行，请先停止游戏再移除。")
             return
         }
         guard let expected = game(id: id) else { return }
@@ -518,13 +518,13 @@ final class AppStore: ObservableObject {
     func setSetting(_ key: SettingsGroups.Key, _ value: JSONValue) {
         if [.metadataEndpoint, .metadataSearchEndpoint].contains(key), let address = value.stringValue,
            address.contains("?") || address.contains("@") || address.contains("#") {
-            operationError = "接口地址不能包含账号、密码、查询参数或片段。密钥请填入专用密钥框，不会保存到设置文件。"
+            operationError = L("接口地址不能包含账号、密码、查询参数或片段。密钥请填入专用密钥框，不会保存到设置文件。")
             return
         }
         if key == .metadataSearchParameters, let text = value.stringValue,
            let object = try? JSONDecoder().decode(JSONValue.self, from: Data(text.utf8)).objectValue,
            MetadataSearchService.containsSecret(object) {
-            operationError = "搜索附加参数不能包含密钥或令牌，请使用独立密钥框；未保存。"; return
+            operationError = L("搜索附加参数不能包含密钥或令牌，请使用独立密钥框；未保存。"); return
         }
         var updated = settings
         if key == .metadataEndpoint, value != settings[key.rawValue] { updated.removeValue(forKey: SettingsGroups.Key.metadataLANEndpoint.rawValue) }
@@ -626,7 +626,7 @@ final class AppStore: ObservableObject {
         lastAddGameError = nil
         refreshRunning()
         guard runningGames[gameId] == nil else {
-            lastAddGameError = "游戏运行中，不能更改存档目录。"; return false
+            lastAddGameError = L("游戏运行中，不能更改存档目录。"); return false
         }
         return saveLibraryChange { try library.setSaveDirectory(gameID: gameId, path: path) }
     }
@@ -639,12 +639,12 @@ final class AppStore: ObservableObject {
     }
 
     func setCategoryMembership(gameId: String, categoryId: String, member: Bool) {
-        guard game(id: gameId) != nil else { operationError = "游戏已移除。"; return }
+        guard game(id: gameId) != nil else { operationError = L("游戏已移除。"); return }
         _ = changeClassification(.membership(gameID: gameId, categoryID: categoryId, member: member))
     }
 
     func restoreAutomaticClassification(gameId: String) {
-        guard game(id: gameId) != nil else { operationError = "游戏已移除。"; return }
+        guard game(id: gameId) != nil else { operationError = L("游戏已移除。"); return }
         _ = changeClassification(.restoreAutomatic(gameID: gameId))
     }
 
@@ -729,7 +729,7 @@ final class AppStore: ObservableObject {
 
     func inspectGameFolder(_ folder: String) throws -> LibraryIntake.Candidate {
         guard let result = try LibraryIntake.inspectFolder(folder) else {
-            throw LibraryIntake.Failure("未识别出游戏引擎，请选择包含游戏资源的目录。")
+            throw LibraryIntake.Failure(L("未识别出游戏引擎，请选择包含游戏资源的目录。"))
         }
         return result
     }
@@ -749,7 +749,7 @@ final class AppStore: ObservableObject {
         lastAddGameError = nil
         refreshRunning()
         guard runningGames[expected.id] == nil else {
-            lastAddGameError = "游戏运行中，不能更改路径。"; return false
+            lastAddGameError = L("游戏运行中，不能更改路径。"); return false
         }
         guard saveLibraryChange({ try library.relocate(expected, folder: folder) }) else { return false }
         invalidateGameFeatures(id: expected.id)

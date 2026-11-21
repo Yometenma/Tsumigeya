@@ -31,8 +31,10 @@ public enum EngineArgsLabels {
     public static func label(
         engine: String, key: String, manifestLabel: String?
     ) -> String {
-        // ① 我们的翻译表
-        if let translated = table[engine]?[key] { return translated }
+        // ① 我们的翻译表（表里存的是中文原文，按当前界面语言取译文；
+        //    不能把取表写进 `table` 的值里——那是 static let，只会在首次访问时算一次，
+        //    用户切换界面语言后就停在旧语言上了。）
+        if let translated = table[engine]?[key] { return L10n.string(translated) }
 
         // ② manifest 的英文 label（兜底）
         if let manifestLabel, !manifestLabel.trimmingCharacters(in: .whitespaces).isEmpty {
