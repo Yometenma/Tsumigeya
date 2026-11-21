@@ -17,6 +17,12 @@
   --ease: cubic-bezier(.2, .8, .2, 1);
   color-scheme: light;
 }
+/* 拉丁文界面用系统无衬线，日文界面换成日文字体栈；中文子集字体不含假名与西文衬线。 */
+html[lang="en"] { --sans: -apple-system, "Segoe UI", system-ui, "Helvetica Neue", Arial, sans-serif; }
+html[lang="ja"] {
+  --serif: "Hiragino Mincho ProN", "Yu Mincho", "Noto Serif JP", "Songti SC", serif;
+  --sans: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", "Noto Sans JP", system-ui, sans-serif;
+}
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; scroll-padding-top: 84px; overflow-x: clip; }
 body { margin: 0; background: var(--cream); color: var(--ink); font-family: var(--sans); font-size: 17px; line-height: 1.75; -webkit-font-smoothing: antialiased; overflow-x: hidden; }
@@ -50,6 +56,12 @@ body::before { content: ""; position: fixed; inset: 0; z-index: -1; background: 
 .nav-actions { display: flex; align-items: center; gap: 14px; }
 .nav-gh { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; color: var(--ink); transition: background .3s; }
 .nav-gh:hover { background: rgba(59,47,63,.07); }
+
+/* language switch */
+.lang-switch { display: flex; align-items: center; gap: 2px; padding: 3px; border-radius: 999px; background: rgba(255,253,249,.66); border: 1px solid var(--line); }
+.lang-switch button { appearance: none; border: 0; background: none; cursor: pointer; padding: 5px 9px; border-radius: 999px; font-family: var(--label); font-size: 12px; font-weight: 700; letter-spacing: .04em; line-height: 1.4; color: var(--ink-3); transition: background .25s, color .25s; }
+.lang-switch button:hover { color: var(--ink); }
+.lang-switch button[aria-pressed="true"] { background: var(--ink); color: #fff8f4; }
 
 /* buttons */
 .btn { display: inline-flex; align-items: center; gap: 14px; text-decoration: none; font-weight: 600; font-size: 16px; border-radius: 999px; padding: 15px 26px 15px 28px; transition: transform .35s var(--ease), box-shadow .35s, background .3s; will-change: transform; }
@@ -217,6 +229,7 @@ kbd { font-family: var(--label); font-size: 13px; padding: 1px 7px; border-radiu
 .cm-card i { position: absolute; right: 24px; top: 24px; font-style: normal; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: var(--blush); color: var(--rose-2); font-size: 14px; transition: transform .4s var(--ease); }
 .cm-card:hover i { transform: rotate(45deg); }
 .cm-soon { background: repeating-linear-gradient(135deg, rgba(255,253,249,.7) 0 14px, rgba(239,211,214,.28) 14px 28px); border-style: dashed; border-color: rgba(212,137,155,.55); box-shadow: none; }
+.cm-card[hidden] { display: none; }
 .cm-soon:hover { transform: none; }
 .cm-qr { width: 132px; height: 132px; border-radius: 12px; margin-top: 10px; background: #fff; padding: 8px; box-shadow: 0 0 0 1px var(--line); }
 
@@ -270,6 +283,13 @@ code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-si
 @media (max-width: 760px) {
   body { font-size: 16px; }
   .wrap { width: calc(100% - 40px); }
+  .nav { gap: 14px; }
+  .brand { font-size: 20px; gap: 8px; }
+  .nav-gh { display: none; }
+  /* 窄屏只保留当前语言，点一下循环到下一种 */
+  .lang-switch { padding: 2px; gap: 0; }
+  .lang-switch button { padding: 4px 9px; font-size: 11.5px; }
+  .lang-switch button[aria-pressed="false"] { display: none; }
   .hero { align-items: flex-end; }
   .hero-art img { object-position: 90% 0; }
   .hero-veil { background: linear-gradient(0deg, rgba(246,239,233,1) 0%, rgba(246,239,233,.93) 46%, rgba(246,239,233,.2) 72%, rgba(246,239,233,0) 100%); }

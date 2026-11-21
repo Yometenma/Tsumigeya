@@ -5,6 +5,101 @@
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
+  // ---------- language ----------
+  // 简体中文文案就在 index.html 里，切换时直接还原抓取到的原始内容；
+  // 英文与日文来自 i18n.js。页面新增文案时，给它加 data-i18n 之类的属性再补字典。
+  const I18N = window.TSUMIGEYA_I18N || { supported: ['zh'], ui: {}, defaultLang: 'zh' };
+  const SUPPORTED = I18N.supported && I18N.supported.length ? I18N.supported : ['zh'];
+  const STORE_KEY = 'tsumigeya.lang';
+
+  const textNodes = $$('[data-i18n]');
+  const altNodes = $$('[data-i18n-alt]');
+  const ariaNodes = $$('[data-i18n-aria]');
+  const hrefNodes = $$('[data-i18n-href]');
+  const contentNodes = $$('[data-i18n-content]');
+  const origHTML = new Map(textNodes.map(n => [n, n.innerHTML]));
+  const origAttr = new Map();
+  [...altNodes, ...ariaNodes, ...hrefNodes, ...contentNodes].forEach(n => origAttr.set(n, {
+    alt: n.getAttribute('alt'),
+    aria: n.getAttribute('aria-label'),
+    href: n.getAttribute('href'),
+    content: n.getAttribute('content'),
+  }));
+  const origTitle = document.title;
+  const metaDesc = $('meta[name="description"]');
+  const ogTitle = $('meta[property="og:title"]');
+  const ogDesc = $('meta[property="og:description"]');
+  const origMeta = {
+    desc: metaDesc ? metaDesc.getAttribute('content') : null,
+    ogTitle: ogTitle ? ogTitle.getAttribute('content') : null,
+    ogDesc: ogDesc ? ogDesc.getAttribute('content') : null,
+  };
+  const switchEl = $('[data-lang-switch]');
+  const langButtons = switchEl ? $$('button', switchEl) : [];
+
+  let lang = I18N.defaultLang || 'zh';
+  const dict = () => I18N.ui[lang] || {};
+  const t = k => dict()[k];
+
+  const applyLang = next => {
+    lang = SUPPORTED.includes(next) ? next : (I18N.defaultLang || 'zh');
+    const d = dict();
+    document.documentElement.lang = lang === 'zh' ? 'zh-CN' : lang;
+
+    textNodes.forEach(n => {
+      const v = d[n.dataset.i18n];
+      n.innerHTML = v === undefined ? origHTML.get(n) : v;
+    });
+    altNodes.forEach(n => {
+      const v = d[n.dataset.i18nAlt];
+      n.setAttribute('alt', v === undefined ? origAttr.get(n).alt : v);
+    });
+    ariaNodes.forEach(n => {
+      const v = d[n.dataset.i18nAria];
+      n.setAttribute('aria-label', v === undefined ? origAttr.get(n).aria : v);
+    });
+    hrefNodes.forEach(n => {
+      const v = d[n.dataset.i18nHref + '.href'];
+      n.setAttribute('href', v === undefined ? origAttr.get(n).href : v);
+    });
+    contentNodes.forEach(n => {
+      const v = d[n.dataset.i18nContent];
+      n.setAttribute('content', v === undefined ? origAttr.get(n).content : v);
+    });
+
+    document.title = lang === 'zh' ? origTitle : (d['meta.title'] || origTitle);
+    if (metaDesc) metaDesc.setAttribute('content', lang === 'zh' ? origMeta.desc : (d['meta.description'] || origMeta.desc));
+    if (ogTitle) ogTitle.setAttribute('content', lang === 'zh' ? origMeta.ogTitle : (d['meta.title'] || origMeta.ogTitle));
+    if (ogDesc) ogDesc.setAttribute('content', lang === 'zh' ? origMeta.ogDesc : (d['meta.ogDescription'] || origMeta.ogDesc));
+
+    langButtons.forEach(b => b.setAttribute('aria-pressed', String(b.dataset.lang === lang)));
+    renderGroups();
+  };
+
+  const setLang = (next, persist) => {
+    applyLang(next);
+    if (persist) { try { localStorage.setItem(STORE_KEY, lang); } catch { /* 隐私模式忽略 */ } }
+  };
+
+  const detectLang = () => {
+    const q = new URLSearchParams(location.search).get('lang');
+    if (q && SUPPORTED.includes(q)) return q;
+    let stored = null;
+    try { stored = localStorage.getItem(STORE_KEY); } catch { stored = null; }
+    if (stored && SUPPORTED.includes(stored)) return stored;
+    // 按浏览器语言偏好列表顺序找第一个能对应的：zh-Hant / zh-TW 目前都给简体中文页面
+    const prefs = (navigator.languages && navigator.languages.length)
+      ? navigator.languages
+      : [navigator.language || ''];
+    for (const tag of prefs) {
+      const low = String(tag).toLowerCase();
+      if (low.startsWith('zh')) return 'zh';
+      if (low.startsWith('ja')) return 'ja';
+      if (low.startsWith('en')) return 'en';
+    }
+    return 'en';
+  };
+
   if (cfg.version) $$('[data-version]').forEach(e => { e.textContent = cfg.version; });
 
   // header state, scroll progress, hero parallax
@@ -75,23 +170,45 @@
 
   // copy buttons
   $$('[data-copy]').forEach(b => b.addEventListener('click', async () => {
-    const t = $(b.dataset.copy).textContent.trim();
-    try { await navigator.clipboard.writeText(t); b.textContent = '已复制'; } catch { b.textContent = '请手动复制'; }
-    setTimeout(() => { b.textContent = '复制'; }, 1600);
+    const target = $(b.dataset.copy);
+    const text = target ? target.textContent.trim() : '';
+    try { await navigator.clipboard.writeText(text); b.textContent = t('copy.done') || '已复制'; }
+    catch { b.textContent = t('copy.fail') || '请手动复制'; }
+    setTimeout(() => { b.textContent = t('copy.label') || '复制'; }, 1600);
   }));
 
   // community groups from site-config.js
   const slot = $('#groupSlot');
-  if (slot && Array.isArray(cfg.groups) && cfg.groups.length) {
+  const groupField = (g, field) => g[field + (lang === 'zh' ? '' : lang.charAt(0).toUpperCase() + lang.slice(1))] || g[field];
+  function renderGroups() {
+    if (!slot) return;
+    $$('.cm-dyn').forEach(e => e.remove());
+    const groups = Array.isArray(cfg.groups) ? cfg.groups : [];
+    slot.hidden = groups.length > 0;
     const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-    cfg.groups.forEach(g => {
+    groups.forEach(g => {
+      const name = groupField(g, 'name');
       const el = document.createElement(g.url ? 'a' : 'div');
       if (g.url) { el.href = g.url; el.target = '_blank'; el.rel = 'noopener'; }
-      el.className = 'cm-card reveal in';
-      el.innerHTML = `<small>${esc(g.platform || 'GROUP')}</small><b>${esc(g.name)}</b><span>${esc(g.note || '')}${g.id ? `<br>群号 <strong>${esc(g.id)}</strong>` : ''}</span>` +
-        (g.qr ? `<img class="cm-qr" src="${esc(g.qr)}" alt="${esc(g.name)} 二维码" loading="lazy">` : '') + `<i aria-hidden="true">${g.url ? '↗' : '✦'}</i>`;
+      el.className = 'cm-card cm-dyn reveal in';
+      el.innerHTML = `<small>${esc(g.platform || 'GROUP')}</small><b>${esc(name)}</b><span>${esc(groupField(g, 'note') || '')}${g.id ? `<br>${esc(t('com.group.id') || '群号')} <strong>${esc(g.id)}</strong>` : ''}</span>` +
+        (g.qr ? `<img class="cm-qr" src="${esc(g.qr)}" alt="${esc(name)}" loading="lazy">` : '') + `<i aria-hidden="true">${g.url ? '↗' : '✦'}</i>`;
       slot.before(el);
     });
-    slot.remove();
   }
+
+  // language switch
+  if (switchEl) {
+    langButtons.forEach(b => b.addEventListener('click', () => {
+      // 窄屏只显示当前语言：再点一下循环到下一个
+      if (matchMedia('(max-width: 760px)').matches) {
+        const i = SUPPORTED.indexOf(lang);
+        setLang(SUPPORTED[(i + 1) % SUPPORTED.length], true);
+      } else {
+        setLang(b.dataset.lang, true);
+      }
+    }));
+  }
+
+  applyLang(detectLang());
 })();

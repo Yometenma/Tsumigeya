@@ -1,233 +1,255 @@
 <p align="center">
-  <img src=".github/assets/readme-banner.png" width="100%" alt="Tsumigeya：在 Mac 上整理、运行你的 DLsite 游戏">
+  <img src=".github/assets/readme-banner.png" width="100%" alt="Tsumigeya: collect and run your DLsite games on Mac">
 </p>
 
 <p align="center">
-  <a href="https://github.com/Yometenma/Tsumigeya/releases/latest"><img src="https://img.shields.io/github/v/release/Yometenma/Tsumigeya?style=flat-square&label=%E6%9C%80%E6%96%B0%E7%89%88%E6%9C%AC&labelColor=3b2f3f&color=d4899b" alt="最新版本"></a>
+  <a href="README.md"><img src="https://img.shields.io/badge/English-d4899b?style=flat-square&labelColor=3b2f3f" alt="English"></a>
+  <a href="README.zh-CN.md"><img src="https://img.shields.io/badge/%E7%AE%80%E4%BD%93%E4%B8%AD%E6%96%87-9a8f9c?style=flat-square&labelColor=3b2f3f" alt="简体中文"></a>
+  <a href="README.ja.md"><img src="https://img.shields.io/badge/%E6%97%A5%E6%9C%AC%E8%AA%9E-9a8f9c?style=flat-square&labelColor=3b2f3f" alt="日本語"></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/Yometenma/Tsumigeya/releases/latest"><img src="https://img.shields.io/github/v/release/Yometenma/Tsumigeya?style=flat-square&label=latest&labelColor=3b2f3f&color=d4899b" alt="Latest release"></a>
   <img src="https://img.shields.io/badge/macOS-26%2B-b7aed6?style=flat-square&logo=apple&logoColor=white&labelColor=3b2f3f" alt="macOS 26+">
   <img src="https://img.shields.io/badge/Apple_Silicon-only-9ccfc2?style=flat-square&labelColor=3b2f3f" alt="Apple Silicon">
   <img src="https://img.shields.io/badge/SwiftUI-native-f0d49b?style=flat-square&logo=swift&logoColor=white&labelColor=3b2f3f" alt="SwiftUI">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-d4899b?style=flat-square&labelColor=3b2f3f" alt="GPL-3.0"></a>
   <a href="https://github.com/Yometenma/Tsumigeya/stargazers"><img src="https://img.shields.io/github/stars/Yometenma/Tsumigeya?style=flat-square&label=Stars&labelColor=3b2f3f&color=f0d49b" alt="Stars"></a>
   <br>
-  <a href="https://discord.gg/kqut5fAnyk"><img src="https://img.shields.io/badge/Discord-%E5%8A%A0%E5%85%A5%E7%A4%BE%E5%8C%BA-5865F2?style=flat-square&logo=discord&logoColor=white&labelColor=3b2f3f" alt="Discord"></a>
-  <a href="#-社区"><img src="https://img.shields.io/badge/QQ%E7%BE%A4-1134670666-12B7F5?style=flat-square&logo=qq&logoColor=white&labelColor=3b2f3f" alt="QQ 群 1134670666"></a>
-  <a href="https://yometenma.github.io/Tsumigeya/"><img src="https://img.shields.io/badge/%E5%AE%98%E7%BD%91-yometenma.github.io-d4899b?style=flat-square&labelColor=3b2f3f" alt="官网"></a>
+  <a href="https://discord.gg/kqut5fAnyk"><img src="https://img.shields.io/badge/Discord-join_the_community-5865F2?style=flat-square&logo=discord&logoColor=white&labelColor=3b2f3f" alt="Discord"></a>
+  <a href="#community"><img src="https://img.shields.io/badge/QQ_Group-1134670666-12B7F5?style=flat-square&logo=qq&logoColor=white&labelColor=3b2f3f" alt="QQ group 1134670666"></a>
+  <a href="https://yometenma.github.io/Tsumigeya/"><img src="https://img.shields.io/badge/website-yometenma.github.io-d4899b?style=flat-square&labelColor=3b2f3f" alt="Website"></a>
 </p>
 
 <p align="center">
-  <b><a href="https://yometenma.github.io/Tsumigeya/">官网</a></b> ✦
-  <b><a href="https://github.com/Yometenma/Tsumigeya/releases/latest">下载最新版</a></b> ✦
-  <a href="#-游戏兼容性">游戏兼容性</a> ✦
-  <a href="docs/常见问题.md">常见问题</a> ✦
-  <a href="更新日志.md">更新日志</a> ✦
-  <a href="CONTRIBUTING.md">参与贡献</a>
+  <b><a href="https://yometenma.github.io/Tsumigeya/">Website</a></b> ✦
+  <b><a href="https://github.com/Yometenma/Tsumigeya/releases/latest">Download latest</a></b> ✦
+  <a href="#compatibility">Game compatibility</a> ✦
+  <a href="docs/en/faq.md">FAQ</a> ✦
+  <a href="更新日志.md">Changelog</a> ✦
+  <a href="CONTRIBUTING.md">Contributing</a>
 </p>
 
 <p align="center"><img src=".github/assets/readme/divider.png" width="360" alt=""></p>
 
-<img src=".github/assets/readme/sign-mac.gif" align="right" width="294" alt="像素看板娘举牌：Mac 也要玩同人游戏！">
+<img src=".github/assets/readme/sign-mac.gif" align="right" width="294" alt="Pixel mascot holding a sign: doujin games belong on Mac too!">
 
-**Tsumigeya** 是一款面向 DLsite 同人游戏的**原生 macOS 启动器**。
+**Tsumigeya** is a **native macOS launcher** for DLsite doujin games.
 
-把已经下载、解压的游戏加入游戏库，它会帮你识别引擎、安装对应运行时，再从同一个地方启动和管理。作品信息、分类和存档备份也放在一起，不必在文件夹之间来回寻找。
+Add a game you have already downloaded and extracted to your library, and it identifies the engine, installs the matching runtime, then launches and manages everything from one place. Work info, categories, and save backups live there too, so you stop hunting through folders.
 
 > [!NOTE]
-> **它不是通用的 Windows 模拟器，也不提供游戏购买或下载。** 能否运行取决于游戏引擎、脚本、插件和运行时的兼容性；识别成功不代表每部作品都能正常运行。
+> **It is not a general-purpose Windows emulator, and it neither sells nor downloads games.** Whether a game runs depends on its engine, scripts, plugins, and runtime compatibility; successful detection does not mean every work will run.
 
 <br clear="right">
 
 <p align="center">
-  <img src="website/assets/img/ui-library.webp" width="920" alt="Tsumigeya 游戏库：按作品类型自动分类的侧边栏、作品详情与「开始游戏」">
+  <img src="website/assets/img/ui-library.webp" width="920" alt="Tsumigeya library: sidebar with automatic categories, work details, and a Play button">
 </p>
-<p align="center"><sub>真实界面（浅色主题）。演示画面：『雲海のフロンティア』体験版 © New RPG Project</sub></p>
+<p align="center"><sub>Real interface (light theme). Demo screen: 『雲海のフロンティア』 trial version © New RPG Project</sub></p>
 
-## ✦ v3.0.0 更新亮点
+<a id="highlights"></a>
 
-- **全新原生游戏库**：可收起的分类侧边栏、封面详情与独立功能栏，优化窗口缩放、长介绍阅读和作品切换。
-- **作品类型自动分类**：按已确认的作品类型整理游戏，保留手动归类；刷新资料不会覆盖人工调整。
-- **多语言作品资料**：可设置优先与回退语言，统一查找成人向和全年龄作品，按语言分别缓存资料。
-- **不止 DLsite**：支持从公开官网／商店页补全资料，也可通过 Tavily、SearXNG 或自定义搜索查找来源，再交给自选 AI／本地模型整理；先预览、核对字段，再确认保存，也支持纯手动填写。
-- **更流畅的本地浏览**：封面、预览图和文字资料缓存复用，图片按显示尺寸解码；移除旧隐私模式及应用内装饰素材，保留既有游戏库与未知字段兼容。
+## ✦ What's new in v3.0.0
 
-[下载 v3.0.0 与查看更新说明](https://github.com/Yometenma/Tsumigeya/releases/tag/v3.0.0) · [作品信息获取](docs/作品信息获取.md) · [完整更新日志](更新日志.md)
+- **A native library from scratch**: collapsible category sidebar, cover-driven details, and a dedicated action bar, with smoother window resizing, long-description reading, and work switching.
+- **Automatic categories by work type**: games are filed by their confirmed type, manual assignments are kept, and refreshing info never overwrites your adjustments.
+- **Multilingual work info**: set preferred and fallback languages, search adult and all-ages works in one place, and cache info per language.
+- **More than DLsite**: fill info from public official sites and store pages, or find sources through Tavily, SearXNG, or a custom search and hand them to an AI service or local model of your choice. Preview and check every field before saving, and manual entry still works.
+- **Smoother local browsing**: covers, preview images, and text info are reused from cache, and images are decoded at display size. The old privacy mode and decorative in-app assets are gone, while existing libraries and unknown fields stay compatible.
 
-## ✦ 能做什么
+[Download v3.0.0 and read the release notes](https://github.com/Yometenma/Tsumigeya/releases/tag/v3.0.0) · [Getting game info](docs/en/game-info.md) · [Full changelog](更新日志.md)
+
+<a id="features"></a>
+
+## ✦ What it does
 
 <table>
   <tr>
     <td width="50%" valign="top">
-      <img src="website/assets/img/ui-batch.webp" alt="批量入库：扫描游戏集合目录并识别引擎"><br>
-      <b>📚 把游戏整理成自己的书架</b><br>
-      <sub>侧边栏浏览与详情展示，支持搜索、自定义分类，一部作品可归入多个分类。扫描已解压的游戏集合目录，核对后批量入库。</sub>
+      <img src="website/assets/img/ui-batch.webp" alt="Bulk add: scanning a game collection folder and detecting engines"><br>
+      <b>📚 Turn your games into a shelf of your own</b><br>
+      <sub>Browse from the sidebar with full details, search, custom categories, and multi-category assignment. Point it at an extracted collection folder, review the results, and add games in bulk.</sub>
     </td>
     <td width="50%" valign="top">
-      <img src="website/assets/img/ui-add-engine.webp" alt="添加游戏：识别为 NW.js，运行时已就绪"><br>
-      <b>⚙️ 少处理一些运行环境</b><br>
-      <sub>按文件结构识别引擎，集中安装和管理运行时，查看启动状态与引擎参数。退出启动器后，游戏仍可继续运行。</sub>
+      <img src="website/assets/img/ui-add-engine.webp" alt="Add game: detected as NW.js with the runtime ready"><br>
+      <b>⚙️ Less runtime busywork</b><br>
+      <sub>Engines are detected from the file layout. Install and manage runtimes in one place, and check launch status and engine arguments. Games keep running after you quit the launcher.</sub>
     </td>
   </tr>
   <tr>
     <td width="50%" valign="top">
-      <img src="website/assets/img/ui-preview.webp" alt="查找并关联作品：预览封面、社团、发售日期与标签"><br>
-      <b>🔍 补齐作品信息</b><br>
-      <sub>通过作品名、RJ 编号或作品链接查找 DLsite，统一查找成人向与全年龄作品。展示封面、完整介绍、发售日期、系列、标签、语言、制作／配音及预览截图（以作品页提供的信息为准）。先预览再确认关联，手改字段刷新时保留。</sub>
+      <img src="website/assets/img/ui-preview.webp" alt="Find and link a work: preview of cover, circle, release date, and tags"><br>
+      <b>🔍 Fill in work info</b><br>
+      <sub>Find DLsite works by title, RJ code, or work URL, with adult and all-ages works in the same search. Cover, full description, release date, series, tags, languages, staff and cast, and preview screenshots are shown as the work page provides them. Preview before linking; manual edits survive refreshes.</sub>
     </td>
     <td width="50%" valign="top">
-      <img src="website/assets/img/ui-translate.webp" alt="翻译页：已识别 RPG Maker MZ"><br>
-      <b>🈳 翻译与辅助</b><br>
-      <sub>RPG Maker MV/MZ、XP/VX/VX Ace、Ren’Py 与 Tyrano 共用译文管理和自选 AI 接口，各自通过引擎接入显示文字、编辑数值、锁定及数值筛选；具体功能和验证范围因引擎而异，启动支持不等于辅助支持。使用前请备份存档，详见<a href="docs/翻译与作弊.md">使用说明</a>。</sub>
+      <img src="website/assets/img/ui-translate.webp" alt="Translation tab: RPG Maker MZ detected"><br>
+      <b>🈳 Translation and assist</b><br>
+      <sub>RPG Maker MV/MZ, XP/VX/VX Ace, Ren’Py, and Tyrano share translation management and a choose-your-own AI endpoint, while each engine connects its own way to display text, edit values, lock them, and filter by value. Capabilities and verification differ per engine: launch support is not assist support. Back up your saves first, and see <a href="docs/en/translation-and-cheats.md">the guide</a>.</sub>
     </td>
   </tr>
 </table>
 
-- **批量补全**：按当前筛选范围补全作品资料，分别处理已保存、待确认与失败项目。
-- **本地图片与资料缓存**：已下载的封面和预览图优先本地读取；作品文字资料加载到内存，界面刷新不再逐次读文件。
-- **备份游戏进度**：对已实现存档定位的引擎，导出存档目录为 ZIP，并从备份恢复。导入前校验文件并备份原文件；游戏运行时禁用导入和导出。
+- **Bulk fill**: fill game info for the current filter scope, handling saved, pending, and failed items separately.
+- **Local image and info cache**: downloaded covers and preview images are read locally first, and text info is held in memory so refreshing the interface no longer reads files every time.
+- **Back up game progress**: for engines whose save location is implemented, export the save folder as a ZIP and restore from it. Imports validate files and back up existing ones; import and export are disabled while the game is running.
 
-## ✦ 下载与安装
+<a id="install"></a>
+
+## ✦ Download and install
 
 > [!IMPORTANT]
-> 需要 **macOS 26** 或更新版本，以及 **Apple Silicon** 芯片。当前不提供 Intel 安装包。
+> Requires **macOS 26** or later and an **Apple Silicon** chip. No Intel build is available.
 
-1. 前往 **[最新版本](https://github.com/Yometenma/Tsumigeya/releases/latest)**，在附件中下载 `Tsumigeya-<版本号>.dmg`。
-2. 打开 DMG，将 `Tsumigeya.app` 拖入「应用程序」。更新旧版前，请先退出应用。
-3. 打开 Tsumigeya，按下方步骤添加游戏。
+1. Open the **[latest release](https://github.com/Yometenma/Tsumigeya/releases/latest)** and download `Tsumigeya-<version>.dmg` from the assets.
+2. Open the DMG and drag `Tsumigeya.app` into Applications. Quit the old version before updating.
+3. Open Tsumigeya and follow the steps below to add a game.
 
-版本更新、安装要求与已知限制见 [发布记录](https://github.com/Yometenma/Tsumigeya/releases)。发布附件中的 `SHA256SUMS.txt` 可用于检查下载是否完整。
+For release notes, installation requirements, and known limitations, see the [releases](https://github.com/Yometenma/Tsumigeya/releases). `SHA256SUMS.txt` in the release assets verifies that your download is intact.
 
 <details>
-<summary><b>🔒 首次打开被 macOS 拦截？</b></summary>
+<summary><b>🔒 Blocked by macOS on first launch?</b></summary>
 <br>
 
-当前安装包仅做 **ad-hoc 签名，未经过 Apple 公证**，也没有 Developer ID 分发签名。macOS 可能阻止首次打开。
+The current package is only **ad-hoc signed: it is not notarized by Apple** and carries no Developer ID distribution signature. macOS may block the first launch.
 
-仅在确认安装包来自本仓库且信任来源后，可在终端对已安装应用执行：
+Only after you confirm the package comes from this repository and you trust the source, you can run this against the installed app in Terminal:
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/Tsumigeya.app
 ```
 
-然后重新打开应用。这个操作只移除该应用的下载隔离标记，**不要关闭系统整体安全保护**。更详细的说明见 [常见问题](docs/常见问题.md#first-launch)。
+Then open the app again. This only removes the download quarantine flag for that app; **do not turn off system-wide security**. See the [FAQ](docs/en/faq.md#first-launch) for details.
 
 </details>
 
-## ✦ 添加你的第一部游戏
+<a id="first-game"></a>
 
-1. **先解压游戏**。保留完整目录，不要只把 `.exe` 文件单独移出来。
-2. **添加到游戏库**。点击「添加游戏」或按 `⌘O`，选择游戏目录内的任意文件（如 `.exe` 或 `.app`），确认识别出的引擎和目录。
-3. **准备运行时**。如果提示依赖缺失，前往「引擎管理」页面安装对应模块，再回游戏库启动。
-4. **补充作品信息**。在详情页点击「查找作品…」，输入作品名、RJ 编号或粘贴作品链接；核对候选和预览后确认关联。关联后可刷新信息或更换作品，游戏库名称不会自动改变。
+## ✦ Add your first game
 
-游戏详情按「作品介绍」「存档」「翻译」「辅助」「引擎管理」分栏。启动失败时，先查看运行时状态、游戏路径和引擎参数；存档的导出与导入在「存档」页操作。详情的「更多」菜单还可以打开启动诊断，逐项检查游戏目录、引擎运行时、执行权限和最终启动计划；诊断不会执行启动准备写入。
+1. **Extract the game first.** Keep the whole folder; do not move a single `.exe` out of it.
+2. **Add it to the library.** Click Add Game (「添加游戏」) or press `⌘O`, pick any file inside the game folder (such as a `.exe` or `.app`), and confirm the detected engine and folder.
+3. **Prepare the runtime.** If dependencies are reported missing, install the matching module on the Engine Management (「引擎管理」) page, then go back to the library and launch.
+4. **Fill in work info.** On the detail page click Find Work… (「查找作品…」) and enter a title, an RJ code, or paste a work URL; check the candidates and the preview before linking. Once linked you can refresh the info or change the work; the library name does not change on its own.
 
-<details>
-<summary><b>🗂 自动分类与手动整理</b></summary>
-<br>
-
-保存作品信息后，按已识别的游戏类型自动归入「角色扮演」「冒险游戏」「模拟游戏」「动作游戏」或「益智游戏」；题材标签保留在作品信息中，不混入主分类。仅查看预览不会改变分类；已有资料在下次加载游戏库时参与归类，无需重新联网。缺失或未知类型不猜测，仍可手动整理。
-
-在「编辑游戏 → 分类」中可勾选或移除归属，修改立刻保存，之后刷新或更换作品仍保留人工调整。原有分类和归属不会清空；「恢复自动分类」需要确认，会清除这个游戏的人工调整并按当前作品类型重新归类。类型分类可以改名，删除后不会在刷新资料时自动重建；新建同名的默认类型分类可重新启用。
-
-</details>
+A game's details are split into Info (「作品介绍」), Saves (「存档」), Translation (「翻译」), Assist (「辅助」), and Engine Management (「引擎管理」). When a launch fails, check runtime status, game path, and engine arguments first. Exporting and importing saves happen on the Saves tab. The More (「更多」) menu also opens launch diagnostics, which checks the game folder, the engine runtime, execute permission, and the final launch plan item by item; diagnostics never performs the writes that launching does.
 
 <details>
-<summary><b>🌐 资料语言与其他游戏</b></summary>
+<summary><b>🗂 Automatic and manual categories</b></summary>
 <br>
 
-「设置 → 作品信息」可指定刮削优先／回退语言；DLsite 按语言独立缓存，切换后可手动刷新已有资料。不在 DLsite 上的游戏，可在查找窗口选择「其他游戏 · AI／手动」：指定官网／商店页交给 AI 整理，或使用独立 Tavily／SearXNG／自定义搜索（也可保留 Responses 原生搜索）先查候选，也可以完全手动填写。
+After you save work info, the game is filed under Role-Playing, Adventure, Simulation, Action, or Puzzle by its confirmed type; genre tags stay in the work info and are not mixed into the top-level categories. Viewing a preview alone changes nothing, and existing info takes part in sorting the next time the library loads, with no need to go online again. Missing or unknown types are never guessed, and you can still sort by hand.
 
-所有外部资料先预览、选字段再确认，保留来源与可核对引文，不伪造 RJ、不自动上传游戏文件，不与游戏翻译共用密钥。普通聊天模型可搭配独立搜索；局域网 HTTP 模型／搜索接口需分别授权，修改地址自动撤销。可调整本地模型等待、正文长度及兼容选项；批量补全不自动调用付费 AI。详见 [作品信息获取](docs/作品信息获取.md)。
+In Edit Game (「编辑游戏」) → Categories (「分类」) you can tick or remove assignments; changes save immediately, and later refreshes or work changes keep your manual adjustments. Existing categories and assignments are never cleared; Restore Auto Categories (「恢复自动分类」) asks for confirmation, then clears this game's manual adjustments and re-files it by the current work type. Type categories can be renamed, and deleting one is not undone by a refresh; creating a new category with the same default name re-enables it.
 
 </details>
 
 <details>
-<summary><b>📦 批量补全作品信息</b></summary>
+<summary><b>🌐 Info languages and other games</b></summary>
 <br>
 
-侧边栏「游戏库」右侧菜单中的「批量补全作品信息」处理当前筛选范围。默认补全未关联游戏，也可刷新已有信息，并保留手动修改。唯一 RJ 自动获取；名称搜索和多个编号必须逐项预览确认，不自动选首条。可暂停继续、集中重试失败项；已保存项目不会因关闭补全窗口而撤销。退出应用后任务清单不保留，可重新准备列表。
+Settings (「设置」) → Game Info (「作品信息」) sets the preferred and fallback languages for scraping; DLsite is cached per language, so after switching you can manually refresh existing info. For games that are not on DLsite, choose Other game · AI／manual (「其他游戏 · AI／手动」) in the find window: hand an official site or store page to AI, use a separate Tavily／SearXNG／custom search (or keep the native Responses search) to look for candidates first, or type everything in by hand.
+
+Every external record is previewed and its fields selected before you confirm, keeping sources and checkable quotes: RJ codes are never invented, game files are never uploaded automatically, and the key stays separate from the translation one. A plain chat model can be paired with a separate search; LAN HTTP models and search endpoints each need their own authorization, which is revoked automatically when the address changes. You can tune local model timeout, body length, and compatibility options; bulk fill never calls paid AI on its own. See [Getting game info](docs/en/game-info.md).
 
 </details>
 
 <details>
-<summary><b>🚚 批量入库与移动后的游戏</b></summary>
+<summary><b>📦 Bulk fill game info</b></summary>
 <br>
 
-侧边栏「游戏库」右侧菜单提供「批量入库」：选择已解压的游戏集合目录，扫描后核对引擎、修改重名标题并逐项勾选，再一次保存。不会自动全选、下载运行时或关联 DLsite 作品。相同目录不能重复入库；Windows 程序需确认实际启动文件。
-
-扫描最多向下三层、2000 个目录、200 个候选，不跟随子目录符号链接；识别到游戏后不再深入资源目录。达到范围上限或遇到不可读目录会提示，不能把候选列表当作完整磁盘索引。漏掉的游戏可缩小扫描范围，或使用「添加游戏」。
-
-游戏移动后，在详情的更多菜单选择「重新定位游戏目录…」，选择新目录并确认是同一游戏。引擎必须与原记录相符；运行中不能更改路径。此操作只更新游戏库路径，保留编号、作品信息、分类、游玩记录和参数，**不会搬移游戏文件或存档**。如存档也已移动，请在「存档」页核对或重新指定存档目录。
+Bulk Fill Game Info (「批量补全作品信息」) in the Game Library (「游戏库」) sidebar menu handles the current filter scope. By default it fills unlinked games, and you can also refresh existing info while keeping manual edits. A single unique RJ code is fetched automatically; name searches and multiple codes must be previewed and confirmed one by one, and the first result is never picked for you. You can pause and resume and retry failures in one go; saved items are not rolled back when the panel closes. The task list is not preserved after you quit the app, so the list can be prepared again.
 
 </details>
 
-## ✦ 游戏兼容性
+<details>
+<summary><b>🚚 Bulk add, and games that moved</b></summary>
+<br>
 
-下表说明当前可用的启动路径。真实实测只代表测试过的样本，不是对同一引擎全部作品的保证。
+Bulk Add (「批量入库」) in the same Game Library (「游戏库」) sidebar menu lets you choose an extracted game collection folder, review engines, fix duplicate titles, tick items one by one, and save once. It never selects everything automatically, downloads runtimes, or links DLsite works. The same folder cannot be added twice; for Windows programs you confirm the real launch executable.
 
-🟢 有真实游戏启动记录　🟡 部分验收／实验性　⚪ 已接入，尚未实测　🔵 需按作品实测
+Scanning goes at most three levels deep, over 2000 folders and 200 candidates, does not follow subfolder symlinks, and stops descending into a folder once a game is detected. Reaching a limit or hitting an unreadable folder is reported, and the candidate list must not be treated as a full disk index. For missed games, narrow the scan folder or use Add Game.
 
-| 游戏引擎 | 使用的运行时 | 当前验证范围 |
+After moving a game, choose Relocate Game Folder… (「重新定位游戏目录…」) in the detail's More menu, pick the new folder, and confirm it is the same game. The engine must match the existing record, and the path cannot be changed while the game is running. This only updates the library path and keeps the id, work info, categories, play stats, and arguments; **it does not move game files or saves**. If the saves moved as well, check or re-point the save folder on the Saves tab.
+
+</details>
+
+<a id="compatibility"></a>
+
+## ✦ Game compatibility
+
+The table below shows the launch paths available today. Real tests only cover the samples that were tested; they are not a guarantee for every work on the same engine.
+
+🟢 Real game launch recorded　🟡 Partially verified / experimental　⚪ Wired up, not yet launch-tested　🔵 Needs per-work testing
+
+| Engine | Runtime used | Current verification scope |
 |---|---|---|
-| RPG Maker MV / MZ | NW.js | 🟢 有真实游戏启动记录 |
-| RPG Maker XP / VX / VX Ace | mkxp-z | 🟢 有真实游戏启动记录 |
-| RPG Maker 2000 / 2003 | EasyRPG | 🟢 有真实游戏启动记录 |
-| Ren'Py | Ren'Py SDK | 🟢 有真实游戏启动记录 |
-| TyranoScript | NW.js | 🟡 官方 V5 样本及免费作品原剧本已验收翻译／变量编辑；Electron 下载包需另行适配，不能直接运行 |
-| 吉里吉里 / KAG | krkrsdl2 | 🟡 实验性，不保证商业游戏兼容性 |
-| NScripter | ONScripter | ⚪ 已接入，尚未实测游戏启动 |
-| Siglus | siglus_rs | ⚪ 已接入，尚未实测游戏启动 |
-| Godot | Godot 编辑器 | ⚪ 已接入，尚未实测游戏启动 |
-| Windows 程序（PE `.exe`） | Wine | 🔵 已实测 32／64 位扫雷窗口及控制台程序；具体作品仍需实测 |
+| RPG Maker MV / MZ | NW.js | 🟢 Real game launch recorded |
+| RPG Maker XP / VX / VX Ace | mkxp-z | 🟢 Real game launch recorded |
+| RPG Maker 2000 / 2003 | EasyRPG | 🟢 Real game launch recorded |
+| Ren'Py | Ren'Py SDK | 🟢 Real game launch recorded |
+| TyranoScript | NW.js | 🟡 Official V5 sample and original scripts of free works verified for translation and variable editing; Electron builds need separate adaptation and do not run as-is |
+| KiriKiri / KAG | krkrsdl2 | 🟡 Experimental, commercial game compatibility not guaranteed |
+| NScripter | ONScripter | ⚪ Wired up, game launch not yet tested |
+| Siglus | siglus_rs | ⚪ Wired up, game launch not yet tested |
+| Godot | Godot editor | ⚪ Wired up, game launch not yet tested |
+| Windows programs (PE `.exe`) | Wine | 🔵 32-bit and 64-bit Minesweeper windows and console programs tested; individual works still need testing |
 
-Windows 程序通过 Wine 在独立环境中运行。它不是安全沙盒，也不保证所有程序兼容；驱动、反作弊、DRM、特殊图形接口和缺失依赖可能失败。每个游戏的 Windows 环境与运行时分开保存，卸载 Wine 不会删除这些环境。Unity、RPG Developer Bakin、WOLF RPG Editor 的旧记录会按 Wine 读取，不再作为单独的“仅识别”引擎展示。
+Windows programs run in a separate environment through Wine. It is not a security sandbox and does not make every program compatible; drivers, anti-cheat, DRM, unusual graphics APIs, and missing dependencies can all fail. Each game's Windows environment and runtime are stored separately, and uninstalling Wine does not delete those environments. Old records for Unity, RPG Developer Bakin, and WOLF RPG Editor are read through Wine and no longer appear as separate "detection only" engines.
 
-<img src=".github/assets/readme/sign-feedback.gif" align="right" width="282" alt="像素看板娘举牌：兼容性反馈募集中！">
+<img src=".github/assets/readme/sign-feedback.gif" align="right" width="282" alt="Pixel mascot holding a sign: compatibility reports wanted!">
 
-另外请留意：
+Also note:
 
-- TyranoScript 和吉里吉里不会自动猜测存档位置；在详情的「存档」页可手动指定目录。指定目录不会移动文件；已确定的目录可直接在访达中显示或复制完整路径，失效目录仍显示为“位置未知”，清除后恢复自动探测。
-- 存档只提供本地手动导入、导出，**没有云同步**；有效的空目录会显示为“还没有存档”，并与未知位置区分。
-- 游戏运行中不能更改存档目录，也不能导入导出。
-- 界面目前仅提供简体中文。
+- TyranoScript and KiriKiri never guess save locations; set the folder by hand on the Saves tab. Setting a folder does not move files; a confirmed folder can be revealed in Finder or copied as a full path; a folder that no longer exists still shows as "location unknown", and clearing it restores auto detection.
+- Saves are local manual import and export only, with **no cloud sync**; a valid but empty folder shows as "no saves yet" and stays distinct from an unknown location.
+- The save folder cannot be changed, imported, or exported while the game is running.
+- **The app interface is currently available in Simplified Chinese only.**
 
 > [!TIP]
-> 遇到特定作品的兼容性问题，欢迎 [提交兼容性反馈](https://github.com/Yometenma/Tsumigeya/issues/new?template=compatibility.yml)，或在 [Discord 的「兼容性反馈」论坛](https://discord.gg/kqut5fAnyk) 发帖，附上引擎、游戏版本和复现步骤即可；请勿上传商业游戏本体或私人存档。
+> Hitting a compatibility problem with a specific work? [File a compatibility report](https://github.com/Yometenma/Tsumigeya/issues/new?template=compatibility.yml) or post in the [Discord "compatibility reports" forum](https://discord.gg/kqut5fAnyk) with the engine, game version, and reproduction steps. Please do not upload commercial game data or private saves.
 
 <br clear="right">
 
-## ✦ 数据放在哪里
+<a id="data"></a>
+
+## ✦ Where your data lives
 
 <details>
-<summary><b>💾 应用数据、缓存与存档位置</b></summary>
+<summary><b>💾 App data, caches, and save locations</b></summary>
 <br>
 
-游戏库、分类、设置、作品信息缓存及运行时保存在：
+The library, categories, settings, cached work info, and runtimes live in:
 
 ```text
 ~/Library/Application Support/Tsumigeya/
 ```
 
-封面和预览图的可重建缓存单独保存在 `~/Library/Caches/Tsumigeya/Artwork/`；系统清理缓存后，未在内存中的图片需要重新下载。图片和文字资料不会写入游戏目录。
+Rebuildable cover and preview image caches live separately in `~/Library/Caches/Tsumigeya/Artwork/`; after the system clears its caches, images that are no longer in memory are downloaded again. Images and text info are never written into game folders.
 
-**真实游戏存档不一定在这个目录中。** 存档位置取决于游戏和引擎，请在详情的「存档」页查看。迁移前先退出启动器和相关游戏，分别备份应用数据、游戏目录及存档；只复制应用数据目录不能替代存档备份。
+**Real game saves are not necessarily in that folder.** Save locations depend on the game and the engine; check the Saves tab in the game's details. Before migrating, quit the launcher and the related games, and back up app data, game folders, and saves separately; copying the app data folder is no substitute for backing up saves.
 
 </details>
 
-更多安装、备份、网络和启动问题见 **[常见问题](docs/常见问题.md)**。
+For more on installation, backups, networking, and launching, see the **[FAQ](docs/en/faq.md)**.
 
-## ✦ 社区
+<a id="community"></a>
 
-- 💬 **Discord**：[discord.gg/kqut5fAnyk](https://discord.gg/kqut5fAnyk)，兼容性反馈论坛、游戏安利、测试员招募
-- 🐧 **QQ 群**：**1134670666**，使用交流与兼容性反馈（[扫码加入](website/assets/img/qq-group-qr.png)）
-- 🐞 **Issues**：[报告问题或提出建议](https://github.com/Yometenma/Tsumigeya/issues/new/choose)
-- 🌐 **官网**：[yometenma.github.io/Tsumigeya](https://yometenma.github.io/Tsumigeya/)
+## ✦ Community
 
-## ✦ 参与开发
+- 💬 **Discord**: [discord.gg/kqut5fAnyk](https://discord.gg/kqut5fAnyk) — compatibility reports forum, game recommendations, tester recruiting
+- 🐧 **QQ group**: **1134670666** — usage chat and compatibility reports ([scan to join](website/assets/img/qq-group-qr.png))
+- 🐞 **Issues**: [report a problem or suggest a feature](https://github.com/Yometenma/Tsumigeya/issues/new/choose)
+- 🌐 **Website**: [yometenma.github.io/Tsumigeya](https://yometenma.github.io/Tsumigeya/)
 
-欢迎提交问题、文档改进、兼容性记录和代码。较大功能或架构调整，建议先开 Issue 讨论。
+<a id="development"></a>
 
-使用 Swift 6.2+ 及匹配的 macOS SDK，在仓库根目录执行：
+## ✦ Contributing
+
+Issues, documentation improvements, compatibility reports, and code are all welcome. For larger features or architectural changes, please open an Issue first.
+
+The app uses Swift 6.2+ with the matching macOS SDK. From the repository root:
 
 ```bash
 cd mac-native
@@ -235,23 +257,27 @@ swift build
 swift test
 ```
 
-运行应用前，建议按 [贡献指南](CONTRIBUTING.md#搭建开发环境) 设置独立开发数据目录，避免调试改写日常游戏库。
+Before running the app, set up a separate development data folder as described in the [contributing guide](CONTRIBUTING.md#搭建开发环境), so debugging does not rewrite your everyday game library.
 
-- [贡献指南](CONTRIBUTING.md)：环境配置、目录结构、CLI、数据安全和提交检查。
-- [UI 验收方法](docs/UI验收方法.md)：快照、真实窗口和交互验证的区别。
-- [打包与分发](docs/打包与分发.md)：DMG 打包、签名及发布前检查。
+- [Contributing guide](CONTRIBUTING.md): environment setup, layout, CLI, data safety, and pre-commit checks.
+- [UI verification](docs/UI验收方法.md): how snapshots, real windows, and interaction checks differ.
+- [Packaging and distribution](docs/打包与分发.md): DMG packaging, signing, and pre-release checks.
 
-## ✦ 许可与致谢
+<sub>These development documents are currently written in Chinese only. The user-facing docs are also available in English and Japanese: [FAQ](docs/en/faq.md) · [Getting game info](docs/en/game-info.md) · [Translation and cheats](docs/en/translation-and-cheats.md).</sub>
 
-Tsumigeya 以 [GPL-3.0](LICENSE) 发布。游戏本体、素材和第三方运行时不因使用本项目而改变其原有许可。
+<a id="license"></a>
 
-感谢 NW.js、mkxp-z、EasyRPG、Ren'Py 及其他运行时项目提供的基础，也感谢贡献兼容性反馈、测试和改进的使用者。README 中的像素举牌图由 `scripts/make-readme-signs.py` 生成，文字使用 [Fusion Pixel Font](https://github.com/TakWolf/fusion-pixel-font)（SIL OFL 1.1）。
+## ✦ License and credits
 
-Tsumigeya 是独立开源项目，与 DLsite 无隶属关系。当前维护的是 SwiftUI 原生版本；旧 Electron 实现可在 Git 历史中查看。
+Tsumigeya is released under [GPL-3.0](LICENSE). Games, their assets, and third-party runtimes keep their own licenses; using this project does not change them.
+
+Thanks to NW.js, mkxp-z, EasyRPG, Ren'Py, and the other runtime projects for the foundation, and to everyone who reported compatibility issues, tested, and improved things. The pixel sign images in this README are generated by `scripts/make-readme-signs.py`, using [Fusion Pixel Font](https://github.com/TakWolf/fusion-pixel-font) (SIL OFL 1.1).
+
+Tsumigeya is an independent open-source project and is not affiliated with DLsite. The maintained version is the native SwiftUI app; the old Electron implementation is still visible in Git history.
 
 <p align="center"><img src=".github/assets/readme/divider.png" width="360" alt=""></p>
 
 <p align="center">
-  <img src=".github/assets/readme/sign-star.gif" width="261" alt="像素看板娘举牌：点个 Star 好不好～"><br>
-  <sub>如果 Tsumigeya 帮你把游戏好好收起来了，点个 ⭐ 就是最好的鼓励～</sub>
+  <img src=".github/assets/readme/sign-star.gif" width="261" alt="Pixel mascot holding a sign: a star would be lovely~"><br>
+  <sub>If Tsumigeya helps you keep your games in order, a ⭐ is the best encouragement~</sub>
 </p>

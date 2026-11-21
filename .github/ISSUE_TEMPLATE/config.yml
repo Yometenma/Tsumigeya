@@ -3,3 +3,9 @@ contact_links:
   - name: 常见问题与排障
     url: https://github.com/Yometenma/Tsumigeya/blob/main/docs/%E5%B8%B8%E8%A7%81%E9%97%AE%E9%A2%98.md
     about: 安装、启动、作品信息及存档问题，可以先从这里查起。
+  - name: FAQ (English)
+    url: https://github.com/Yometenma/Tsumigeya/blob/main/docs/en/faq.md
+    about: Installation, launching, game info, and save issues — start here.
+  - name: よくある質問（日本語）
+    url: https://github.com/Yometenma/Tsumigeya/blob/main/docs/ja/faq.md
+    about: インストール、起動、作品情報、セーブデータの問題はまずこちらをご覧ください。
