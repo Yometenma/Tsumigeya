@@ -32,6 +32,7 @@ enum UISnapshot {
     /// 渲染一组界面到指定目录。
     @MainActor
     static func render(to directory: String, darkMode: Bool = true) async -> Int {
+
         let fm = FileManager.default
         do {
             try fm.createDirectory(atPath: directory, withIntermediateDirectories: true)
@@ -176,6 +177,7 @@ enum UISnapshot {
                 }
             }
             let previewStore = AppStore()
+            previewStore.ownsInterfaceLanguage = false
             await previewStore.load(dataDirectory: previewDirectory.path)
             if let game = store.games.first {
                 for (tab, name) in [(GameDetailView.DetailTab.saves, "09-detail-saves"),
@@ -199,6 +201,7 @@ enum UISnapshot {
             try JSONStore.defaultEncoder.encode(GameMap(games: [unknownSaveGame.id: unknownSaveGame]))
                 .write(to: saveData.appendingPathComponent("games.json"), options: .atomic)
             let saveStore = AppStore()
+            saveStore.ownsInterfaceLanguage = false
             await saveStore.load(dataDirectory: saveData.path)
             failures += captureWindow(
                 SaveSection(game: unknownSaveGame).environmentObject(saveStore)
@@ -288,7 +291,10 @@ enum UISnapshot {
         _ view: V, size: CGSize, name: String, dir: String,
         appearance: NSAppearance?
     ) -> Int {
-        let hosting = NSHostingView(rootView: view)
+        // 界面语言和真实窗口一致：`Text("…")` 按环境 locale 取 en/ja 表，快照才能验译文。
+        let hosting = NSHostingView(rootView:
+            view.environment(\.locale, InterfaceLanguageStore.shared.resolved.locale)
+        )
         hosting.frame = CGRect(origin: .zero, size: size)
 
         // 完整布局需要真实窗口；负坐标只用于尽量避开显示区域，不能保证不闪窗。

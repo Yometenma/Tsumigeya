@@ -142,6 +142,17 @@ swift run Tsumigeya
 
 局域网 HTTP 接口需显式 `TSUMIGEYA_METADATA_ALLOW_LAN=1` 或 `TSUMIGEYA_SEARCH_ALLOW_LAN=1`，各自只授权本次完整地址，不放宽网页抓取规则。本地模型可选 `TSUMIGEYA_METADATA_TIMEOUT`、`_INPUT_LIMIT`、`_JSON=1`、`_NO_THINKING=1`。默认不要求结构化输出或额外模板参数，服务不兼容时不自动重试。真实验收须区分：搜索认证、候选来源、公开页面读取、模型整理、预览确认及落盘；一个环节成功不代表全链路通过。
 
+## 界面文案与界面语言
+
+界面支持简体中文、English、日本語，默认跟随系统语言，可在 **设置 → 语言 → 界面语言** 里改。
+
+- **文案写在哪里**：中文原文直接写在代码里，英文与日文放在 `mac-native/Sources/TsumigeyaApp/Resources/{en,ja}.lproj` 和 `mac-native/Sources/TsumigeyaCore/Resources/Localization/{en,ja}.lproj`，**key 就是中文原文**。`zh-Hans.lproj` 是空表：中文是源语言，取不到译文就原样返回原文。新增或修改文案时，同一次改动补齐两条译文。
+- **`Text("…")` 自动生效**，由 SwiftUI 按 `environment(\.locale)` 取表。**代码里拼装的字符串不会自动翻译**：状态提示、错误拼接、窗口标题、菜单项要显式走 `L()`（App 层）或 `L10n.string` / `L10n.format`（Core），否则切语言后仍是中文。
+- **带插值的句子**写成格式串：`String(format: L("共 %lld 项"), count)`，key 用 `%lld` / `%@` 原样进表；不要写成 `L("共 \(count) 项")`（那样取不到译文）。
+- **不要翻译持久化数据**：分类名、设置键、引擎标识、DLsite 页面解析用的原文都不是文案，翻译会破坏已有数据或解析。
+- **打包路径**：SwiftUI 的 `Text` 只查 `Bundle.main`，所以 `scripts/package-macos.sh` 会把 App 资源 bundle 里的 `.lproj` 平铺到 `Contents/Resources/`。改动资源布局后必须打包一次并检查 `.app/Contents/Resources` 是否含 `en.lproj`、`ja.lproj`、`zh-Hans.lproj`；开发运行由仅 Debug 的 `DevLocalizationBridge` 复制同一份表，保持两边一致。
+- **验收**：`swift test` 里的本地化用例覆盖设置值解析、取表、回落与占位符；界面改动还要用 `--snapshot` 渲染三种语言核对，离屏快照不能代替真实窗口交互。
+
 ## 多语言文档
 
 用户文档有简体中文、英文、日文三个版本；界面文案仍只写中文（见上一节的 PR 检查项）。文件对应关系：

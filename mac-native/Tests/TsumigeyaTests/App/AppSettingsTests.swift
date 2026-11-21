@@ -92,6 +92,7 @@ struct AppSettingsTests {
     @Test("常用设置可操作，未实现的选项不伪装成可用")
     func availableSettingsMatchWorkingFeatures() {
         let available = Set(SettingsGroups.Key.allCases.filter { SettingRow(key: $0).isAvailable })
-        #expect(available == Set([SettingsGroups.Key.appearance, .deletionConfirmation, .saveSyncMode]).union(SettingsGroups.group(.metadata)?.keys ?? []))
+        // 界面语言已经实现（跟随系统 / 简体中文 / English / 日本語），必须出现在可用项里。
+        #expect(available == Set([SettingsGroups.Key.appearance, .language, .deletionConfirmation, .saveSyncMode]).union(SettingsGroups.group(.metadata)?.keys ?? []))
     }
 }

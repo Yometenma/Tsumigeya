@@ -155,7 +155,8 @@ struct SettingsDefaultsTests {
     func stringDefaults() {
         let empty: [String: JSONValue] = [:]
         #expect(SettingsDefaults.string(.appearance, from: empty) == "system")
-        #expect(SettingsDefaults.string(.language, from: empty) == "zh-CN")
+        // 界面语言默认跟随系统（用户可改成 zh-CN / en / ja）
+        #expect(SettingsDefaults.string(.language, from: empty) == "system")
         #expect(SettingsDefaults.string(.preferredLanguage, from: empty) == "zh")
         #expect(SettingsDefaults.string(.fallbackLanguage, from: empty) == "ja")
         // ⚠️ 存档同步默认 none（**不接任何云**，D83）

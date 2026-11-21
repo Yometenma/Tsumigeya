@@ -24,9 +24,9 @@ struct RootView: View {
         var id: String { rawValue }
         var title: String {
             switch self {
-            case .library: return "游戏库"
-            case .engines: return "引擎管理"
-            case .settings: return "设置"
+            case .library: return L("游戏库")
+            case .engines: return L("引擎管理")
+            case .settings: return L("设置")
             }
         }
     }

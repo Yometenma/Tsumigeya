@@ -49,6 +49,7 @@ struct TsumigeyaApp: App {
         //    所以最终方案：**先退到 RunLoop**，让主线程空闲下来处理那个 Task，
         //    再等结果 —— 见下面的实现。
         let args = CommandLine.arguments
+        DevLocalizationBridge.installIfNeeded()
         guard let idx = args.firstIndex(of: "--snapshot") else { return }
         let outDir = idx + 1 < args.count
             ? args[idx + 1]
@@ -91,9 +92,14 @@ struct TsumigeyaApp: App {
         //
         //    这里显式给「游戏库」—— 窗口标题表达「这个窗口在看什么」，
         //    应用身份由 Dock / 菜单栏 / 关于面板表达（mac 惯例）。
-        WindowGroup("游戏库") {
+        WindowGroup(L("游戏库")) {
             RootView()
                 .environmentObject(store)
+                // 界面语言：`Text("…")` 按这个 locale 去 App 的 .lproj 取表。
+                .environment(\.locale, store.interfaceLocale)
+                // 切换语言后整棵视图重建一次：没订阅 store 的子视图否则会停在旧文案上。
+                // 代价是当前选中项回到默认状态，属于可接受的取舍（切语言不是高频操作）。
+                .id(store.interfaceLanguage.settingValue)
                 // 窗口最小尺寸：两栏布局至少要这么宽才不挤
                 .frame(minWidth: 1100, minHeight: 700)
         }
@@ -102,7 +108,7 @@ struct TsumigeyaApp: App {
         .windowResizability(.contentMinSize)
         .commands {
             CommandGroup(replacing: .appInfo) {
-                Button("关于 Tsumigeya") {
+                Button(L("关于 Tsumigeya")) {
                     AboutPanel.show()
                 }
             }

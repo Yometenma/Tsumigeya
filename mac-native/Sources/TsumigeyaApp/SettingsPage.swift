@@ -57,14 +57,11 @@ struct SettingsPage: View {
                                 ForEach(group.keys.filter { SettingRow(key: $0).isAvailable }, id: \.self) { key in
                                     SettingRow(key: key)
                                 }
-                                if group.id == .language {
-                                    LabeledContent("界面语言", value: "简体中文")
-                                    Text("目前仅提供简体中文，不会自动切换游戏的语言版本。")
-                                        .font(.callout).foregroundStyle(.secondary)
-                                }
+                                // 界面语言由 SettingRow 的 .language 分支渲染（唯一一处），
+                                // 这里不再重复放一行只读文案。
                                 let unavailable = group.keys.filter { !SettingRow(key: $0).isAvailable }
                                 if !unavailable.isEmpty {
-                                    DisclosureGroup("尚未提供的选项（\(unavailable.count)）") {
+                                    DisclosureGroup(String(format: L("尚未提供的选项（%lld）"), unavailable.count)) {
                                         ForEach(unavailable, id: \.self) { key in
                                             SettingRow(key: key).disabled(true)
                                         }
@@ -219,11 +216,18 @@ struct SettingRow: View {
                 .frame(maxWidth: 260)
 
             case .language:
-                // ⚠️ 目前只有中文一种界面语言（zh-CN 单语言）。
-                //    这里**不做一个假的多选下拉** —— 一个只有一项的选择器
-                //    比没有更困惑。显示为只读信息更诚实。
-                InfoRow("界面语言", "简体中文", mono: false)
-                Text("目前只提供简体中文界面。")
+                Picker("界面语言", selection: Binding(
+                    get: { store.interfaceLanguage.settingValue },
+                    set: { store.setInterfaceLanguage(InterfaceLanguage.fromSetting($0)) }
+                )) {
+                    Text("跟随系统").tag(InterfaceLanguage.system.settingValue)
+                    Text("简体中文").tag(InterfaceLanguage.simplifiedChinese.settingValue)
+                    Text("English").tag(InterfaceLanguage.english.settingValue)
+                    Text("日本語").tag(InterfaceLanguage.japanese.settingValue)
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 420)
+                Text("默认跟随系统语言；系统语言不是中文、英文或日文时显示英文。切换后界面立即更新。")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
 
@@ -333,23 +337,21 @@ struct SettingRow: View {
 
     private var pendingNote: Note? {
         switch key {
-        case .appearance, .deletionConfirmation, .metadataPreferredLanguage, .metadataFallbackLanguage, .metadataEndpoint, .metadataModel, .metadataMode, .metadataLANEndpoint, .metadataTimeout, .metadataInputLimit, .metadataJSONOutput, .metadataDisableThinking, .metadataSearchProvider, .metadataSearchEndpoint, .metadataSearchLANEndpoint, .metadataSearchLimit, .metadataSearchMethod, .metadataSearchQueryKey, .metadataSearchResultsPath, .metadataSearchTitlePath, .metadataSearchURLPath, .metadataSearchSummaryPath, .metadataSearchParameters:
+        case .appearance, .language, .deletionConfirmation, .metadataPreferredLanguage, .metadataFallbackLanguage, .metadataEndpoint, .metadataModel, .metadataMode, .metadataLANEndpoint, .metadataTimeout, .metadataInputLimit, .metadataJSONOutput, .metadataDisableThinking, .metadataSearchProvider, .metadataSearchEndpoint, .metadataSearchLANEndpoint, .metadataSearchLimit, .metadataSearchMethod, .metadataSearchQueryKey, .metadataSearchResultsPath, .metadataSearchTitlePath, .metadataSearchURLPath, .metadataSearchSummaryPath, .metadataSearchParameters:
             return nil
         case .saveSyncMode:
             // ⚠️ **P6 做完后 manual 模式真的能用** → caveat 而不是 notImplemented。
             //    「不接任何云」是用户**需要知道的事实**（D83：半成品云比没有更糟，
             //    用户会以为存档在云上从而不再手动备份）。
-            return .caveat("只提供手动导入导出；不接任何云，存档不会上传。")
-        case .language:
-            return .notImplemented("目前只有简体中文界面")
+            return .caveat(L("只提供手动导入导出；不接任何云，存档不会上传。"))
         case .preferredLanguage, .fallbackLanguage, .languageSwitchPrompt:
-            return .notImplemented("多语言版本检测还没做")
+            return .notImplemented(L("多语言版本检测还没做"))
         case .nonInstalledAutodetect:
-            return .notImplemented("自动识别走的是引擎页，还没接这个开关")
+            return .notImplemented(L("自动识别走的是引擎页，还没接这个开关"))
         case .diagnoseBeforeLaunch:
-            return .notImplemented("启动诊断还没做")
+            return .notImplemented(L("启动诊断还没做"))
         case .checkModuleUpdatesOnStartup:
-            return .notImplemented("启动更新检查还没做")
+            return .notImplemented(L("启动更新检查还没做"))
         }
     }
 }

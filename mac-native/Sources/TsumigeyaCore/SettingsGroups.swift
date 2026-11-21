@@ -65,26 +65,27 @@ public enum SettingsGroups {
         /// ⚠️ Electron 版是 `settings.group.<id>` 从 locales 取（它有 i18n 层）。
         ///    Swift 版 P5 只做中文单语言，所以直接写。
         ///    将来加 i18n 时，这几条要搬进 locales —— 别留两份。
+        /// 分组标题。中文是源语言，取不到译文时原样返回。
         public var title: String {
             switch self {
-            case .appearance: return "外观"
-            case .library: return "游戏库"
-            case .language: return "语言"
-            case .launch: return "启动与引擎"
-            case .data: return "数据与版本"
-            case .metadata: return "作品信息"
+            case .appearance: return L10n.string("外观")
+            case .library: return L10n.string("游戏库")
+            case .language: return L10n.string("语言")
+            case .launch: return L10n.string("启动与引擎")
+            case .data: return L10n.string("数据与版本")
+            case .metadata: return L10n.string("作品信息")
             }
         }
 
         /// 分组说明（一句话讲「这一组管什么」）。
         public var footnote: String {
             switch self {
-            case .appearance: return "界面看到的样子"
-            case .library: return "游戏库里的日常行为"
-            case .language: return "界面语言与多语言版本偏好"
-            case .launch: return "与「游戏能不能起来」相关的开关"
-            case .data: return "数据目录与版本信息"
-            case .metadata: return "刮削语言与独立 AI 接口"
+            case .appearance: return L10n.string("界面看到的样子")
+            case .library: return L10n.string("游戏库里的日常行为")
+            case .language: return L10n.string("界面语言与多语言版本偏好")
+            case .launch: return L10n.string("与「游戏能不能起来」相关的开关")
+            case .data: return L10n.string("数据目录与版本信息")
+            case .metadata: return L10n.string("刮削语言与独立 AI 接口")
             }
         }
     }
@@ -219,8 +220,8 @@ public enum SettingsDefaults {
     public static let strings: [SettingsGroups.Key: String] = [
         // 外观：system = 跟随系统（默认）
         .appearance: "system",
-        // 界面语言：zh-CN（这个项目是中文界面）
-        .language: "zh-CN",
+        // 界面语言：system = 跟随系统（默认）；其余为 zh-CN / en / ja
+        .language: "system",
         // 多语言版本偏好：首选中文、次选日文（用户是中文用户、玩日系游戏）
         .preferredLanguage: "zh",
         .fallbackLanguage: "ja",

@@ -4,6 +4,8 @@ import PackageDescription
 
 let package = Package(
     name: "Tsumigeya",
+    // 简体中文是源语言：没写进 en/ja 表的文案原样显示中文，不会变成空串。
+    defaultLocalization: "zh-Hans",
     platforms: [
         .macOS(.v26)
     ],
@@ -15,7 +17,12 @@ let package = Package(
         .target(
             name: "TsumigeyaCore",
             path: "Sources/TsumigeyaCore",
-            resources: [.copy("Resources/Assist"), .copy("Resources/Wine")]
+            resources: [
+                .copy("Resources/Assist"),
+                .copy("Resources/Wine"),
+                // 界面文案（Core 生成的诊断、错误、引擎说明）的英文与日文表。
+                .process("Resources/Localization"),
+            ]
         ),
         .executableTarget(
             name: "TsumigeyaCLI",
@@ -25,7 +32,10 @@ let package = Package(
         .executableTarget(
             name: "TsumigeyaApp",
             dependencies: ["TsumigeyaCore"],
-            path: "Sources/TsumigeyaApp"
+            path: "Sources/TsumigeyaApp",
+            // 界面文案的英文与日文表。放在 executable target 里，SwiftUI 的 Text
+            // 才能通过 Bundle.main 找到（打包脚本会把 .lproj 平铺到 Contents/Resources）。
+            resources: [.process("Resources")]
         ),
         .testTarget(
             name: "TsumigeyaTests",

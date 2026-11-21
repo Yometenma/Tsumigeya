@@ -454,6 +454,33 @@ final class AppStore: ObservableObject {
             // 没有 / 损坏 → 空字典（所有项回落到默认值）
             settings = [:]
         }
+        applyInterfaceLanguage(InterfaceLanguage.fromSetting(SettingsDefaults.string(.language, from: settings)))
+    }
+
+    /// 当前界面语言（`system` 表示跟随系统）。
+    @Published private(set) var interfaceLanguage: InterfaceLanguage = .system
+
+    /// 这个 store 是否接管**全局**界面语言。
+    ///
+    /// ⚠️ 快照验收和预览会临时建好几个 `AppStore`（各指向一份数据副本）。
+    ///    那些临时 store 的设置是空的 → 语言会被算成「跟随系统」；
+    ///    如果它们也写全局状态，就会把主窗口刚设好的语言改回去（本鱼踩过：
+    ///    设置页的快照明明选了 English，分组标题却是中文）。
+    var ownsInterfaceLanguage = true
+
+    /// 给 SwiftUI 用的 locale：切换语言后视图重算，`Text` 才会去新语言的表里取文案。
+    var interfaceLocale: Locale { interfaceLanguage.locale }
+
+    /// 切换界面语言并把结果同步给 Core（诊断、错误、引擎说明都从那里取表）。
+    func setInterfaceLanguage(_ language: InterfaceLanguage) {
+        setSetting(.language, .string(language.settingValue))
+        applyInterfaceLanguage(language)
+    }
+
+    private func applyInterfaceLanguage(_ language: InterfaceLanguage) {
+        interfaceLanguage = language
+        if ownsInterfaceLanguage { InterfaceLanguageStore.shared.language = language }
+        // Core 里缓存过语言相关文案的类型由视图重建，这里不额外广播。
     }
 
     /// 读一个布尔设置。

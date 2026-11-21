@@ -33,13 +33,23 @@ mkdir -p "$APP_DIR/Contents/Resources"
 cp "$BIN_PATH" "$APP_DIR/Contents/MacOS/$APP_NAME"
 chmod +x "$APP_DIR/Contents/MacOS/$APP_NAME"
 # 核心运行脚本必须随包分发，不能依赖 SwiftPM 开发目录的回退路径。
-for target in TsumigeyaCore; do
+for target in TsumigeyaCore TsumigeyaApp; do
   RESOURCE_BUNDLE="$(dirname "$BIN_PATH")/Tsumigeya_${target}.bundle"
   if [ ! -d "$RESOURCE_BUNDLE" ]; then
     echo "❌ 缺少应用资源：$RESOURCE_BUNDLE" >&2
     exit 1
   fi
   cp -R "$RESOURCE_BUNDLE" "$APP_DIR/Contents/Resources/"
+done
+
+# SwiftUI 的 Text("…") 只查 Bundle.main：界面语言表必须平铺到 Contents/Resources/<lang>.lproj，
+# 放在子 bundle 里 Text 找不到，切语言时界面会停在中文字面量上。
+APP_RESOURCE_BUNDLE="$(dirname "$BIN_PATH")/Tsumigeya_TsumigeyaApp.bundle"
+for lproj in "$APP_RESOURCE_BUNDLE"/Contents/Resources/*.lproj; do
+  if [ -d "$lproj" ]; then
+    cp -R "$lproj" "$APP_DIR/Contents/Resources/"
+    echo "   界面语言表：$(basename "$lproj")"
+  fi
 done
 
 ICNS=""
@@ -77,6 +87,14 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
     <string>AppIcon</string>
     <key>LSMinimumSystemVersion</key>
     <string>26.0</string>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>zh-Hans</string>
+    <key>CFBundleLocalizations</key>
+    <array>
+        <string>zh-Hans</string>
+        <string>en</string>
+        <string>ja</string>
+    </array>
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>NSHumanReadableCopyright</key>
