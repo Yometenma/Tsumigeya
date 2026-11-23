@@ -52,13 +52,13 @@ Add a game you have already downloaded and extracted to your library, and it ide
 
 ## ✦ Recent updates
 
-**v3.1.1**
+**v3.1.2**
 
-- **NScripter runtime switched to ONSyuri**: the previous runtime was a 32-bit build and cannot run on Apple Silicon. The arm64 build supports Japanese Shift_JIS, Simplified Chinese GBK and UTF-8 scripts, plus `nt2`／`nt3` encrypted packages.
-- **Encoding and paths handled automatically**: text encoding is detected from the script instead of being chosen by hand, and Japanese/Chinese folder names are mapped to an ASCII alias before launch.
-- **Verified with a real work**: a free DLsite trial runs through its title screen and menus; two launch problems (missing runtime library and a font that would not open) were fixed along the way.
+- **Launch compatibility for NW.js games**: some NW.js games ship a manifest that recent runtimes reject, which looked like "clicking Play does nothing". The launcher now builds a compatibility app directory in its own data folder, leaving game files untouched and save locations unchanged — covering both a missing `name` and non-strict JSON.
+- **Multiple NW.js versions**: install extra NW.js builds from the Engines page (v0.80.0 and later ship native Apple silicon packages) and pick one per game under Edit Game → Engine options. Installed versions are never overwritten or removed.
+- **Version switch offered after a failed start**: if a runtime exits within 10 seconds of launch, the game page says so and offers a one-click retry with another installed version.
 
-[Download v3.1.1 and read the release notes](https://github.com/Yometenma/Tsumigeya/releases/tag/v3.1.1) · [Getting game info](docs/en/game-info.md) · [Full changelog](更新日志.md)
+[Download v3.1.2 and read the release notes](https://github.com/Yometenma/Tsumigeya/releases/tag/v3.1.2) · [Getting game info](docs/en/game-info.md) · [Full changelog](更新日志.md)
 
 <a id="features"></a>
 
