@@ -672,3 +672,5 @@
 "「%@」已经装了。" = "“%@” is already installed.";
 "正在安装，请等这次结束。" = "An install is already running; wait for it to finish.";
 "请先停止游戏，再安装运行时。" = "Stop the running game before installing a runtime.";
+"%@ 似乎没能启动。可以换一个 NW.js 版本再试：" = "%@ seems to have failed to start. Try another NW.js version:";
+"改用 %@ 启动" = "Launch with %@";

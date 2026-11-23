@@ -66,6 +66,9 @@ struct GameDetailView: View {
                 launchFailure
                     .padding(.horizontal, 24)
 
+                nwjsSwitchHint
+                    .padding(.horizontal, 24)
+
                 Divider()
                 bodyContent(for: tab)
                     .frame(maxWidth: 860, alignment: .leading)
@@ -298,8 +301,37 @@ struct GameDetailView: View {
         }
     }
 
-    // MARK: 信息行
+    /// 「这个版本没起来，换一个试试」。
+    ///
+    /// ⚠️ 只在**有强信号**时出现（启动后 10 秒内进程就没了），判据见
+    ///    `NwjsVersionAdvisor`。不自动重启：切版本会换 nw.js 的 profile，
+    ///    得让用户自己决定（点按钮才算确认）。
+    @ViewBuilder
+    private var nwjsSwitchHint: some View {
+        if let suggestion = store.nwjsSwitchSuggestions[game.id] {
+            VStack(alignment: .leading, spacing: 6) {
+                Label(
+                    String(format: L("%@ 似乎没能启动。可以换一个 NW.js 版本再试："),
+                           suggestion.current),
+                    systemImage: "arrow.triangle.2.circlepath")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
 
+                HStack(spacing: 8) {
+                    ForEach(suggestion.alternatives.prefix(3), id: \.self) { version in
+                        Button(String(format: L("改用 %@ 启动"), version)) {
+                            store.relaunchWithNwjsVersion(gameID: game.id, version: version)
+                        }
+                        .controlSize(.small)
+                    }
+                }
+            }
+            .padding(.bottom, 8)
+        }
+    }
+
+    // MARK: 信息行
     private var infoRows: some View {
         VStack(alignment: .leading, spacing: 10) {
             infoRow(L("路径"), game.gamePath, mono: true)

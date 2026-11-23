@@ -94,6 +94,16 @@ final class AppStore: ObservableObject {
     ///    静默失败会让用户以为「点了没反应」。
     @Published private(set) var lastLaunchFailure: [String: String] = [:]
 
+    /// 「要不要换个 NW.js 版本试试」的建议（id → 建议）。
+    ///
+    /// ⚠️ 只是**建议**，不自动重启：判据、为什么不自动降级，见 `NwjsVersionAdvisor`。
+    @Published private(set) var nwjsSwitchSuggestions: [String: NwjsVersionAdvisor.Suggestion] = [:]
+
+    /// 最近一次启动尝试（id → 启动时用的版本与时刻），用来判「刚起来就没了」。
+    ///
+    /// 只在内存：进程没了、游戏被删、启动器重启，这些记录都该跟着失效。
+    private var launchAttempts: [String: (version: String?, startedAt: Date)] = [:]
+
     /// 分类数据（P4：从 library-meta.json 读）。
     var categories: CategoryDefs { library.categories }
     var assignments: CategoryAssignments { library.assignments }
@@ -185,6 +195,15 @@ final class AppStore: ObservableObject {
             let outcome = Launcher.launch(plan)
             if outcome.ok, let pid = outcome.pid {
                 runningGames[game.id] = pid
+                // 记下「这次用哪个版本、什么时候起的」：进程若很快消失，
+                // refreshRunning 据此给出换版本建议（见 NwjsVersionAdvisor）
+                if game.gameEngine == "nwjs" || game.gameEngine == "tyrano" {
+                    launchAttempts[game.id] = (
+                        version: args["version"]?.stringValue, startedAt: Date())
+                } else {
+                    launchAttempts.removeValue(forKey: game.id)
+                }
+                nwjsSwitchSuggestions.removeValue(forKey: game.id)
                 // ⚠️ **启动成功后开始轮询**（否则游戏关了界面还显示"运行中"）
                 startRunningPoll()
             } else {
@@ -193,8 +212,23 @@ final class AppStore: ObservableObject {
         }
     }
 
-    func configureWine(game: GameRecord) {
-        guard game.gameEngine == "wine", runningGames[game.id] == nil, self.game(id: game.id) == game else { return }
+    /// 换一个 NW.js 版本并立刻重启这个游戏。
+    ///
+    /// 写回 `gameArgs.version` 再启动：用户选过的版本要留下来，下次直接用它
+    /// （`NwjsVersion.resolve` 优先用磁盘上存在的那一个），而不是每次重新踩一遍。
+    func relaunchWithNwjsVersion(gameID: String, version: String) {
+        guard let game = game(id: gameID) else { return }
+        guard runningGames[gameID] == nil else { return }
+        var args = game.gameArgs ?? [:]
+        args["version"] = .string(version)
+        guard updateGame(
+            id: game.id, title: game.gameTitle, engine: game.gameEngine, gameArgs: args)
+        else { return }
+        nwjsSwitchSuggestions.removeValue(forKey: gameID)
+        if let updated = self.game(id: gameID) { launch(game: updated) }
+    }
+
+    func configureWine(game: GameRecord) {        guard game.gameEngine == "wine", runningGames[game.id] == nil, self.game(id: game.id) == game else { return }
         if installTasks["wine"] != nil {
             lastLaunchFailure[game.id] = L("Wine 正在安装，请等待安装结束后再打开环境设置。")
             return
@@ -250,6 +284,20 @@ final class AppStore: ObservableObject {
         }
         if alive != runningGames {
             for id in runningGames.keys where alive[id] == nil {
+                // 「刚起来就没了」= 这个运行时压根没跑起来，可以建议换版本。
+                // ⚠️ 用启动时刻算存活时长，不是用「现在」——玩了几小时再关不算失败。
+                if let attempt = launchAttempts.removeValue(forKey: id) {
+                    let elapsed = Date().timeIntervalSince(attempt.startedAt)
+                    let installed = NwjsVersion.availableVersions(dataDir: dataDir)
+                    if let game = game(id: id),
+                       let suggestion = NwjsVersionAdvisor.suggestion(
+                           engine: game.gameEngine, installed: installed,
+                           current: attempt.version, exitedAfter: elapsed) {
+                        nwjsSwitchSuggestions[id] = suggestion
+                    } else {
+                        nwjsSwitchSuggestions.removeValue(forKey: id)
+                    }
+                }
                 if let game = game(id: id), game.gameEngine == "wine",
                    let code = WineRuntime.lastExit(dataDir: dataDir, folder: DetectPath.gameDirForFiles(game.gamePath), gameID: game.wineEnvironmentIdentity),
                    code != 0 && code != 143 {
