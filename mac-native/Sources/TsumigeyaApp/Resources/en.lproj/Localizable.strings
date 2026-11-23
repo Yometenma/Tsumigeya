@@ -662,3 +662,13 @@
 "运行中（pid %@）" = "Running (pid %@)";
 "运行时：%@" = "Runtime: %@";
 "（%@ 个原文件已备份为 .tsumigeya-bak）" = "(%@ original files backed up as .tsumigeya-bak)";
+"安装其它版本…" = "Install another version…";
+"安装其它 NW.js 版本" = "Install another NW.js version";
+"装好后在「编辑游戏 → 引擎参数 → 版本」里选这个版本。已装的版本不会被覆盖或删除。" = "After installing, pick it under Edit Game → Engine options → Version. Installed versions are never overwritten or removed.";
+"未在 macOS 26 上验证窗口" = "Window not verified on macOS 26";
+"Apple 芯片原生" = "Native Apple silicon";
+"安装中…" = "Installing…";
+"不认识的 NW.js 版本：%@" = "Unknown NW.js version: %@";
+"「%@」已经装了。" = "“%@” is already installed.";
+"正在安装，请等这次结束。" = "An install is already running; wait for it to finish.";
+"请先停止游戏，再安装运行时。" = "Stop the running game before installing a runtime.";

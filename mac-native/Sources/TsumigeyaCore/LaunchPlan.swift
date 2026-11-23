@@ -136,7 +136,9 @@ public enum LaunchPlanner {
         case "wine":
             return WineRuntime.plan(ctx, fileExists: fileExists, listDir: listDir)
         case "nwjs", "tyrano":
-            return nwjsPlan(ctx, engine: engine, fileExists: fileExists)
+            return nwjsPlan(
+                ctx, engine: engine, fileExists: fileExists,
+                performPreparation: performPreparation)
         case "mkxpz":
             return mkxpzPlan(ctx, fileExists: fileExists, performPreparation: performPreparation)
         case "easyrpg":
@@ -254,8 +256,24 @@ public enum LaunchPlanner {
 
     // MARK: - NW.js
 
+    /// NW.js / Tyrano 的启动方案。
+    ///
+    /// 参数是 `<app 目录>`，cwd 保持游戏目录。
+    ///
+    /// ===== package.json 的 name 兼容层 =====
+    ///
+    /// 有些游戏导出的 `package.json` 里 `"name": ""`（实测 FateEmpire of Dirt）。
+    /// nw.js 把 app 当 Chrome 扩展加载，`name` 非法时直接弹
+    /// “Required value 'name' is missing or invalid.” 然后退出 —— 表现就是
+    /// 「点了开始游戏什么都没发生」（进程起过、窗口不出现）。
+    ///
+    /// 这时改用数据目录里的兼容 app 目录（符号链接回游戏目录，见 `NwjsAppShim`），
+    /// **游戏文件一个字节都不改**（D53）。
+    ///
+    /// ⚠️ 诊断（`performPreparation: false`）只回报「将会用哪个目录」，不产物。
     static func nwjsPlan(
-        _ ctx: LaunchContext, engine: String, fileExists: (String) -> Bool
+        _ ctx: LaunchContext, engine: String, fileExists: (String) -> Bool,
+        performPreparation: Bool = true
     ) -> Result<LaunchPlan, LaunchFailure> {
         let version = ctx.gameArgs["version"]?.stringValue ?? ""
         let binary = BinaryPaths.nwjsBinary(ctx.dataDir, version: version, arch: ctx.arch)
@@ -264,7 +282,18 @@ public enum LaunchPlanner {
             return .failure(.engineBinaryMissing(binary: binary))
         }
 
-        var args: [String] = [ctx.folder]
+        var appFolder = ctx.folder
+        if NwjsAppShim.requiresRepair(folder: ctx.folder) {
+            if performPreparation {
+                if let shim = NwjsAppShim.ensure(dataDir: ctx.dataDir, folder: ctx.folder) {
+                    appFolder = shim
+                }
+            } else {
+                appFolder = NwjsAppShim.appDir(dataDir: ctx.dataDir, folder: ctx.folder)
+            }
+        }
+
+        var args: [String] = [appFolder]
         if ctx.gameArgs["fullscreen"]?.boolValue == true {
             args.append("--start-fullscreen")   // 游戏目录**之后**（见上）
         }

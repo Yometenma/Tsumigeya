@@ -141,6 +141,10 @@ public struct GameLibraryFile: Sendable {
                 throw LibraryIntake.Failure(String(format: L10n.string("保存游戏库失败：%@"), "\(error)"))
             }
             completed.append(.game)
+            // 兼容目录（nw.js 清单缺 name 时生成的派生 app 目录）跟着游戏记录一起清。
+            // 它可再生、不含用户数据，清理失败不回退删除结果。
+            NwjsAppShim.removeCache(
+                dataDir: dataDir, folder: DetectPath.gameDirForFiles(expected.gamePath))
             return RemovalReport(completed: completed, failure: nil, map: updated)
         } catch {
             return RemovalReport(completed: completed, failure: "\(error)", map: nil)

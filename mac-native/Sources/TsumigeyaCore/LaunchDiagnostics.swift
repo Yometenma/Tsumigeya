@@ -129,6 +129,27 @@ public enum LaunchDiagnostics {
             }
         }
 
+        // nw.js 的清单兼容层（见 NwjsAppShim）：
+        // 新版 nw.js 按 Chrome 扩展语义校验 app 清单，老游戏常见字段缺项。
+        // 这里只提示，不产物（diagnostics 不写盘）。
+        if game.gameEngine == "nwjs" || game.gameEngine == "tyrano" {
+            switch NwjsAppShim.manifestStatus(folder: folder) {
+            case .nameInvalid:
+                add("nwjs-app-shim", .notice, L10n.string("使用兼容启动目录"),
+                    L10n.string("这个游戏的 package.json 没有合法的 name，新版 nw.js 会拒绝加载。启动时改用数据目录里的兼容目录，不改动游戏文件，存档位置也不变。"))
+            case .unreadable:
+                // 解析不了就补不了：不猜，直接把原因说清楚，别让用户对着 nw.js 的弹框猜
+                add("nwjs-manifest", .notice, L10n.string("应用清单无法解析"),
+                    L10n.string("package.json 不是合法的 JSON（常见原因：残留注释、尾逗号或编码损坏）。nw.js 无法加载这个游戏，需要修正清单或改用能读这份清单的运行时。"))
+            case .loose:
+                // 我们解析得动，nw.js 的 JSON.parse 不认（典型是尾逗号）
+                add("nwjs-manifest-loose", .notice, L10n.string("应用清单格式不规范"),
+                    L10n.string("package.json 用了尾逗号之类 nw.js 不接受的写法。启动时改用数据目录里重写成标准 JSON 的兼容清单，不改动游戏文件，存档位置也不变。"))
+            case .missing, .ok:
+                break
+            }
+        }
+
         let context = LaunchContext(
             folder: folder, gamePath: game.gamePath, gameArgs: args,
             gameTitle: game.gameTitle, dataDir: dataDir, arch: arch, gameID: game.wineEnvironmentIdentity)

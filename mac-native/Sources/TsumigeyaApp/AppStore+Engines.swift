@@ -131,6 +131,48 @@ extension AppStore {
         }
     }
 
+    /// 追加安装一个 NW.js 版本（多版本共存，见 D66）。
+    ///
+    /// 为什么单独一个入口：`installEngine("nwjs")` 会按依赖表装「默认版本」，
+    /// 而这里要装的是**用户挑的那一个**。装完不动其它已装版本，
+    /// 游戏可以在「编辑游戏 → 引擎参数 → 版本」里选。
+    func installNwjsVersion(_ version: String) {
+        let folder = "nwjs"
+        guard installTasks[folder] == nil else {
+            engineErrors[folder] = L("正在安装，请等这次结束。")
+            return
+        }
+        guard let dependency = EngineDependencies.nwjsDependency(forVersion: version) else {
+            engineErrors[folder] = String(format: L("不认识的 NW.js 版本：%@"), "\(version)")
+            return
+        }
+        if NwjsVersion.availableVersions(dataDir: dataDir).contains(version) {
+            engineErrors[folder] = String(format: L("「%@」已经装了。"), "\(version)")
+            return
+        }
+        if !runningGames.isEmpty {
+            engineErrors[folder] = L("请先停止游戏，再安装运行时。")
+            return
+        }
+        engineErrors.removeValue(forKey: folder)
+        let token = UUID()
+        installTokens[folder] = token
+        let root = BinaryPaths.moduleDir(dataDir, folder)
+        engineProgress[folder] = .step(label: L("准备中"))
+
+        let task = Task { [weak self] in
+            guard let self else { return }
+            // 复用 runInstall：进度、取消、错误处理与「安装引擎」完全一致。
+            // ⚠️ 它会重写 manifest.json（内容是 registry 里的默认依赖表），
+            //    不包含这里追加的版本 —— 但版本枚举靠扫 `deps/version/` 目录
+            //    （NwjsVersion.availableVersions），不依赖 manifest，所以没有副作用。
+            await self.runInstall(
+                folder: folder, root: root, deps: [dependency], token: token,
+                acceptRosettaLicense: false)
+        }
+        installTasks[folder] = task
+    }
+
     /// 把进度事件的 i18n key 翻成人话。
     ///
     /// ⚠️ core 里给的是 key（`progress.download`），因为 core 不该管文案

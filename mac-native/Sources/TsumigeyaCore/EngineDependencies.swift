@@ -143,8 +143,85 @@ public enum EngineDependencies {
         }
     }
 
-    /// 按依赖表生成一份 manifest（D62：字段名兼容上游）。
+    // MARK: - NW.js 的额外版本
+
+    /// 一个可选装到 NW.js 的运行时版本。
     ///
+    /// ===== 为什么需要「装第二个版本」=====
+    ///
+    /// NW.js 的行为随版本变化很大（Chromium 的 JS/DOM 行为、清单校验都变），
+    /// 老游戏可能需要老运行时才跑得起来。启动器本来就支持多版本共存
+    /// （D66：`deps/version/<v>/`，更新时保留已装版本），缺的只是**装第二个的入口**。
+    ///
+    /// ===== 候选表为什么这么短（2026-11-23 Mac 实测）=====
+    ///
+    /// 只放 `osx-arm64` 原生包 —— 只有 x64 的老版本在现代 macOS 上不可用：
+    ///   · v0.72.0（x64，Rosetta 2 已装）：进程能起来，但**根本没有窗口**
+    ///     （Chromium 74 的旧窗口路径在这套系统上不工作）。
+    ///     装上去只会让用户以为「启动器坏了」，所以不进候选表。
+    ///   · v0.60.0 同理（也是纯 x64），未单独复测，按同一结论排除。
+    ///
+    /// ⚠️ `verified` 是**窗口能否真的出现**的实测标记，不是「URL 能不能下载」：
+    ///    v0.106.1 / v0.90.0 在这台机器上开过窗口；v0.100.0 / v0.80.0 只验证了
+    ///    下载地址可达（`curl -I` 200），没在 macOS 26 上验证窗口，所以标 false。
+    ///    UI 要把这个区别如实显示出来，别把「能下载」说成「能用」。
+    ///
+    /// ⚠️ 还有一条实测结论：**换版本解决不了清单校验问题**。
+    ///    v0.90.0 对 `name: ""` 的清单照样弹
+    ///    “Required value 'name' is missing or invalid.” —— 这条校验在 0.90 就已经存在，
+    ///    所以清单类问题一律交给 `NwjsAppShim`，跟版本无关。
+    public struct NwjsRuntimeChoice: Sendable, Equatable {
+        public let version: String
+        public let hasArm64: Bool
+        public let hasX64: Bool
+        /// 是否在这台机器（macOS 26 / arm64）上实测能开出游戏窗口。
+        public let verified: Bool
+
+        public init(version: String, hasArm64: Bool, hasX64: Bool, verified: Bool) {
+            self.version = version
+            self.hasArm64 = hasArm64
+            self.hasX64 = hasX64
+            self.verified = verified
+        }
+
+        /// 这台机器上装这个版本，需要 Rosetta 2 吗。
+        public func needsRosetta(arch: String) -> Bool {
+            arch == "arm64" && !hasArm64
+        }
+    }
+
+    /// 可选的 NW.js 版本（**顺序 = 界面顺序**，新的在前）。
+    public static let nwjsRuntimeChoices: [NwjsRuntimeChoice] = [
+        NwjsRuntimeChoice(version: "v0.106.1", hasArm64: true, hasX64: true, verified: true),
+        NwjsRuntimeChoice(version: "v0.100.0", hasArm64: true, hasX64: true, verified: false),
+        NwjsRuntimeChoice(version: "v0.90.0", hasArm64: true, hasX64: true, verified: true),
+        NwjsRuntimeChoice(version: "v0.80.0", hasArm64: true, hasX64: true, verified: false),
+    ]
+
+    /// 某个 NW.js 版本的下载依赖（依赖名 `version/<v>`，落地成 `deps/version/<v>/`）。
+    ///
+    /// - Returns: `nil` = 不在候选表里（不猜 URL，免得用户装到一个 404 上）
+    public static func nwjsDependency(
+        forVersion version: String
+    ) -> (name: String, spec: DependencySpec)? {
+        guard let choice = nwjsRuntimeChoices.first(where: { $0.version == version }) else {
+            return nil
+        }
+        let base = "https://dl.nwjs.io/\(version)/nwjs-sdk-\(version)-osx"
+        let spec: DependencySpec
+        if choice.hasArm64 {
+            spec = .split(arm64: "\(base)-arm64.zip", x86_64: "\(base)-x64.zip")
+        } else {
+            // 只有 x64：仍然放在 `x86_64` 键下 —— `pickBuild` 在 arm64 机器上
+            // 会按 x86_64 回落到这个包（Rosetta 运行），不需要伪造 arch。
+            spec = DependencySpec(builds: [
+                "x86_64": DependencyBuild(link: "\(base)-x64.zip", unzip: true)
+            ])
+        }
+        return ("version/\(version)", spec)
+    }
+
+    /// 按依赖表生成一份 manifest（D62：字段名兼容上游）。    ///
     /// ⚠️ **字段名一个不能差**：这份 manifest 要能被我方读回，
     /// 也要能让原版 Xenolauncher 读（万一用户的 modules 目录被两边共用）。
     ///

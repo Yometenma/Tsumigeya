@@ -65,6 +65,7 @@ struct EngineRow: View {
     let entry: EngineStatus.Entry
     @EnvironmentObject private var store: AppStore
     @State private var confirmsUninstall = false
+    @State private var showsNwjsVersions = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -122,6 +123,10 @@ struct EngineRow: View {
         } message: {
             Text(String(format: L("使用 %@ 的游戏将暂时无法启动。游戏文件和存档不会删除，之后可重新安装。"), "\(entry.definition.name)"))
         }
+        .sheet(isPresented: $showsNwjsVersions) {
+            NwjsVersionsSheet()
+                .environmentObject(store)
+        }
     }
 
     // MARK: 状态色
@@ -170,6 +175,11 @@ struct EngineRow: View {
                     .foregroundStyle(.secondary)
                 Menu {
                     Button(L("重新安装")) { store.installEngine(entry.id, force: true) }
+                    // NW.js 是唯一「多版本共存」的运行时：老游戏可能需要老版本。
+                    // 只在已装时给这个入口，装第二个版本不会覆盖现有的。
+                    if entry.id == "nwjs" {
+                        Button(L("安装其它版本…")) { showsNwjsVersions = true }
+                    }
                     Button(L("移除组件…"), role: .destructive) { confirmsUninstall = true }
                         .disabled(!store.runningGames.isEmpty)
                 } label: {
