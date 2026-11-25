@@ -41,6 +41,23 @@ struct KirikiriPathTests {
 @Suite("NScripter 路径")
 struct NScripterPathTests {
 
+    @Test("依赖名与二进制同名时不会把目录当成二进制")
+    func doesNotReturnDirectoryAsBinary() {
+        // 真实安装结构：deps/onsyuri/ 是目录，二进制在 deps/onsyuri/onsyuri。
+        // 旧判据只看 fileExists，会把目录返回出去（诊断显示「可执行」、启动报「不存在」）。
+        let dirPath = "/data/modules/nscripter/deps/onsyuri"
+        let binPath = dirPath + "/onsyuri"
+        let fake = FakeFS([dirPath, binPath])
+        let p = BinaryPaths.nscripterBinary(
+            "/data", fileExists: fake.exists,
+            listDir: { path in
+                if path == dirPath { return ["onsyuri", "lib"] }
+                if path.hasSuffix("/deps") { return ["onsyuri"] }
+                return []
+            })
+        #expect(p == binPath, "必须返回目录里的二进制，而不是目录本身")
+    }
+
     /// 打包结构：`onsyuri` + `lib/*.dylib`（动态库由我方打包，见依赖表）。
     ///
     /// ⚠️ 旧实现取的是 tmkk 包里的 `onscripter`（ppc + i386），现代 macOS 直接

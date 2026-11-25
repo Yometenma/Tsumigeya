@@ -248,8 +248,17 @@ public enum BinaryPaths {
         fileExists: (String) -> Bool, listDir: (String) -> [String]
     ) -> String? {
         // ① deps 根（依赖名不带子目录时）
+        //
+        // ⚠️ **必须排除同名目录**：ONS 的依赖名就叫 `onsyuri`，解包后
+        //    `deps/onsyuri/` 是目录、二进制在 `deps/onsyuri/onsyuri`。
+        //    只看 fileExists 会把目录当二进制返回，随后：
+        //      · 诊断用 isExecutableFile 判断（目录有 x 权限）→ 显示「已找到且可执行」
+        //      · 启动拿目录去 exec → 报「运行时不存在」
+        //    判据用 listDir：对文件返回空，对目录返回内容（与下面 ② 的写法一致）。
         let rootCandidate = (deps as NSString).appendingPathComponent(binaryName)
-        if fileExists(rootCandidate) { return rootCandidate }
+        if fileExists(rootCandidate), listDir(rootCandidate).isEmpty {
+            return rootCandidate
+        }
 
         // ② deps 下每个子目录（依赖名带子目录时 —— 实测 siglus 就是这样）
         //

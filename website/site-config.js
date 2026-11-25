@@ -1,7 +1,7 @@
 // 站点可编辑配置：版本号与交流群。交流群建好后，在 groups 里加一项即可显示在「社区」区块。
 // name / note 是简体中文；nameEn / noteEn、nameJa / noteJa 供右上角语言切换使用。
 window.TSUMIGEYA_SITE = {
-  version: 'v3.1.2',
+  version: 'v3.1.3',
   groups: [
     {
       name: 'QQ 交流群', nameEn: 'QQ Group', nameJa: 'QQ グループ',

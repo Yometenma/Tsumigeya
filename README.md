@@ -52,11 +52,12 @@ Add a game you have already downloaded and extracted to your library, and it ide
 
 ## ✦ Recent updates
 
-**v3.1.2**
+**v3.1.3**
 
-- **Launch compatibility for NW.js games**: some NW.js games ship a manifest that recent runtimes reject, which looked like "clicking Play does nothing". The launcher now builds a compatibility app directory in its own data folder, leaving game files untouched and save locations unchanged — covering both a missing `name` and non-strict JSON.
-- **Multiple NW.js versions**: install extra NW.js builds from the Engines page (v0.80.0 and later ship native Apple silicon packages) and pick one per game under Edit Game → Engine options. Installed versions are never overwritten or removed.
-- **Version switch offered after a failed start**: if a runtime exits within 10 seconds of launch, the game page says so and offers a one-click retry with another installed version.
+- **Fixed ONS runtime lookup**: when a runtime dependency and its binary share the same name, the dependency folder was mistaken for the executable — the launch check said "runtime found and executable" while pressing Play reported "runtime missing". It now resolves to the binary inside that folder.
+- Otherwise the same as v3.1.2: the NW.js manifest compatibility layer with multiple runtimes, and NScripter running on ONSyuri (Japanese, Simplified Chinese and UTF-8 scripts, plus `nt2`／`nt3`).
+
+[Download v3.1.3 and read the release notes](https://github.com/Yometenma/Tsumigeya/releases/tag/v3.1.3) · [Getting game info](docs/en/game-info.md) · [Full changelog](更新日志.md)
 
 [Download v3.1.2 and read the release notes](https://github.com/Yometenma/Tsumigeya/releases/tag/v3.1.2) · [Getting game info](docs/en/game-info.md) · [Full changelog](更新日志.md)
 
