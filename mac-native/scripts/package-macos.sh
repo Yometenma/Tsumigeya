@@ -15,6 +15,11 @@ DMG_PATH="$OUT_DIR/$APP_NAME-$VERSION.dmg"
 
 echo "== 1/5 清理旧产物 =="
 rm -rf "$APP_DIR" "$DMG_PATH"
+# ⚠️ `dist/` 在用户目录里，里面的 .app 会被 Spotlight 索引，
+#    于是启动台／聚焦搜索里出现**第二个 Tsumigeya**（和 /Applications 里安装的那份并列）。
+#    放一个 .metadata_never_index 让 Spotlight 跳过整个 dist 目录。
+mkdir -p "$OUT_DIR"
+touch "$OUT_DIR/.metadata_never_index"
 
 echo "== 2/5 构建 release =="
 swift build --configuration release
