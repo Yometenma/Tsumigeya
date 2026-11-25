@@ -54,8 +54,8 @@ Add a game you have already downloaded and extracted to your library, and it ide
 
 **v3.1.3**
 
-- **Fixed ONS runtime lookup**: when a runtime dependency and its binary share the same name, the dependency folder was mistaken for the executable — the launch check said "runtime found and executable" while pressing Play reported "runtime missing". It now resolves to the binary inside that folder.
-- Otherwise the same as v3.1.2: the NW.js manifest compatibility layer with multiple runtimes, and NScripter running on ONSyuri (Japanese, Simplified Chinese and UTF-8 scripts, plus `nt2`／`nt3`).
+- Fixed ONS runtime lookup: a dependency sharing its binary's name made the folder look like the executable, so the launch check passed while Play reported "runtime missing".
+- Otherwise the same as v3.1.2: NW.js manifest compatibility with multiple runtimes, NScripter on ONSyuri.
 
 [Download v3.1.3 and read the release notes](https://github.com/Yometenma/Tsumigeya/releases/tag/v3.1.3) · [Getting game info](docs/en/game-info.md) · [Full changelog](更新日志.md)
 
