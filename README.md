@@ -52,12 +52,12 @@ Add a game you have already downloaded and extracted to your library, and it ide
 
 ## ✦ Recent updates
 
-**v3.1.3**
+**v3.1.4**
 
-- Fixed ONS runtime lookup: a dependency sharing its binary's name made the folder look like the executable, so the launch check passed while Play reported "runtime missing".
-- Otherwise the same as v3.1.2: NW.js manifest compatibility with multiple runtimes, NScripter on ONSyuri.
+- Fixed encoding detection for encrypted scripts: games shipping only `nscript.dat` were always treated as Japanese Shift_JIS, so GBK／UTF-8 translations showed garbled text once the story started. The script is now decrypted before detection.
+- Otherwise the same as v3.1.3.
 
-[Download v3.1.3 and read the release notes](https://github.com/Yometenma/Tsumigeya/releases/tag/v3.1.3) · [Getting game info](docs/en/game-info.md) · [Full changelog](更新日志.md)
+[Download v3.1.4 and read the release notes](https://github.com/Yometenma/Tsumigeya/releases/tag/v3.1.4) · [Getting game info](docs/en/game-info.md) · [Full changelog](更新日志.md)
 
 [Download v3.1.2 and read the release notes](https://github.com/Yometenma/Tsumigeya/releases/tag/v3.1.2) · [Getting game info](docs/en/game-info.md) · [Full changelog](更新日志.md)
 

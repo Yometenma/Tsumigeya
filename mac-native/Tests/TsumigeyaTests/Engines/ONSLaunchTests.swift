@@ -130,6 +130,31 @@ struct ONSLaunchTests {
         #expect(plan.cwd == Self.folder)
     }
 
+    /// 实测踩到的坑：某 GBK 汉化作品只有加密的 `nscript.dat`，
+    /// 旧逻辑只在明文 `0.txt`／`00.txt` 上判编码，判不到就回落 sjis → 正文全乱码。
+    @Test("加密 nscript.dat 里的 GBK 也能判出来")
+    func detectsGBKInsideEncryptedScript() throws {
+        // 「本汉化补丁由汉化组制作」的 GBK 字节，再按 ONS mode 1 加密
+        let gbk = Data([0xB1, 0xBE, 0xBA, 0xBA, 0xBB, 0xAF, 0xB2, 0xB9, 0xB6, 0xA1,
+                        0xD3, 0xC9, 0xBA, 0xBA, 0xBB, 0xAF, 0xD7, 0xE9, 0xD6, 0xC6, 0xD7, 0xF7])
+        let encrypted = Data(gbk.map { $0 ^ 0x84 })
+        let plan = try makePlan(
+            extraFiles: [Self.systemFont],
+            scripts: [Self.folder + "/nscript.dat": encrypted]).get()
+        #expect(plan.args.contains("--enc:gbk"), "nscript.dat 解出来是 GBK，不能按 sjis 跑")
+    }
+
+    @Test("加密 nscript.dat 里的日文原版仍判 sjis")
+    func keepsSjisForEncryptedJapaneseScript() throws {
+        let sjis = "*define\ngame\n*start\nこれは日本語のテストです。\nend\n"
+            .data(using: .shiftJIS)!
+        let encrypted = Data(sjis.map { $0 ^ 0x84 })
+        let plan = try makePlan(
+            extraFiles: [Self.systemFont],
+            scripts: [Self.folder + "/nscript.dat": encrypted]).get()
+        #expect(plan.args.contains("--enc:sjis"))
+    }
+
     @Test("二进制不存在时报引擎问题（不是崩溃）")
     func missingBinary() {
         let result = LaunchPlanner.plan(

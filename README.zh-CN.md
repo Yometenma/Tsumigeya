@@ -52,12 +52,12 @@
 
 ## ✦ 最近更新
 
-**v3.1.3**
+**v3.1.4**
 
-- 修复 ONS 运行时定位：依赖名与二进制同名时会把目录当成可执行文件，导致诊断显示正常、启动却报「运行时不存在」。
-- 其余同 v3.1.2：NW.js 清单兼容层与多版本运行时、NScripter 使用 ONSyuri。
+- 修复加密脚本的编码识别：只有 `nscript.dat` 的作品此前一律按日文 Shift_JIS 处理，GBK／UTF-8 汉化版进正文会全是乱码。现在会先解密再判断。
+- 其余同 v3.1.3。
 
-[下载 v3.1.3 与查看更新说明](https://github.com/Yometenma/Tsumigeya/releases/tag/v3.1.3) · [作品信息获取](docs/作品信息获取.md) · [完整更新日志](更新日志.md)
+[下载 v3.1.4 与查看更新说明](https://github.com/Yometenma/Tsumigeya/releases/tag/v3.1.4) · [作品信息获取](docs/作品信息获取.md) · [完整更新日志](更新日志.md)
 
 <a id="features"></a>
 

@@ -52,12 +52,12 @@
 
 ## ✦ 最近の更新
 
-**v3.1.3**
+**v3.1.4**
 
-- ONS ランタイムの解決を修正：依存名とバイナリ名が同じ場合にフォルダーを実行ファイルと誤認し、診断は正常なのに開始すると「ランタイムが存在しない」と出ていました。
-- それ以外は v3.1.2 と同じ：NW.js のマニフェスト互換と複数バージョン、NScripter は ONSyuri を使用。
+- 暗号化スクリプトの文字コード判定を修正：`nscript.dat` しか持たない作品は常に日本語 Shift_JIS として扱われ、GBK／UTF-8 の翻訳版は本文が文字化けしていました。スクリプトを復号してから判定するようにしました。
+- それ以外は v3.1.3 と同じ。
 
-[v3.1.3 をダウンロードして更新内容を見る](https://github.com/Yometenma/Tsumigeya/releases/tag/v3.1.3) · [作品情報の取得](docs/ja/game-info.md) · [更新履歴（中国語）](更新日志.md)
+[v3.1.4 をダウンロードして更新内容を見る](https://github.com/Yometenma/Tsumigeya/releases/tag/v3.1.4) · [作品情報の取得](docs/ja/game-info.md) · [更新履歴（中国語）](更新日志.md)
 
 [v3.1.2 をダウンロードして更新内容を見る](https://github.com/Yometenma/Tsumigeya/releases/tag/v3.1.2) · [作品情報の取得](docs/ja/game-info.md) · [更新履歴（中国語）](更新日志.md)
 

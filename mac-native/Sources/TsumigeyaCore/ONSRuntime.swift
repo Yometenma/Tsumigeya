@@ -69,23 +69,44 @@ public enum ONSRuntime {
     ///   ② 出现 **GBK 独有的首字节区**（0xB0–0xDF）→ gbk
     ///      SJIS 的首字节只有 0x81–0x9F / 0xE0–0xEF，0xB0–0xDF 在 SJIS 里是非法首字节，
     ///      所以这条信号是硬的（中文汉字区的高频字节正好落在里面）。
-    ///   ③ 其余（含只有加密的 `nscript.dat`、纯 ASCII）→ sjis
-    ///      理由是日文原版 ONS 作品多用 `nscript.dat`，而汉化版几乎都用明文 `0.txt`。
+    ///   ③ 其余（含纯 ASCII）→ sjis
+    ///
+    /// ⚠️ **加密脚本也要看**：`nscript.dat` 是 ONS 的 mode 1（每字节 XOR 0x84），
+    ///    解出来与明文脚本是同一套字节。只看明文的话，纯 `nscript.dat` 的作品
+    ///    一律回落 sjis —— 汉化版（GBK）就会满屏乱码（实测：某 GBK 汉化作品
+    ///    菜单是图片所以看着正常，正文全是乱码）。
     public static func detectEncoding(
         folder: String, readFile: (String) -> Data?
     ) -> Encoding {
         for name in ["0.txt", "00.txt"] {
             let path = (folder as NSString).appendingPathComponent(name)
             guard let data = readFile(path), !data.isEmpty else { continue }
-            let head = data.prefix(64 * 1024)
+            return judge(data)
+        }
 
-            if hasNonASCII(head), String(data: head, encoding: .utf8) != nil {
-                return .utf8
-            }
-            if hasGBKOnlyLeadByte(head) {
-                return .gbk
-            }
-            return .sjis
+        // 没有明文脚本时看加密的 nscript.dat（解密后同样按上面的判据）
+        let locked = (folder as NSString).appendingPathComponent("nscript.dat")
+        if let data = readFile(locked), !data.isEmpty {
+            return judge(decryptNscript(data))
+        }
+        return .sjis
+    }
+
+    /// `nscript.dat` 的解密：ONS 的 encrypt_mode 1 就是每个字节 XOR 0x84。
+    ///
+    /// 只看前 64KB 就够判断编码；9MB 级的脚本不必整个搬进内存。
+    static func decryptNscript(_ data: Data, limit: Int = 64 * 1024) -> Data {
+        Data(data.prefix(limit).map { $0 ^ 0x84 })
+    }
+
+    /// 对一段脚本文本字节做编码判断（明文与解密后共用）。
+    static func judge(_ data: Data) -> Encoding {
+        let head = data.prefix(64 * 1024)
+        if hasNonASCII(head), String(data: head, encoding: .utf8) != nil {
+            return .utf8
+        }
+        if hasGBKOnlyLeadByte(head) {
+            return .gbk
         }
         return .sjis
     }
