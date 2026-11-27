@@ -27,6 +27,15 @@
             button(wrap,'修改',function(){edit(false);});button(wrap,'锁定',function(){edit(true);});button(wrap,'解锁',function(){api.unlock(row.key);render();});if(row.locked)el('span','已锁定',wrap);
         });
     }
+    el('h3','场景跳转',panel);
+    var sceneInput=el('input',undefined,panel);sceneInput.placeholder='场景文件，例如 scenario/first.ks';
+    var labelInput=el('input',undefined,panel);labelInput.placeholder='标签（可空）';
+    button(panel,'跳转',function(){
+        if(!window.confirm('跳转到其它场景？当前未保存的进度会丢失。'))return;
+        var info=api.jump(sceneInput.value,labelInput.value);
+        status.textContent=info?('已跳到 '+(info.scenario||'（未知场景）')+' '+(info.label||'')):'已请求跳转。';render();
+    });
+    button(panel,'当前位置',function(){var info=api.where();status.textContent=info?((info.scenario||'（未知场景）')+' '+(info.label||'')+'，行 '+(info.line||0)):'请先进入游戏。';});
     setInterval(function(){if(!panel.hidden&&generation!==api.generation)render();},500);
     ['keydown','keyup','keypress','mousedown','mouseup','click','wheel','touchstart','touchend'].forEach(function(n){host.addEventListener(n,function(e){e.stopPropagation();});});
     document.addEventListener('keydown',function(e){if(e.key==='F8'&&e.shiftKey){e.preventDefault();e.stopImmediatePropagation();open();}},true);

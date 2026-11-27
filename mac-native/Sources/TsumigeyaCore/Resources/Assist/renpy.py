@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Ren'Py runtime: local text cache and scalar-only, session-bound commands."""
 import os
+import re
 import json
 import time
 import uuid
@@ -68,6 +69,48 @@ class Runtime(object):
     def scalar(value):
         return type(value) in (bool, int, float, str) and (not isinstance(value, str) or len(value) <= 4096) and (not isinstance(value, (int, float)) or (math.isfinite(value) and abs(value) <= 10**12))
 
+    # 嵌套一层：`store.变量` 是 dict/list 时，把里面的标量也暴露出来，
+    # 路径写成 `名字.键` 或 `名字[序号]`。更深层不展开，避免把整个游戏状态搬进面板。
+    def flatten(self, store, limit=10000):
+        rows = {}
+        for name, value in vars(store).items():
+            if name.startswith('_') or name in self.RESERVED:
+                continue
+            if self.scalar(value):
+                rows[name] = value
+            elif isinstance(value, dict):
+                for key, item in list(value.items())[:2000]:
+                    if isinstance(key, (str, int)) and self.scalar(item):
+                        rows['%s.%s' % (name, key)] = item
+            elif isinstance(value, list):
+                for index, item in enumerate(value[:200]):
+                    if self.scalar(item):
+                        rows['%s[%d]' % (name, index)] = item
+        return dict(sorted(rows.items())[:limit])
+
+    def place(self, store, path, value):
+        match = re.match(r'^([A-Za-z_]\w*)(?:\.([^.\[\]]+)|\[(\d+)\])?$', path)
+        if not match:
+            raise ValueError('变量路径无效')
+        name, key, index = match.group(1), match.group(2), match.group(3)
+        if key is None and index is None:
+            # 顶层变量：直接写 store。
+            setattr(store, name, value)
+            return
+        container = getattr(store, name)
+        if index is not None:
+            if not isinstance(container, list):
+                raise ValueError('目标不是列表')
+            container[int(index)] = value
+        else:
+            if not isinstance(container, dict):
+                raise ValueError('目标不是字典')
+            for existing in container:
+                if str(existing) == key:
+                    container[existing] = value
+                    return
+            raise ValueError('键不存在')
+
     def reset(self, *args):
         self.locks.clear()
         self.session = uuid.uuid4().hex
@@ -83,16 +126,18 @@ class Runtime(object):
             self.write('missing.json', self.missing)
             if not self.config.get('cheats'):
                 return
-            variables = dict((key, value) for key, value in vars(store).items() if not key.startswith('_') and key not in self.RESERVED and self.scalar(value))
-            variables = dict(sorted(variables.items())[:10000])
+            variables = self.flatten(store)
             changed = False
             for key, value in list(self.locks.items()):
                 if not ready or key not in variables or type(variables[key]) is not type(value):
                     del self.locks[key]
                 else:
                     changed = changed or variables[key] != value
-                    setattr(store, key, value)
-                    variables[key] = value
+                    try:
+                        self.place(store, key, value)
+                        variables[key] = value
+                    except Exception:
+                        del self.locks[key]
             command_path = self.path('command.json')
             if os.path.exists(command_path):
                 command = self.read('command.json')
@@ -115,7 +160,7 @@ class Runtime(object):
                                 value = float(value)
                             if not self.scalar(value) or type(value) is not type(variables[key]):
                                 raise ValueError('目标值的类型与原变量不一致')
-                            setattr(store, key, value)
+                            self.place(store, key, value)
                             variables[key] = value
                             changed = True
                             if action == 'lock':

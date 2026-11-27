@@ -44,6 +44,23 @@
         }
         return scanned;
     };
+    api.where = function () {
+        if (!api.ready()) return null;
+        var stat = TYRANO.kag.stat || {};
+        return { scenario: stat.current_scenario || '', label: stat.current_label || '', line: stat.current_line || 0 };
+    };
+    // KAG 的 jump 用 `storage` + `target`；stop 让当前脚本停下再跳，避免两段脚本同时跑。
+    api.jump = function (storage, target) {
+        if (!api.ready()) throw Error('请先进入游戏。');
+        var scene = String(storage || '').trim();
+        if (!scene) throw Error('请填写场景文件名。');
+        if (typeof TYRANO.kag.ftag.startTag !== 'function') throw Error('当前引擎不支持跳转。');
+        var parameters = { storage: scene, stop: 'true' };
+        var label = String(target || '').trim();
+        if (label) parameters.target = label;
+        TYRANO.kag.ftag.startTag('jump', parameters);
+        return api.where();
+    };
     setInterval(function () {
         if (!api.ready()) {api.reset();return;}
         if (previous !== TYRANO.kag.stat.f) {api.reset();previous=TYRANO.kag.stat.f;}

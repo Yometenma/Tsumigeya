@@ -73,6 +73,16 @@ class RuntimeTests(unittest.TestCase):
   self.store.affection=1.0;self.tick();self.assertEqual(self.store.affection,3.0)
   self.command('set','affection',4);self.assertNotIn('affection',self.runtime.locks)
   self.command('set','affection',True);self.assertEqual(self.store.affection,4.0)
+ def test_nested_dict_and_list_entries_are_editable(self):
+  self.store.player={'level':3,'name':'アリス'};self.store.party=[10,20];self.store.items={1:5}
+  self.tick();state={x['key']:x['value'] for x in json.loads((self.root/'state.json').read_text(encoding='utf-8'))['variables']}
+  self.assertEqual(state['player.level'],3);self.assertEqual(state['party[1]'],20);self.assertEqual(state['items.1'],5)
+  self.command('set','player.level',9);self.assertEqual(self.store.player['level'],9)
+  self.command('set','party[0]',99);self.assertEqual(self.store.party,[99,20])
+  self.command('set','items.1',7);self.assertEqual(self.store.items,{1:7})
+  self.command('set','player.nope',1);self.assertEqual(self.store.player,{'level':9,'name':'アリス'})
+  self.command('set','party.0',1);self.assertEqual(self.store.party,[99,20])
+  self.command('lock','party[0]',42);self.store.party[0]=0;self.tick();self.assertEqual(self.store.party[0],42)
  def test_hooks_chain_and_reset(self):
   config=types.SimpleNamespace(gamedir=str(self.root.parent),replace_text=lambda s:s+'原',periodic_callbacks=[],after_load_callbacks=[],start_callbacks=[])
   # install reads a real sidecar, exactly like the engine entry.

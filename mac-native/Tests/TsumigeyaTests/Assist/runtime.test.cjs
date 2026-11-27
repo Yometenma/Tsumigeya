@@ -335,3 +335,26 @@ test('font scale shrinks window text after the engine applies its own size', () 
     untouched.resetFontSettings();
     assert.equal(untouched.contents.fontSize, 26);
 });
+
+test('Tyrano 跳转发给 KAG 的 jump 标签，并报告当前位置', () => {
+    const timers = [];
+    const c = { console, setInterval(fn) { timers.push(fn); }, clearInterval() {}, TsumigeyaAssist: { errors: [] } };
+    c.window = c;
+    vm.createContext(c);
+    vm.runInContext(`TYRANO={kag:{stat:{f:{money:10},current_scenario:'scenario/a.ks',current_label:'start',current_line:42},variable:{sf:{}},ftag:{startTag:function(name,params){TYRANO.jumped={name:name,params:params};}}}}`, c);
+    vm.runInContext(fs.readFileSync(path.join(scripts, 'tyrano-cheats.js'), 'utf8'), c);
+    const api = c.TsumigeyaAssist.cheats;
+    timers[0]();
+    const here = api.where();
+    assert.equal(here.scenario, 'scenario/a.ks');
+    assert.equal(here.label, 'start');
+    assert.equal(here.line, 42);
+    assert.throws(() => api.jump(''));
+    api.jump('scenario/b.ks', 'end');
+    assert.equal(c.TYRANO.jumped.name, 'jump');
+    assert.equal(c.TYRANO.jumped.params.storage, 'scenario/b.ks');
+    assert.equal(c.TYRANO.jumped.params.target, 'end');
+    assert.equal(c.TYRANO.jumped.params.stop, 'true');
+    api.jump('scenario/c.ks');
+    assert.equal(c.TYRANO.jumped.params.target, undefined);
+});
