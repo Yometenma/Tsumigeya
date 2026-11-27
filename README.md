@@ -55,7 +55,7 @@ Add a game you have already downloaded and extracted to your library, and it ide
 **v3.1.7**
 
 - The cheat panel is now a list-and-detail layout: items, armor, and weapons are tabbed straight from the game database, ticking a row locks it, counts step by ±1／±100 or bulk-set per tab, and a new object browser inspects and edits values by path.
-- Translation now runs in batches of 12, cutting a 2000-entry job from hours to minutes; a hot path that made cutscenes stutter is gone and measures about 1000× faster.
+- Translation now runs in batches of 12, cutting a 2000-entry job from hours to minutes; a hot path that made cutscenes stutter is fixed.
 - Offline assistance: without injecting into the game, NScripter scripts can be extracted and rewritten (keeping the original encoding), and RPG Maker MZ／XP／VX／VX Ace saves can be edited, with automatic backups. RPG Maker 2000／2003 database text can be extracted but not yet written back.
 
 [Download v3.1.7 and read the release notes](https://github.com/Yometenma/Tsumigeya/releases/tag/v3.1.7) · [Getting game info](docs/en/game-info.md) · [Full changelog](更新日志.md)
