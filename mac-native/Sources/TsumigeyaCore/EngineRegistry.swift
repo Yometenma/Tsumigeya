@@ -126,7 +126,6 @@ extension EngineRegistry {
 
     /// 用**registry 规则**认引擎（未安装也能认）。
     ///
-    /// 对应 Electron 版 `detectEngineFromAutodetectMap`。
     /// 没有专用运行时匹配时检查实际 PE 文件，不能仅凭 .exe 扩展名认领。
     public static func detect(
         exe: String,
@@ -142,7 +141,6 @@ extension EngineRegistry {
 
     /// 用**已装模块的 manifest** 认引擎。
     ///
-    /// 对应 Electron 版 `detectEngineForPath`。传进来的 `manifests` 就是本地有的那些
     /// （「已装」这条信息由调用方体现）。
     public static func detect(
         exe: String,

@@ -1,6 +1,5 @@
 // NW.js 的版本目录解析。
 //
-// 对应 Electron 版：`core-host.reconcileVersionArgs`（+ `engines/semver.ts`）
 // 契约：D66（多版本保留）
 //
 // ===== 这个函数为什么必须存在（非常关键）=====
@@ -15,7 +14,7 @@
 // → 用户点启动**没反应**（不报错、不提示，因为路径拼出来了但文件不在）。
 //
 // 这是 Electron 版专门写了一个 `reconcileVersionArgs` 的原因。
-// 本鱼把它搬过来 —— **不搬的理由一个都没有**（它是纯逻辑，与语言无关）。
+// 搬过来 —— **不搬的理由一个都没有**（它是纯逻辑，与语言无关）。
 import Foundation
 
 public enum NwjsVersion {

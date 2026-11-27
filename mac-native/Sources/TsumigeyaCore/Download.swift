@@ -1,8 +1,7 @@
 // 依赖下载：下载器 + 架构名解析。
 //
-// 对应 Electron 版：src/main/engines/install.ts 的 `resolveArch` +
-// `installDependencies` 的「下载」那一段（约 280–380 行）
-// 契约：docs/M1-实施方案.md §3，D9（代理）/ D69（解压形态，不在本文件）
+// 范围：架构名解析与「下载」这一段（不含解压，D69）。
+// 契约：D9（代理）/ D69（解压形态，不在本文件）
 //
 // ===== 本文件**只做两件事**，选构建不在其中 =====
 //
@@ -27,13 +26,13 @@
 //   · `{"arm64": {...}, "x86_64": {...}}`   ← nwjs
 //   · 单一键 / 所有 link 相同                ← 写法上分了架构但其实同一个包
 //
-// 本鱼第一版在这里自己写了一份 `BuildPicker`，**已删** —— 两份判据迟早分叉
+// 早期实现在这里自己写了一份 `BuildPicker`，**已删** —— 两份判据迟早分叉
 // （D56 的老教训：路径/键名的拼法只能有一个来源）。
 // 找不到构建时 `pickBuild` 返回 `nil`，由 `EngineInstaller` 抛
 // `error.dependencyMissing`（Electron 版的 `error.buildMissing` 同义）。
 //
 // ⚠️ 那条「所有 link 相同就随便取一个」的兜底**保留在 Installer 里**是**有意**的
-// （不是本鱼加的偏差）：实测 registry 里确实存在「键上分了架构、但链接其实同一个」
+// （不是这份实现引入的偏差）：实测 registry 里确实存在「键上分了架构、但链接其实同一个」
 // 的写法，去掉它会让这类包在 arm64 上选不到构建。
 //
 // ===== 下载器的分层（为什么要把「网络层」抽成协议）=====
@@ -121,10 +120,10 @@ public enum Arch: String, Sendable, CaseIterable {
 
 // MARK: - 选构建（不在这里实现）
 //
-// 本鱼第一版在这里写了 BuildSpec / BuildPicker / BuildError，**已经删掉**。
+// 早期实现在这里写了 BuildSpec / BuildPicker / BuildError，**已经删掉**。
 //
 // 理由：架构选择已经有一个唯一来源 —— `Installer.swift` 的
-// `EngineInstaller.pickBuild(spec:arch:)`，它比本鱼那份更贴合真实清单：
+// `EngineInstaller.pickBuild(spec:arch:)`，它更贴合真实清单：
 //
 //   · {"universal": {...}}                ← mkxpz / RTP / kawariki / 音源（实测）
 //   · {"arm64": {...}, "x86_64": {...}}   ← nwjs（实测）
@@ -441,7 +440,7 @@ final class FileSink: @unchecked Sendable {
 
     init(path: String) throws {
         // ⚠️ `self.path` 必须**先**赋值：Swift 要求「要么全部初始化，要么 throw」。
-        //    本鱼第一版把它留到最后 → 编译报
+        //    早期实现把它留到最后 → 编译报
         //    `return from initializer without initializing all stored properties`。
         self.path = path
         let url = URL(fileURLWithPath: path)

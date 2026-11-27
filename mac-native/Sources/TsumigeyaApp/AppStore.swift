@@ -138,6 +138,7 @@ final class AppStore: ObservableObject {
         saveSessions.removeAll()
         assistanceSessions.values.forEach { $0.invalidate() }
         assistanceSessions.removeAll()
+        offlineSessions.values.forEach { $0.invalidate() }
         offlineSessions.removeAll()
         isLoading = true
 
@@ -317,7 +318,7 @@ final class AppStore: ObservableObject {
 
     /// 运行状态轮询任务。
     ///
-    /// ⚠️ **用户 2026-11-06 报的 bug 就出在这里**：
+    /// ⚠️ **实测到的 bug 就出在这里**：
     ///    「关掉游戏之后，为什么还是显示游戏运行中？」
     ///
     ///    根因：`refreshRunning()` **只被 `load()` 调用过一次**（启动时），
@@ -455,7 +456,7 @@ final class AppStore: ObservableObject {
         metadata.forget(gameId: id)
         saveSessions.removeValue(forKey: id)?.invalidate()
         assistanceSessions.removeValue(forKey: id)?.invalidate()
-        offlineSessions.removeValue(forKey: id)
+        offlineSessions.removeValue(forKey: id)?.invalidate()
     }
 
     private func saveLibraryChange(_ operation: () throws -> Void) -> Bool {
@@ -520,7 +521,7 @@ final class AppStore: ObservableObject {
     ///
     /// ⚠️ 快照验收和预览会临时建好几个 `AppStore`（各指向一份数据副本）。
     ///    那些临时 store 的设置是空的 → 语言会被算成「跟随系统」；
-    ///    如果它们也写全局状态，就会把主窗口刚设好的语言改回去（本鱼踩过：
+    ///    如果它们也写全局状态，就会把主窗口刚设好的语言改回去（踩过：
     ///    设置页的快照明明选了 English，分组标题却是中文）。
     var ownsInterfaceLanguage = true
 
@@ -627,12 +628,12 @@ final class AppStore: ObservableObject {
     /// ⚠️ 启动时也要应用：用户上次选了「深色」，这次打开就该是深色 ——
     ///    不能等他进设置页才生效。
     ///
-    /// ⚠️⚠️ **`NSApp` 是隐式解包可选值，必须判空**（本鱼实测崩过一次）。
+    /// ⚠️⚠️ **`NSApp` 是隐式解包可选值，必须判空**（实测崩过一次）。
     ///
     ///    `AppKit` 里声明的是 `public let NSApp: NSApplication!` ——
     ///    它只在 `NSApplication.shared` 被访问过、且 app 已初始化后才非 nil。
     ///
-    ///    **崩溃场景**：本鱼的 `--snapshot` 模式在 `App.init()` 里就构造 `AppStore`
+    ///    **崩溃场景**：本文件的 `--snapshot` 模式在 `App.init()` 里就构造 `AppStore`
     ///    并调 `load()` → `applyAppearance()` → `NSApp.appearance = nil`
     ///    → **Fatal error: Unexpectedly found nil**。
     ///

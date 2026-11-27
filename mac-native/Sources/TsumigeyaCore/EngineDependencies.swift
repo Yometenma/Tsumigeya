@@ -1,11 +1,10 @@
 // 引擎依赖表（下载 URL）。
 //
-// 对应 Electron 版：src/main/engines/registry.ts 每个引擎的 `dependencies` 段
 // 契约：D62（安装时从 registry 生成 manifest）/ D69（保留单层目录）
 //
 // ===== 为什么单独一个文件 =====
 //
-// P1 时本鱼**刻意没搬**这张表（那时搬了也验证不了，是"写了但没人用"）。
+// P1 阶段**刻意没搬**这张表（那时搬了也验证不了，是"写了但没人用"）。
 // P3 装引擎时它成了硬需求 —— 全新安装没有本地 manifest，URL 只能从 registry 来。
 //
 // 单独放一个文件而不是塞进 EngineRegistry.swift：那张表是本文件的唯一内容，
@@ -13,8 +12,8 @@
 //
 // ===== 数据来源 =====
 //
-// 全部**逐条照抄** `src/main/engines/registry.ts`（2026-11-06 提取）。
-// 九条 URL 都实测过可达（本鱼下载了其中三个看包内结构，见 BinaryPaths 的注释）。
+// 全部**逐条照抄**上游 registry 的 dependencies 段（不是从行为反推的）。
+// 九条 URL 都实测过可达（其中三个下载解开看过包内结构，见 BinaryPaths 的注释）。
 // tyrano **没有依赖**（复用 nwjs 的运行时，D87）。
 import Foundation
 
@@ -91,7 +90,7 @@ public enum EngineDependencies {
 
         // ---- NScripter（ONSyuri）----
         //
-        // ===== 为什么换成 ONSyuri（2026-11-21 实测）=====
+        // ===== 为什么换成 ONSyuri（实测）=====
         //
         // tmkk 的 `onscripter-20230825bin.tar.bz2` 里那个 `onscripter` 是 ppc + i386，
         // 现代 macOS 直接 `bad CPU type in executable`；同包的 `onscripter-sdl2` 虽然是
@@ -153,7 +152,7 @@ public enum EngineDependencies {
     /// 老游戏可能需要老运行时才跑得起来。启动器本来就支持多版本共存
     /// （D66：`deps/version/<v>/`，更新时保留已装版本），缺的只是**装第二个的入口**。
     ///
-    /// ===== 候选表为什么这么短（2026-11-23 Mac 实测）=====
+    /// ===== 候选表为什么这么短（Mac 实测）=====
     ///
     /// 只放 `osx-arm64` 原生包 —— 只有 x64 的老版本在现代 macOS 上不可用：
     ///   · v0.72.0（x64，Rosetta 2 已装）：进程能起来，但**根本没有窗口**

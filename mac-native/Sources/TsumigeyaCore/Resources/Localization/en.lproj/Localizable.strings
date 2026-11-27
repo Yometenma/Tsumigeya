@@ -401,3 +401,48 @@
 "package.json 不是合法的 JSON（常见原因：残留注释、尾逗号或编码损坏）。nw.js 无法加载这个游戏，需要修正清单或改用能读这份清单的运行时。" = "package.json is not valid JSON (common causes: leftover comments, trailing commas, or broken encoding). nw.js cannot load this game; the manifest needs fixing, or it needs a runtime that accepts it.";
 "应用清单格式不规范" = "The app manifest is not strict JSON";
 "package.json 用了尾逗号之类 nw.js 不接受的写法。启动时改用数据目录里重写成标准 JSON 的兼容清单，不改动游戏文件，存档位置也不变。" = "package.json uses a form nw.js does not accept, such as a trailing comma. It will launch from a compatibility manifest rewritten as strict JSON in the data folder: game files are left untouched and save locations stay the same.";
+
+/* Ruby Marshal（RM XP／VX／Ace 的 .rxdata／.rvdata／.rvdata2）解析与回写 */
+"不是 Ruby Marshal 4.8 存档。" = "Not a Ruby Marshal 4.8 save file.";
+"存档在某处提前结束。" = "The save ends early somewhere.";
+"符号长度非法。" = "Invalid symbol length.";
+"符号引用越界。" = "Symbol reference out of range.";
+"期望符号标记，实际是 0x%02X。" = "Expected a symbol tag, found 0x%02X.";
+"对象引用越界。" = "Object reference out of range.";
+"字符串长度非法。" = "Invalid string length.";
+"数组长度非法。" = "Invalid array length.";
+"哈希长度非法。" = "Invalid hash length.";
+"对象字段数非法。" = "Invalid object field count.";
+"自定义数据类型长度非法。" = "Invalid length for a user-defined type.";
+"大整数长度非法。" = "Invalid big integer length.";
+"浮点数长度非法。" = "Invalid float length.";
+"浮点数无法解析。" = "The float cannot be parsed.";
+"遇到未知的 Marshal 标记：0x%02X。" = "Unknown Marshal tag: 0x%02X.";
+"字段区间越界，存档可能已变化。" = "Field range is out of bounds; the save may have changed.";
+"只能替换数字、布尔值和字符串。" = "Only numbers, booleans and strings can be replaced.";
+
+/* 离线脚本改写（NScripter） */
+"脚本是符号链接，拒绝读写。" = "The script is a symbolic link; refusing to read or write.";
+"脚本文件是空的。" = "The script file is empty.";
+"脚本不是可识别的文本，未做任何修改。" = "The script is not recognisable text; nothing was changed.";
+"目标是符号链接，拒绝写入。" = "The target is a symbolic link; refusing to write.";
+"译文无法用脚本的编码写回；请改用 UTF-8 或 GBK。" = "The translation cannot be written back in the script's encoding; use UTF-8 or GBK.";
+"备份路径是符号链接，拒绝写入。" = "The backup path is a symbolic link; refusing to write.";
+
+/* LCF（RPG Maker 2000／2003 的 RPG_RT.ldb） */
+"整数在文件末尾被截断。" = "The integer is truncated at the end of the file.";
+"压缩整数超过 5 字节。" = "The compressed integer exceeds 5 bytes.";
+"chunk %d 的长度超出文件。" = "Chunk %d extends past the end of the file.";
+"字符串长度超出范围。" = "The string length is out of range.";
+"文件头长度非法。" = "Invalid header length.";
+"文件头是 %@，不是 %@。" = "The header is %@, not %@.";
+
+/* 离线存档（.rmmzsave） */
+"存档是符号链接，拒绝读写。" = "The save file is a symbolic link; refusing to read or write.";
+"存档不是可识别的文本。" = "The save is not recognisable text.";
+"存档解压失败：可能不是 .rmmzsave。" = "Failed to decompress the save; it may not be a .rmmzsave.";
+"存档内容不是有效 JSON。" = "The save content is not valid JSON.";
+"存档无法写回。" = "The save cannot be written back.";
+
+"翻译接口没有返回同样条数的译文。" = "The translation endpoint did not return the same number of entries.";
+"辅助目录包含未识别文件：%@。已保留全部文件，请先移走自添文件再恢复。" = "The assist folder contains unrecognised files: %@. Everything was kept; move your own files out before restoring.";

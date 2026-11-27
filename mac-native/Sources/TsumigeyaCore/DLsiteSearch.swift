@@ -1,6 +1,5 @@
 // DLsite 按名字搜索（解析 + URL 构造）。
 //
-// 对应 Electron 版：`src/main/dlsite.ts` 的 `buildSearchUrl` / `isSearchResultPage` / `parseSearchResults`
 // 契约：D23（优先结构化锚点 `data-list_item_product_id`）/ D24（**绝不自动选第一条**）
 //
 // ===== ⚠️ 为什么绝不自动选第一条（D24）=====
@@ -217,13 +216,12 @@ public enum DLsiteSearch {
     static func extractCircle(_ chunk: String) -> String? {
         // ⚠️ **从 `class="maker_name"` 之后才开始找 `</dd>`**。
         //
-        //    本鱼第一版从 `blockStart.upperBound` 找 —— 那是对的，
-        //    但**最后一条记录**的 chunk 范围会延伸到文件末尾（没有下一条记录），
+        //    **最后一条记录**的 chunk 范围会延伸到文件末尾（没有下一条记录），
         //    里面还可能含 `</dd>` 之外的 HTML（`</div></body></html>`）。
-        //    实测第 4 条返回 nil，前 3 条正常 —— 正是这个边界差。
+        //    实测第 4 条返回 nil、前 3 条正常 —— 正是这个边界差。
         //
-        //    修法：明确限定「这条 `maker_name` 块的 `</dd>`」，
-        //    且如果找不到，说明结构不完整 → 返回 nil（不猜）。
+        //    所以必须明确限定「这条 `maker_name` 块的 `</dd>`」，
+        //    找不到就说明结构不完整 → 返回 nil（不猜）。
         guard let blockStart = chunk.range(of: "class=\"maker_name\""),
               let blockEnd = chunk.range(
                 of: "</dd>", range: blockStart.upperBound..<chunk.endIndex) else {
@@ -235,10 +233,9 @@ public enum DLsiteSearch {
         //
         // ⚠️⚠️ **必须从 `<dd class="maker_name"` 之后开始找 `>`**。
         //
-        //    本鱼第一版写的是 `block.range(of: ">")` —— 从 block **开头**找，
-        //    而 block 本身就含 `<dd class="maker_name"><a href="...">`，
-        //    于是第一个 `>` 落在 `<dd ...>` 的结尾 → 切出来的文本里
-        //    **混进了整个 `<a href="...">` 标签**（探针实测看到）。
+        //    `block.range(of: ">")` 从 block **开头**找，而 block 本身就含
+        //    `<dd class="maker_name"><a href="...">`，于是第一个 `>` 落在
+        //    `<dd ...>` 的结尾 → 切出来的文本里**混进了整个 `<a href="...">` 标签**。
         //
         //    正确做法：先定位到 `class="maker_name"` 之后，再从那个位置找 `>`。
         // ⚠️⚠️ **必须找 `<a` 标签的 `>`，不是 dd 的 `>`**（探针实测）。

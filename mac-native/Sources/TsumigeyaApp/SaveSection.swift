@@ -316,19 +316,13 @@ private struct SaveSessionContent: View {
 
     // MARK: - 格式化
 
-    /// 1024 进制字节（与 `SaveSection.vue` 的 `formatByteSize` 同一取向）。
-    private func formatBytes(_ bytes: Int64) -> String {
-        if bytes < 1024 { return "\(bytes) B" }
-        let kb = Double(bytes) / 1024
-        if kb < 1024 { return String(format: "%.0f KB", kb) }
-        let mb = kb / 1024
-        if mb < 1024 { return String(format: "%.1f MB", mb) }
-        return String(format: "%.2f GB", mb / 1024)
-    }
+    /// 1024 进制，实现见 `ByteFormat.human`（与引擎页共用同一份）。
+    private func formatBytes(_ bytes: Int64) -> String { ByteFormat.human(bytes) }
 
+    /// 存档时间。按界面语言格式化，不写死 `zh_CN` —— 英文/日文界面下也该显示本地习惯的日期。
     private func shortDate(_ date: Date) -> String {
         let f = DateFormatter()
-        f.locale = Locale(identifier: "zh_CN")
+        f.locale = InterfaceLanguageStore.shared.resolved.locale
         f.dateFormat = "MM-dd HH:mm"
         return f.string(from: date)
     }

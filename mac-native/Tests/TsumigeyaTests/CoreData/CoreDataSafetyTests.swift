@@ -34,7 +34,7 @@ struct CoreDataSafetyTests {
         #expect(LibraryMetaStore.saveCategories(
             LibraryMeta(), dataDir: dir.path, raw: [:]) != nil)
         #expect(try Data(contentsOf: url) == original)
-        #expect(!FileManager.default.fileExists(atPath: url.appendingPathExtension("bak").path))
+        #expect(!FileManager.default.fileExists(atPath: Backup.path(for: url).path))
     }
 
     @Test("元数据更新保留嵌套未知字段并能清空已知可选字段")
@@ -112,7 +112,7 @@ struct CoreDataSafetyTests {
         let original = try Data(contentsOf: url)
         // 用目录占住备份路径，稳定制造备份写入失败，不依赖运行者权限。
         try FileManager.default.createDirectory(
-            at: url.appendingPathExtension("bak"), withIntermediateDirectories: false)
+            at: Backup.path(for: url), withIntermediateDirectories: false)
         #expect(GameMetaStore.removeGameData(dataDir: dir.path, gameId: "1") != nil)
         #expect(try Data(contentsOf: url) == original)
     }
@@ -125,10 +125,10 @@ struct CoreDataSafetyTests {
         let damaged = Data("{ damaged".utf8)
         let backup = Data("{\"recoverable\":true}".utf8)
         try damaged.write(to: url)
-        try backup.write(to: url.appendingPathExtension("bak"))
+        try backup.write(to: Backup.path(for: url))
         #expect(JSONStore.save(JSONValue.object([:]), to: url) != nil)
         #expect(try Data(contentsOf: url) == damaged)
-        #expect(try Data(contentsOf: url.appendingPathExtension("bak")) == backup)
+        #expect(try Data(contentsOf: Backup.path(for: url)) == backup)
     }
 
     @Test("JSON 保存不能先删除正式文件，备份保留上一版本")
@@ -141,7 +141,7 @@ struct CoreDataSafetyTests {
         let manager = RefuseDestinationRemoval(destination: url)
         #expect(JSONStore.save(JSONValue.object(["new": .int(2)]),
                                to: url, fileManager: manager) == nil)
-        #expect(try Data(contentsOf: url.appendingPathExtension("bak")) == original)
+        #expect(try Data(contentsOf: Backup.path(for: url)) == original)
         #expect(JSONStore.load(JSONValue.self, from: url).value == .object(["new": .int(2)]))
     }
 }

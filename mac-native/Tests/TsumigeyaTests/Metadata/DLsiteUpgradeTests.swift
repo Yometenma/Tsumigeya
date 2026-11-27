@@ -215,12 +215,12 @@ struct DLsiteEnrichmentSafetyTests {
         let raw = try JSONDecoder().decode(JSONValue.self, from: Data(contentsOf: url))
         #expect(raw.objectValue?["future"] == .int(7))
         #expect(raw.objectValue?["formatVersion"] == .int(2))
-        #expect(try Data(contentsOf: url.appendingPathExtension("bak")) == old)
+        #expect(try Data(contentsOf: Backup.path(for: url)) == old)
         let damaged = Data("{损坏的原件".utf8)
         try damaged.write(to: url)
         #expect(await service.writeCache(updated) != nil)
         #expect(try Data(contentsOf: url) == damaged)
-        #expect(try Data(contentsOf: url.appendingPathExtension("bak")) == old)
+        #expect(try Data(contentsOf: Backup.path(for: url)) == old)
     }
 
     @Test("备份不可写时缓存原件不变")
@@ -231,7 +231,7 @@ struct DLsiteEnrichmentSafetyTests {
         let url = dir.appendingPathComponent("dlsite/RJ123456.json")
         let original = Data(#"{"rj":"RJ123456","fetchedAt":"old"}"#.utf8)
         try original.write(to: url)
-        try FileManager.default.createDirectory(at: url.appendingPathExtension("bak"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: Backup.path(for: url), withIntermediateDirectories: true)
         let service = DLsiteService(dataDir: dir.path)
         let updated = CachedWork(work: DlsiteWork(rj: "RJ123456", fetchedAt: "new"), cachedAt: 1001)
         #expect(await service.writeCache(updated) != nil)

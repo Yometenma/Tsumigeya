@@ -1,6 +1,5 @@
 // 存档的导出与导入（**两条路径的判据都在这里**）。
 //
-// 对应 Electron 版：`src/main/save-archive-io.ts`（305 行）+ save-store 的写盘部分
 // 契约：M4 S3/S4，D81 / D82 / D86
 //
 // ===== ⚠️⚠️ 导入的顺序铁律（这条是本案最重要的东西）=====
@@ -250,7 +249,7 @@ public enum SaveArchiveIO {
         var backups: [String] = []
         for entry in verified {
             let target = (saveDir as NSString).appendingPathComponent(entry.name)
-            let backup = target + SaveArchive.backupSuffix
+            let backup = Backup.path(for: target)
             do {
                 // 目录或符号链接不能充当回退备份，也不能成为写入目标。
                 if fileManager.fileExists(atPath: target) {
@@ -262,7 +261,7 @@ public enum SaveArchiveIO {
                 if fileManager.fileExists(atPath: backup) {
                     let attributes = try fileManager.attributesOfItem(atPath: backup)
                     guard attributes[.type] as? FileAttributeType == .typeRegular else {
-                        return .failure(.writeFailed(String(format: L10n.string("备份不是普通文件：%@%@"), "\(entry.name)", "\(SaveArchive.backupSuffix)")))
+                        return .failure(.writeFailed(String(format: L10n.string("备份不是普通文件：%@%@"), "\(entry.name)", "\(Backup.suffix)")))
                     }
                     continue
                 }

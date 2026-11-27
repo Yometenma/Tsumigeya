@@ -1,6 +1,5 @@
 // mkxp.json 的构造与写入。
 //
-// 对应 Electron 版：src/main/launchers/mkxpz.ts 的 buildMkxpConfig / writeMkxpConfig / resolveRtp
 // 契约：D71 / D72（配置位置与非 ASCII 处置）
 //
 // ⚠️ 这个文件的核心不是"拼 JSON"，而是**三个顺序不能错的处置**：
@@ -192,7 +191,7 @@ public enum MkxpzConfig {
         gameDir: String, fileManager: FileManager = .default
     ) -> String? {
         let file = (gameDir as NSString).appendingPathComponent("Game.ini")
-        let backup = file + ".tsumigeya-bak"
+        let backup = Backup.path(for: file)
 
         guard let data = fileManager.contents(atPath: file),
               let text = String(data: data, encoding: .isoLatin1) else {

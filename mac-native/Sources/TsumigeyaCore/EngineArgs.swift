@@ -1,6 +1,5 @@
 // 引擎参数的类型与渲染判据。
 //
-// 对应 Electron 版：`components/DynamicArgsForm.vue`（242 行）+ `engines/registry.ts` 的 gameArgs schema
 // 契约：D61（参数表单精简）/ D80（全屏等能力只接引擎已有开关）
 //
 // ===== 参数有 7 种控件类型（Electron 版实测支持这几种）=====

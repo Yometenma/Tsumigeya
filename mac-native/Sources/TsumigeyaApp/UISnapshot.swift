@@ -1,28 +1,23 @@
-// UI 快照工具（第三版实现）。
+// UI 快照工具：把界面渲染成 PNG，供无人值守的构建机验收布局。
 //
-// ===== 为什么前两版都不行（记下来免得又走一遍）=====
+// ===== 为什么必须真开窗口（不要换回 ImageRenderer）=====
 //
-// **v1：`ImageRenderer` 直接渲染 `RootView`**
-//   → 渲染出**空白**。`NavigationSplitView` / `ScrollView` / `List` 这些容器
-//     需要真实的窗口上下文（NSWindow、NSView 层级、布局系统），
-//     `ImageRenderer` 只做离屏 SwiftUI 布局，拿不到它们。
+// `ImageRenderer` 直接渲染 `RootView` 得到**空白**：`NavigationSplitView` /
+// `ScrollView` / `List` 需要真实的窗口上下文（NSWindow、NSView 层级、布局系统），
+// 而它只做离屏 SwiftUI 布局。
 //
-// **v2：换成渲染「扁平化」的视图（不用 NavigationSplitView）**
-//   → 输出一个**巨大的黄色禁止图标**。这是 `ImageRenderer` 遇到
-//     它渲染不了的容器时的占位（不是错误、也不报 nil）。
-//     ⚠️ **这一条最关键**：`ImageRenderer` 失败时**不返回 nil**，
-//     它返回一张占位图 → 靠 `nsImage == nil` 判断失败是**判不出来**的。
+// 换成渲染「扁平化」的视图，输出一个**巨大的黄色禁止图标** —— 这是
+// `ImageRenderer` 遇到渲染不了的容器时的占位。⚠️ **失败时不返回 nil**，
+// 所以「拿不到图」这条判据在这里是判不出来的。
 //
-// **v3（本版）：真开一个 NSWindow，把视图塞进去，等它布局完，再 `bitmapImageRepForCachingDisplay` 取像素**
-//   → 这才是「截自己的人窗口」在 app 内部的正路，
-//     因为窗口真的存在、布局真的跑过了。
+// 现在的做法：真开一个 NSWindow，把视图塞进去，等它布局完，再用
+// `bitmapImageRepForCachingDisplay` 取像素 —— 窗口真的存在、布局真的跑过了。
 //
-// ===== 这仍然不能取代人眼 =====
+// ===== 这不能取代人眼 =====
 //
 // 它只能证明「视图树建起来了、布局有内容、没有严重错位」。
-// **观感**（渐变是否好看、按钮够不够醒目、字体大小）还是要人看。
-// 用户 2026-11-06 说过「观感相关的东西我之后慢慢微调」——
-// 所以本鱼的角色是**把布局错误挡在自己这边**，别让他当人肉 lint。
+// **观感**（渐变是否好看、按钮够不够醒目、字体大小）仍取决于人。
+// 本文件的职责是把布局错误挡在构建阶段，不是替代人工验收。
 import SwiftUI
 import AppKit
 import TsumigeyaCore
@@ -70,11 +65,11 @@ enum UISnapshot {
             name: "02-library-no-selection",
             dir: directory, appearance: appearance)
 
-        // ⚠️ **引擎页必须单独渲染**（用户 2026-11-06 报「引擎页有问题」——
+        // ⚠️ **引擎页必须单独渲染**（实测：
         //    那时它是空白侧边栏。加了这张图，下次改布局能直接看到）
         //
         // ⚠️ 渲染前**必须刷新引擎状态表**：`engineEntries` 是懒加载的，
-        //    store 刚建时它是空的 → List 空 → 页面纯色（本鱼实测踩到）。
+        //    store 刚建时它是空的 → List 空 → 页面纯色（实测踩到）。
         store.refreshEngineEntries()
         print("引擎条目数: \(store.engineEntries.count)")
         for e in store.engineEntries {
@@ -362,7 +357,7 @@ enum UISnapshot {
     ///
     /// 判据：采样若干点，如果**所有采样点颜色都一样** → 判空白。
     ///
-    /// ⚠️ **阈值不能太松**。本鱼第一版用 `dr+dg+db > 0.06`，
+    /// ⚠️ **阈值不能太松**。早期实现用 `dr+dg+db > 0.06`，
     ///    结果设置页渲染出一张**全白**的图却**判过了** ——
     ///    因为纯白背景上的抗锯齿文字边缘产生了极小的色差（不到 0.06），
     ///    采样网格恰好扫到那些边缘，于是被判成「有内容」。

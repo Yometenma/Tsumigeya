@@ -66,7 +66,7 @@ The game keeps running without the launcher being alive; but once the launcher i
 
 ## Offline assistance
 
-The offline rewrite block in the Assistance tab appears **only for NScripter and RPG Maker 2000/2003**: both are C++ interpreters with no injectable script layer, so editing files is the only option. Other engines use the in-game injected panel and never show this block.
+The offline rewrite block in the Assistance tab appears **only for NScripter and RPG Maker 2000/2003**: both are C++ interpreters with no injectable script layer, so editing files is the only option. Other engines use the in-game injected panel and never show this block. For these two engine families both the Translation and Assistance tabs open the same offline block, since there is no injection session to split them.
 
 A `.tsumigeya-bak` backup is written alongside first; an existing backup is never overwritten, and writing is refused while the game is running.
 

@@ -1,6 +1,5 @@
 // 添加游戏向导。
 //
-// 对应 Electron 版：`components/AddGameWizard.vue`（603 行 / U5+U6）
 // 契约：M5.0 S3（只选文件 + 上退兜底）/ S4（去跳过 + 可改引擎）
 //
 // ===== 三步流程（与 Electron 版一致）=====

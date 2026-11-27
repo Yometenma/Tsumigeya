@@ -1,7 +1,6 @@
 // 游戏记录模型。
 //
-// 对应 Electron 版：src/main/games-store.ts 的 GameRecord / GameMap
-// 契约：docs/M1-实施方案.md §3.2、D10（**与上游 schema 兼容**）
+// 契约：D10（**与上游 games.json schema 兼容**，未知字段保留）
 //
 // ===== 关键约束：schema 必须与上游一致（D10）=====
 //

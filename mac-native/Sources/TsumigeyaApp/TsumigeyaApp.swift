@@ -25,12 +25,12 @@ struct TsumigeyaApp: App {
     @StateObject private var store = AppStore()
 
     init() {
-        // ⚠️ **UI 快照模式**：本鱼在无用户会话的 SSH 环境里验 UI 的唯一办法。
+        // ⚠️ **UI 快照模式**：在无用户会话的 SSH 环境里验 UI 的唯一办法。
         //
         //    `swift run Tsumigeya --snapshot <目录>` → 渲染几张界面成 PNG 然后退出。
         //    正常启动（不带参数）不受影响。
         //
-        // ===== ⚠️ 这里踩过一个死锁（本鱼自己造成的）=====
+        // ===== ⚠️ 这里踩过一个死锁=====
         //
         //    最初用 `Task { @MainActor in ... }` + `DispatchSemaphore.wait()` 等它完成。
         //    **死锁**：`App.init()` 本身就跑在**主线程**上，`semaphore.wait()` 把主线程
@@ -84,7 +84,7 @@ struct TsumigeyaApp: App {
 
     var body: some Scene {
         // ⚠️ **`WindowGroup` 必须带标题**（用户截图反馈：窗口标题显示的是应用名 "Tsumigeya"，
-        //    而本鱼在侧边栏设的 `navigationTitle("游戏库")` **没生效**）。
+        //    侧边栏设的 `navigationTitle("游戏库")` **没生效**）。
         //
         //    原因：macOS 上 `NavigationSplitView` 的 sidebar 设 `navigationTitle`
         //    不一定影响**窗口标题**（那是 Scene 层的属性）；

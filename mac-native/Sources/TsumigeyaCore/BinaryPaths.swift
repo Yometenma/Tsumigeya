@@ -1,7 +1,6 @@
 // 引擎可执行文件路径（D56：**唯一来源**）。
 //
-// 对应 Electron 版：src/main/launchers/binary-paths.ts（413 行）
-// 契约：docs/M4.0-实施方案.md §2.2（用户已实测，**路径拼法不要改**）
+// 契约：路径拼法与目录结构已实测，**不要改**
 //
 // ===== 这些路径是照抄实测的，一个字都别改 =====
 //
@@ -84,7 +83,7 @@ public enum BinaryPaths {
 
     /// ⚠️ **配置写在这里**（`Z-Universal.app/Contents/Game`）。
     ///
-    /// 实测（Mac，2026-11-04）：这份 `Z-Universal` **只读这个位置的 `mkxp.json`**，
+    /// 实测（Mac）：这份 `Z-Universal` **只读这个位置的 `mkxp.json`**，
     /// 完全不看 cwd、也不看游戏目录。v0.5.2 曾把它改到游戏目录 → 无效（它照旧读这里）。
     /// 这就是 D72 的核心：别再把配置写进游戏目录。
     public static func mkxpzConfigDir(_ dataDir: String) -> String {
@@ -190,7 +189,7 @@ public enum BinaryPaths {
 
     /// KiriKiri 的可执行文件（`deps/krkr*/krkrsdl2`）。
     ///
-    /// ===== 实测（2026-11-06，真下载包 + 真安装）=====
+    /// ===== 实测（真下载包 + 真安装）=====
     /// 包 `krkrsdl2-macos.zip` 解开后是**单个裸二进制**：
     ///     krkrsdl2        （16.5MB，可执行）
     ///
@@ -212,7 +211,7 @@ public enum BinaryPaths {
 
     /// NScripter（ONS）的可执行文件（`deps/onsyuri/onsyuri`）。
     ///
-    /// ===== 为什么不用 tmkk 那两个二进制（2026-11-21 实测）=====
+    /// ===== 为什么不用 tmkk 那两个二进制（实测）=====
     ///
     /// `onscripter-20230825bin.tar.bz2` 解开是：
     ///     onscripter        Mach-O universal **[ppc, i386]**  → 现代 macOS 直接
@@ -278,7 +277,7 @@ public enum BinaryPaths {
 
     /// Siglus 的可执行文件。
     ///
-    /// ===== 实测（2026-11-06，真下载包 + 真安装）=====
+    /// ===== 实测（真下载包 + 真安装）=====
     /// 包 `siglus-macos-arm64.app.tar.gz` 解开：
     ///     Siglus-arm64.app/Contents/MacOS/Siglus
     ///
@@ -331,9 +330,9 @@ public enum BinaryPaths {
 
     /// Godot 的可执行文件。
     ///
-    /// ⚠️ **未实测**（2026-11-06）：
+    /// ⚠️ **未实测**：
     /// 包是 `Godot_v4.6.1-stable_macos.universal.zip`（**161MB**），
-    /// 本鱼只验了 HTTP 200 与 content-length，**没有真下载解压看结构**。
+    /// 只验了 HTTP 200 与 content-length，**没有真下载解压看结构**。
     ///
     /// 已知信息（来自 D92 的调研）：官方 mac 包解开是
     /// `Godot.app/Contents/MacOS/Godot`。

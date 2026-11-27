@@ -1,18 +1,17 @@
 // JSON 读写层（原子写）。
 //
-// 对应 Electron 版：src/main/games-store.ts 的 readJSON / writeJSON
-// 契约：docs/M1-实施方案.md §3.2，写文件规则照上游 worker.cjs:38-48
+// 契约：写文件规则照上游 worker.cjs:38-48
 //
 // ===== 为什么要原子写（不是"保险起见"）=====
 //
-// 写文件序列必须是：**校验旧文件 → 备份 .bak → 写 .tmp → rename**
+// 写文件序列必须是：**校验旧文件 → 备份 .tsumigeya-bak → 写 .tmp → rename**
 //
 // 为什么 `.tmp` + `rename`：POSIX 的 `rename` 对同一文件系统是**原子**的。
 // 直接覆写若在中途断电/磁盘满，后果是**文件半新半旧** —— 既读不出新数据，
 // 也回不去旧数据。而 rename 的最坏结果是「还是旧的那份」，那是可接受的。
 //
-// 为什么还要 `.bak`：rename 保住了「不半截」，但保不住「写进去的是坏数据」
-// （比如序列化逻辑有 bug 写了个空对象）。这时候 `.bak` 是唯一回退点。
+// 为什么还要备份：rename 保住了「不半截」，但保不住「写进去的是坏数据」
+// （比如序列化逻辑有 bug 写了个空对象）。这时候备份是唯一回退点。
 //
 // ⚠️ **顺序不能调**：先备份再写。反过来（先写后备份）意味着
 //    备份的那份可能是**已经写坏了的新内容**，等于没有备份。
@@ -119,7 +118,7 @@ public enum JSONStore {
             return "encode failed: \(error)"
         }
 
-        let bak = url.appendingPathExtension("bak")
+        let bak = Backup.path(for: url)
 
         if fileManager.fileExists(atPath: url.path) {
             do {

@@ -1,6 +1,5 @@
 // 存档的 IO 层：探测、列出、导出、导入。
 //
-// 对应 Electron 版：`src/main/save-store.ts`（276 行）+ `save-archive-io.ts`（305 行）
 // 契约：M4 S1/S3/S4，D81 / D82 / D86
 //
 // ===== 三条铁律（每条都是踩出来的）=====

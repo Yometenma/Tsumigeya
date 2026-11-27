@@ -1,6 +1,5 @@
 // 游戏库的增删改（games.json 的写）。
 //
-// 对应 Electron 版：`src/main/games-store.ts`（410 行）
 // 契约：D10（schema 与上游兼容）/ D18 旁挂存储
 //
 // ===== 这个文件最容易漏的一条：删游戏要清**四处** =====
@@ -11,7 +10,7 @@
 //    **很容易落回刚删的号** → 新游戏继承了上一个游戏的游玩历史和分类归属。
 //    用户会看到「这个新游戏显示玩了 20 小时」——而他完全不知道原因。
 //
-// 回归测试：Electron 版 `test/delete-cleanup.test.ts`
+// 回归测试：Tests/TsumigeyaTests/Library/GameLibraryManagementTests.swift（删除后的清理与部分失败）
 import Foundation
 
 public enum GameLibrary {
@@ -174,7 +173,7 @@ public enum GameImport {
         //      · level ≥1 传的是 `<目录>/Game.exe` → 父目录正好是那个目录
         //
         //    所以两种情况下，「认出来的目录」都是 `gameDirForFiles(probe)`。
-        //    本鱼第一版把 `folder = attempt.path` 直接赋值 ——
+        //    早期实现把 `folder = attempt.path` 直接赋值 ——
         //    level 0 时 `attempt.path` 是**文件**，于是 folder 成了 `…/Game.exe`（错的）。
         var folder = base
         var level = 0
@@ -206,7 +205,7 @@ public enum GameImport {
 
         // ⚠️ 全都不认得时，**落回「用户所选文件的父目录」而不是它自己** ——
         //    因为「游戏目录」几乎不会是用户选中的那个文件本身。
-        //    （这条本鱼第一版写错了：直接拿 base 当 folder，于是
+        //    （这条早期实现写错了：直接拿 base 当 folder，于是
         //     `selectedPath = /games/Mystery/a.bin` 时 folder 也成了 `a.bin`。）
         if engine == nil {
             let parent = (base as NSString).deletingLastPathComponent

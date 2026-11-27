@@ -1,11 +1,10 @@
 // manifest 读取 + gameArgs 缺省值合并。
 //
-// 对应 Electron 版：src/main/engines/manifest.ts（230 行）+ registry.ts 的 expandDataDirPlaceholders
-// 契约：docs/M1-实施方案.md §3，D62 / D61
+// 契约：D62 / D61
 //
 // ===== 本文件是「为什么佣兵的冒险启动失败」的答案 =====
 //
-// 本鱼最初写 mkxp.json 时只用**用户存的值**，于是配置里只有 3 项：
+// 最初写 mkxp.json 时只用**用户存的值**，于是配置里只有 3 项：
 //   gameFolder / RTP / rgssVersion
 //
 // 结果 mkxp-z 崩在：
@@ -19,7 +18,7 @@
 // （`kernel32` 正是它提供的）。不传它 → 脚本加载 `kernel32` 失败 → 游戏起不来。
 //
 // 用户说得对：「之前明明能跑」。Electron 版能跑，是因为它有这一步：
-// **按 manifest schema 给 gameArgs 补缺省值**。本鱼漏了整个环节。
+// **按 manifest schema 给 gameArgs 补缺省值**。这一步最初漏掉了。
 //
 // ===== 合并语义（四条，每条改一条用户的既有配置就会变）=====
 //

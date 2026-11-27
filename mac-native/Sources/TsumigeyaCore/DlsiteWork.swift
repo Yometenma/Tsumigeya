@@ -1,7 +1,5 @@
 // DLsite 元数据的数据模型与**本地判据**（纯函数，零网络）。
 //
-// 对应 Electron 版：`src/main/dlsite.ts` 的 RJ 部分（`normalizeRj` / `extractRjCandidates`
-//                   / `detectRjFromPath`）+ `src/shared/gamecard-info.ts`
 // 契约：D18（元数据**旁挂** library-meta.json）/ D19（只解析 contents JSON）/ D24（搜索不自动选）
 //       D25（可编辑字段不含 rj）/ D26（editedFields 保护）
 //
@@ -10,7 +8,7 @@
 // RJ 提取与 HTML 解析是**纯字符串操作**，可以 100% 单测；
 // 而网络抓取（`DLsiteClient`）依赖真实站点，只能端到端验。
 //
-// ⚠️ 分开的好处：本鱼可以先证明「从路径/readme 里正确提取 RJ」，
+// ⚠️ 分开的好处：先证明「从路径/readme 里正确提取 RJ」，
 //    再去碰网络 —— 而后者才是最不稳定、最难断言的。
 import Foundation
 
@@ -157,7 +155,6 @@ public enum RJNumber {
 
 /// DLsite 抓下来的一部作品。
 ///
-/// 对应 Electron 版：`DlsiteWork`
 public struct DlsiteWork: Sendable, Equatable {
     /// RJ 号（`RJ294126`）。
     public var rj: String
@@ -250,7 +247,6 @@ public enum EditedFields {
 
     /// 合并新旧元数据：**被用户改过的字段刷新时不覆盖**。
     ///
-    /// 对应 Electron 版：`mergeWork`
     ///
     /// ⚠️ 这是 D26 的核心。用户手改的值属于用户 ——
     ///    刷新元数据（比如重新抓一次）不该把他改过的标题变回去。

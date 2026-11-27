@@ -142,7 +142,7 @@ struct GameDetailView: View {
 
     /// 没有元数据时的提示（走决策链）。
     ///
-    /// ⚠️ **决策链是用户明确要求的**（2026-11-06）：
+    /// ⚠️ **决策链是用户明确要求的**：
     ///    「自动识别如果有直接能找到 rj 号就用 rj 号，不能就按名字来」
     private var noMetaHint: String {
         guard let step = lookup.step else {

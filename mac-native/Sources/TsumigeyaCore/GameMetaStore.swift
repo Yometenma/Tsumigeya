@@ -1,6 +1,5 @@
 // 游戏元数据的读写（`library-meta.json` 里的非分类部分）。
 //
-// 对应 Electron 版：`src/main/library-meta.ts` 的 `saveGameMeta` / `loadGameMeta`
 // 契约：D18（元数据**旁挂**，删了游戏照样能启动）/ D26（editedFields 保护）
 //       D25（可编辑字段不含 rj）
 //

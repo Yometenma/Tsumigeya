@@ -147,7 +147,7 @@ func runLaunchVerify(gameId: String?) -> Int {
     for game in targets {
         print("\n--- id=\(game.id)  \(game.gameTitle)  [\(game.gameEngine)] ---")
 
-        // ⚠️ **必须走完整的 gameArgs 准备流程**（本鱼最初漏了这一步，导致 mkxp-z 崩在 kernel32）
+        // ⚠️ **必须走完整的 gameArgs 准备流程**（最初漏了这一步，导致 mkxp-z 崩在 kernel32）
         //
         // 完整流程 = 读 manifest → 按 schema 补缺省值 → 展开 <dataDir> 占位符。
         //
@@ -176,9 +176,9 @@ func runLaunchVerify(gameId: String?) -> Int {
             continue
         }
 
-        // ⚠️ **启动前先确认这个游戏没在跑**（2026-11-06 实测教训）
+        // ⚠️ **启动前先确认这个游戏没在跑**（实测教训）
         //
-        // 用户当时正在玩 Karryn's Prison，本鱼的测试把它当"启动失败"报了红。
+        // 正在运行的商业作品会被误判成启动失败，不能只看进程活着。
         // 真实原因不是代码 —**NW.js 有单实例机制**：它发现已有实例在跑，
         // 就把启动请求转给那个实例、自己退出。所以「2.5 秒后进程没了」在这里
         // 恰恰说明**它工作正常**（单实例生效了）。
@@ -208,7 +208,7 @@ func runLaunchVerify(gameId: String?) -> Int {
 
         // ===== 等一会儿，然后用**正确的判据**判定它真的跑起来了吗 =====
         //
-        // ⚠️ 「进程活着」不够！（用户 2026-11-06 当场指出「佣兵的冒险明明启动失败了」）
+        // ⚠️ 「进程活着」不够！（实测）
         //
         // 真相：mkxp-z 遇到 Ruby 异常**不退出**，它弹错误框等人点确定。
         // 于是进程活着 = 看起来成功，实际卡在错误框上。
@@ -330,7 +330,6 @@ func processAlive(_ pid: Int32) -> Bool {
 
 /// 温和地杀掉（先 TERM，等一下，再 KILL）。
 ///
-/// 对应 Electron 版 `stopGame` 的两段式（D52：SIGTERM → 5s → SIGKILL）。
 /// 这里测试用，等得短一点。
 func killProcess(_ pid: Int32) {
     kill(pid, SIGTERM)

@@ -1,6 +1,5 @@
 // 引擎页的数据层：每个引擎的运行时状态。
 //
-// 对应 Electron 版：`pages/EnginesPage.vue` 的数据部分 + `engines/registry.ts` 的 warning 逻辑
 // 契约：D60（清单自维护）/ D88（只认不跑）/ D90（吉里吉里标实验性）/ D91（9 个引擎）
 //
 // ===== 这张表要回答用户三个问题 =====
@@ -153,7 +152,7 @@ public enum EngineStatus {
         if definition.folder == "tyrano" {
             return .unverifiedLaunchOnly
         }
-        // ⚠️ nscripter **不再**在这个清单里：2026-11-22 已在 macOS 上用真实作品
+        // ⚠️ nscripter **不再**在这个清单里：已在 macOS 上用真实作品
         //    （DLsite 体験版 RJ051613，`nscript.dat` + `arc.nsa`）跑通标题画面与菜单，
         //    启动参数（`-r` / `--enc` / 字体 / ASCII 别名）已实测。
         //    仍未覆盖的是 `nt2`/`nt3` 加密包与 Lua 作品 —— 那属于「作品差异」，

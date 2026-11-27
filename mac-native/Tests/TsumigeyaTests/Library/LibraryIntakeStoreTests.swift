@@ -45,7 +45,7 @@ struct LibraryIntakeStoreTests {
         #expect(store.addBatch([a]))
         let url = root.appendingPathComponent("games.json")
         let original = try Data(contentsOf: url)
-        try FileManager.default.createDirectory(at: url.appendingPathExtension("bak"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: Backup.path(for: url), withIntermediateDirectories: true)
         #expect(!store.addBatch([b])); #expect(store.games.count == 1)
         #expect(try Data(contentsOf: url) == original)
         let corrupt = Data("{broken".utf8); try corrupt.write(to: url)

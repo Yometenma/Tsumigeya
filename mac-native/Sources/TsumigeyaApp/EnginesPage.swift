@@ -1,6 +1,5 @@
 // 引擎页：管理 9 个引擎的运行时。
 //
-// 对应 Electron 版：`pages/EnginesPage.vue`（490 行）
 // 契约：D60 / D88 / D90 / D91
 //
 // ===== 页面要回答的三件事（与 EngineStatus 一一对应）=====
@@ -272,13 +271,6 @@ struct EngineRow: View {
         .padding(.leading, 15)
     }
 
-    /// 1024 进制（与 `shared/save-view.ts` 的 `formatByteSize` 同一取向）。
-    private func formatBytes(_ bytes: Int64) -> String {
-        if bytes < 1024 { return "\(bytes) B" }
-        let kb = Double(bytes) / 1024
-        if kb < 1024 { return String(format: "%.0f KB", kb) }
-        let mb = kb / 1024
-        if mb < 1024 { return String(format: "%.1f MB", mb) }
-        return String(format: "%.2f GB", mb / 1024)
-    }
+    /// 1024 进制，实现见 `ByteFormat.human`（与存档页共用同一份）。
+    private func formatBytes(_ bytes: Int64) -> String { ByteFormat.human(bytes) }
 }

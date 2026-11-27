@@ -1,7 +1,6 @@
 // 解压层：系统 bsdtar（macOS 是 `/usr/bin/tar`，本身就是 bsdtar）的安全解压。
 //
-// 对应 Electron 版：src/main/extract.ts（136 行）
-// 契约：docs/M1-实施方案.md §4（extract.ts 行）与 §6（extract 测试）
+// 契约：解压前先列全部条目并逐条校验，再解压（ExtractTests 守着）
 //
 // ===== 流程（与 Electron 版一字不差，顺序有理由）=====
 //
@@ -16,7 +15,7 @@
 //
 // ===== 本文件唯一真坑：bsdtar 在 LANG 为空时把非 ASCII 名转成八进制转义 =====
 //
-// 症状（本机实测，Mac / macOS 26.6.2 / bsdtar 3.5.3，2026-11-06）：
+// 症状（本机实测）：
 //
 //      $ env -i /usr/bin/tar -tf b.tar        # 没有任何 LANG/LC_ALL/LC_CTYPE
 //      ./

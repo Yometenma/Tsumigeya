@@ -343,7 +343,7 @@ struct SidebarGameRow: View {
 /// 自绘搜索框。
 ///
 /// ⚠️ 不用 `.searchable(placement:)`：那是**给工具栏/侧边栏**挂搜索的标准 API，
-///    在自定义顶栏里用会因为「没有原生容器」而位置错乱（本鱼实测过）。
+///    在自定义顶栏里用会因为「没有原生容器」而位置错乱（实测过）。
 ///    自绘一个小的更好控制，而且样式与 mac 一致（圆角 + 放大镜 + 清除按钮）。
 struct SearchField: View {
     @Binding var text: String

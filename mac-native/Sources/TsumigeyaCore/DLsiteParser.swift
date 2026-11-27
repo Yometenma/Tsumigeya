@@ -1,6 +1,5 @@
 // DLsite 页面解析（**纯字符串操作，零网络**）。
 //
-// 对应 Electron 版：`src/main/dlsite.ts` 的解析段（约 200 行）
 // 契约：D19（优先页面结构化 JSON，不执行脚本）/ D22（封面 host 白名单）
 //       D23（搜索优先结构化锚点）/ D40（标签不建空字段）
 //
@@ -160,25 +159,21 @@ public enum DLsiteParser {
 
     /// 从 HTML 里提取 `var contents = {...};` 的 JSON 对象。
     ///
-    /// 对应 Electron 版：`extractContentsJson`
-    ///
     /// - Returns: 解析出的 JSON；找不到 / 解析失败返回 nil。
     ///
-    /// ⚠️⚠️ **必须找 `var contents`，不能只找 `contents`**（本鱼实测踩到）。
+    /// ⚠️⚠️ **必须找 `var contents`，不能只找 `contents`**。
     ///
     ///    真实页面（RJ331590）里 `contents` 这个词出现了 **7 次**：
     ///    · 前 6 次是 HTML class 名 `work_parts_multitype_item type_contents`
     ///    · 第 7 次才是真正的 `var contents = {...}`
     ///
-    ///    本鱼第一版用 `html.range(of: "contents")` 找**第一个** ——
-    ///    于是从一个无关位置往后找 `{`，扫到了别的东西 → **解析失败**。
+    ///    只找 `contents` 会从无关位置往后找 `{`，扫到别的东西 → **解析失败**。
     ///
-    ///    症状很隐蔽：meta 兜底能成功（标题/社团/封面都对），
-    ///    所以界面上「看起来能用」—— 但 `work_type` / `ageRating` 永远是空。
+    ///    症状很隐蔽：meta 兜底能成功（标题/社团/封面都对），界面上「看起来能用」，
+    ///    但 `work_type` / `ageRating` 永远是空。
     ///
-    ///    ⚠️ 而且 RJ294126 那个页面**只有 1 处 `contents`** ——
-    ///       所以本鱼用那个页面做的测试**全部通过**，掩盖了这个 bug。
-    ///       **两个真实样本才能暴露它。**
+    ///    ⚠️ RJ294126 那个页面**只有 1 处 `contents`**，用它可以全部通过 ——
+    ///       **两个真实样本才能暴露它**。
     public static func extractContentsJSON(_ html: String) -> JSONValue? {
         // 找 `var contents`（也接受 `let contents` / `contents =` 的变体）
         guard let varRange = html.range(of: "var contents") else { return nil }
@@ -207,9 +202,8 @@ public enum DLsiteParser {
 
     /// 从 `var contents = {...}` 里解析出一部作品。
     ///
-    /// 对应 Electron 版：`parseDlsiteWork`
     ///
-    /// ===== ⚠️ 真实页面结构（2026-11-06 实测 RJ294126）=====
+    /// ===== ⚠️ 真实页面结构（实测 RJ294126）=====
     ///
     /// ```json
     /// {
@@ -234,8 +228,7 @@ public enum DLsiteParser {
     /// }
     /// ```
     ///
-    /// ⚠️ **作品数据在 `detail[0]` 里，不是顶层**。
-    ///    本鱼的 CLI 探针第一版就是把它当统计信息了 —— 真实数据才看得出来。
+    /// ⚠️ **作品数据在 `detail[0]` 里，不是顶层** —— 顶层字段只是统计信息。
     ///
     /// ⚠️ `image_main` 是**协议相对 URL**（`//img.dlsite.jp/...`），
     ///    必须补 `https:`（`normalizeCoverUrl` 已经处理）。

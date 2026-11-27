@@ -1,8 +1,6 @@
 // 「怎样才能找到这个作品的 DLsite 元数据」—— 决策链。
 //
-// 对应 Electron 版：`src/shared/gameinfo-form.ts` 的 `dlsiteDetect` 那部分 + M2.5 §A
-//
-// ===== ⚠️ 决策链（用户 2026-11-06 明确要求）=====
+// ===== ⚠️ 决策链 =====
 //
 //   「自动识别如果有直接能找到rj号就用rj号，不能就按名字来」
 //
@@ -81,7 +79,7 @@ public enum DlsiteLookup {
         gamePath: String, gameTitle: String,
         fileManager: FileManager = .default
     ) -> Step {
-        // ① RJ 优先（用户明确要求：「如果能直接找到 rj 号就用 rj 号」）
+        // ① RJ 优先
         let detected = RJNumber.detectFromPath(
             gamePath: gamePath, fileManager: fileManager)
         if let rj = detected.first {

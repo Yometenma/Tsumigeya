@@ -3,14 +3,23 @@ import AppKit
 import UniformTypeIdentifiers
 import TsumigeyaCore
 
+/// 游戏详情的「翻译」页与「辅助」页共用的入口。
+///
+/// 两个引擎族走两条完全不同的路：
+///   · 能注入运行时（nwjs / mkxpz / renpy / tyrano）→ `AssistanceSession`，游戏内面板
+///   · 注入不了（nscripter / easyrpg）→ `OfflineSession`，只能改文件
+///
+/// 所以这里不能假设「一定拿得到 `session`」：离线引擎在任何 mode 下都没有 `session`。
+/// 曾经把它写成 `if let session … else ProgressView` 的兜底，于是离线引擎的「翻译」页
+/// 永远停在转圈上 —— 兜底的 ProgressView 把「这个引擎没有注入会话」当成了「还在读」。
 struct GameAssistanceView: View {
-    enum Mode { case all, translation, assistance }
+    enum Mode { case translation, assistance }
 
     let game: GameRecord
     let mode: Mode
     @EnvironmentObject private var store: AppStore
 
-    init(game: GameRecord, mode: Mode = .all) {
+    init(game: GameRecord, mode: Mode) {
         self.game = game
         self.mode = mode
     }
@@ -18,10 +27,8 @@ struct GameAssistanceView: View {
     @State private var offline: OfflineSession?
     var body: some View {
         Group {
-            if let offline, mode == .assistance {
-                // 这个引擎注入不了运行时，只给文件改写入口。
-                ScrollView { OfflineAssistanceView(session: offline).padding(22) }
-            } else if let session { AssistanceContent(session: session, mode: mode) }
+            if let offline { offlineContent(offline) }
+            else if let session { AssistanceContent(session: session, mode: mode) }
             else { ProgressView(L("读取辅助配置……")) }
         }
         .task(id: "\(store.dataDir)\0\(game.id)\0\(game.gamePath)") {
@@ -31,6 +38,12 @@ struct GameAssistanceView: View {
             session = nil
             offline = store.offlineSession(for: game)
         }
+    }
+
+    /// 离线引擎只有一块界面：它同时是翻译和辅助，不按 mode 分栏。
+    @ViewBuilder
+    private func offlineContent(_ offline: OfflineSession) -> some View {
+        ScrollView { OfflineAssistanceView(session: offline).padding(22) }
     }
 }
 
@@ -85,7 +98,6 @@ private struct AssistanceContent: View {
     }
     private var title: String {
         switch mode {
-        case .all: return L("翻译与辅助")
         case .translation: return L("翻译")
         case .assistance: return L("辅助")
         }

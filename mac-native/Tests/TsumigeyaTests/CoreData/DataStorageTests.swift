@@ -147,13 +147,13 @@ struct JSONStoreTests {
         #expect(FileManager.default.fileExists(atPath: failure.backupPath!))
     }
 
-    /// 写入会留下 `.bak`。
+    /// 写入会留下 `.tsumigeya-bak`。
     /// 守的是：rename 保住了「不半截」，但保不住「写进去的是坏数据」，还需要回退点。
-    @Test("第二次写入会生成 .bak 备份")
+    @Test("第二次写入会生成 .tsumigeya-bak 备份")
     func createsBackup() throws {
         let tmp = FileManager.default.temporaryDirectory
             .appendingPathComponent("tsmg-bak-\(UUID().uuidString).json")
-        let bak = tmp.appendingPathExtension("bak")
+        let bak = Backup.path(for: tmp)
         defer {
             try? FileManager.default.removeItem(at: tmp)
             try? FileManager.default.removeItem(at: bak)
@@ -165,9 +165,9 @@ struct JSONStoreTests {
         _ = JSONStore.save(Payload(name: "second", count: 2), to: tmp)
         #expect(FileManager.default.fileExists(atPath: bak.path))
 
-        // .bak 里是**旧**内容（顺序不能反，见 JSONStore 文件头）
+        // 备份里是**旧**内容（顺序不能反，见 JSONStore 文件头）
         guard case .loaded(let fromBak) = JSONStore.load(Payload.self, from: bak) else {
-            Issue.record(".bak 读不出来")
+            Issue.record(".tsumigeya-bak 读不出来")
             return
         }
         #expect(fromBak.name == "first")

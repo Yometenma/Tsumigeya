@@ -1,6 +1,5 @@
 // 存档导出包的格式（**纯数据 + 纯判据**）。
 //
-// 对应 Electron 版：`src/shared/save-archive.ts`（248 行 / 39 条单测）
 // 契约：M4 S3/S4，D81（打整个目录）/ D82（运行中禁止）/ D86（点开头跳过）
 //
 // ===== 三条判据，每条都有过真 bug 撑着 =====
@@ -82,8 +81,14 @@ public enum SaveArchive {
     /// 导出包的扩展名（`.zip`，mac 上双击就能看内容）。
     public static let archiveExt = ".zip"
 
-    /// 备份后缀（沿用 `Game.ini.tsumigeya-bak` 的既有约定，D71 起同一个后缀）。
-    public static let backupSuffix = ".tsumigeya-bak"
+    /// 备份后缀。定义在 `Backup.suffix`，这里只留别名给既有调用点。
+    public static var backupSuffix: String { Backup.suffix }
+
+    /// 一份文件名是否是我们自己写的备份（新旧后缀都认）。
+    public static func isBackupName(_ name: String) -> Bool {
+        let lower = name.lowercased()
+        return lower.hasSuffix(Backup.suffix) || lower.hasSuffix(Backup.legacySuffix)
+    }
 }
 
 // MARK: - 导出阻断
@@ -266,7 +271,7 @@ public enum SaveManifestParser {
             && !name.contains(":")
             && !name.unicodeScalars.contains(where: { $0.value == 0 })
             && lower != SaveArchive.manifestPath.lowercased()
-            && !lower.hasSuffix(SaveArchive.backupSuffix)
+            && !SaveArchive.isBackupName(name)
     }
 
     /// sha256 文本的形状（小写十六进制 64 位）。

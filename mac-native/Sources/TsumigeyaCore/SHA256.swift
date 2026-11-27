@@ -1,7 +1,5 @@
 // sha256（存档包的校验用）。
 //
-// 对应 Electron 版：`src/main/save-archive-io.ts` 的 `sha256Hex`（用 `node:crypto`）
-//
 // ===== 为什么需要它 =====
 //
 // 导出时记下每个文件的 sha256，导入时逐个校验。这是「文件在传输中没被改过」

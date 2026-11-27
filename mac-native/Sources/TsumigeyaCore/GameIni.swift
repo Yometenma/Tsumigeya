@@ -1,13 +1,12 @@
 // mkxp-z 的配置构造与写入。
 //
-// 对应 Electron 版：src/main/launchers/mkxpz.ts（357 行）+ diagnose.ts 的 GameIni 部分
-// 契约：docs/M4.0-实施方案.md §10，D59 / D71 / D72
+// 契约：D59 / D71 / D72
 //
 // ===== 三个必须照搬的实测结论（每条都踩过真机）=====
 //
 // ① **D72：mkxp-z 只读 app 包内的 `mkxp.json`，不看 cwd、不看游戏目录**
 //
-//    实测（Mac，2026-11-04）：把配置改写到游戏目录 → **无效**，它照旧读 app 包里那份旧配置
+//    实测（Mac）：把配置改写到游戏目录 → **无效**，它照旧读 app 包里那份旧配置
 //    → 报 `Failed to parse mkxp.json: Unknown encoding`。
 //    判据：把 Game.ini 都删掉、cwd 换成纯 ASCII 临时目录，它仍然报同一句。
 //    → 配置**必须**写在 `Z-Universal.app/Contents/Game/mkxp.json`，且**不传 cwd**。
@@ -91,7 +90,7 @@ public enum GameIniReader {
 
         // ⚠️ **必须用 `components(separatedBy: .newlines)`，不能用 `split(separator: "\n")`。**
         //
-        // 实测踩到的坑（2026-11-06，真实 `Game.ini`）：CRLF 文件用 `split(separator:)` 会
+        // 实测踩到的坑（真实 `Game.ini`）：CRLF 文件用 `split(separator:)` 会
         // **整份文件变成 1 行** —— 因为 Swift 的 `String` 按 **Character（字素簇）** 比较，
         // 而 `\r\n` 是**一个** Character，`"\n"` 匹配不到它。
         //

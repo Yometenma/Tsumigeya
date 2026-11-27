@@ -139,7 +139,7 @@ public enum OfflineScript {
     public static func writeWithBackup(_ data: Data, to url: URL, backup: Bool) throws {
         let fm = FileManager.default
         if backup, fm.fileExists(atPath: url.path) {
-            let copy = URL(fileURLWithPath: url.path + SaveArchive.backupSuffix)
+            let copy = Backup.path(for: url)
             guard copy.resolvingSymlinksInPath().path == copy.path else {
                 throw OfflineError.invalid(L10n.string("备份路径是符号链接，拒绝写入。"))
             }

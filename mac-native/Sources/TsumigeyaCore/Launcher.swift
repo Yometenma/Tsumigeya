@@ -1,6 +1,5 @@
 // 真正把游戏拉起来的唯一一处。
 //
-// 对应 Electron 版：src/main/launchers/spawn.ts
 // 契约：D54 / D55
 //
 // ===== D55：进程必须能脱离启动器存活 =====
@@ -10,7 +9,7 @@
 // Electron 版要靠 `detached + stdio:'ignore' + unref()` 三件套，
 // 缺一个游戏就会被一起杀掉。
 //
-// ⚠️ **Swift 的 Process 天然满足这一条** —— 实测（2026-11-06，Mac 真机）：
+// ⚠️ **Swift 的 Process 天然满足这一条** —— 实测（Mac 真机）：
 //    Swift 进程 `exit(0)` 之后，它 spawn 的 `sleep 30` 仍存活，
 //    `ps` 的 TTY 列显示 `??`（已脱离终端，由 launchd 收养）。
 //    所以这里**不需要**「detach」这个概念。
@@ -108,7 +107,7 @@ public enum Launcher {
         // ⚠️ **验收专用**：`TSUMIGEYA_CAPTURE_STDIO` 环境变量存在时，
         // 把 stdout/stderr 重定向到该**文件路径**，而不是 nullDevice。
         //
-        // 为什么需要它（2026-11-06 用户当场指出「佣兵的冒险明明启动失败了」）：
+        // 为什么需要它（实测教训：接 nullDevice 会看不到崩溃）：
         // 接 nullDevice 时**看不到任何输出**，于是 mkxp-z 卡在 Ruby 异常弹窗时
         // 我们只能看到「进程活着」→ 误判成功。
         //

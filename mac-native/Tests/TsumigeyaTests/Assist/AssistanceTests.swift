@@ -135,10 +135,10 @@ struct AssistanceTests {
         var fields = try JSONDecoder().decode([String: JSONValue].self, from: Data(contentsOf: config)); fields["future"] = .string("keep")
         try JSONEncoder().encode(fields).write(to: config)
         let before = try Data(contentsOf: dir.appendingPathComponent("translations.json"))
-        try FileManager.default.createDirectory(at: config.appendingPathExtension("bak"), withIntermediateDirectories: false)
+        try FileManager.default.createDirectory(at: Backup.path(for: config), withIntermediateDirectories: false)
         #expect(throws: (any Error).self) { try AssistanceInstaller.configure(f.project, options: .init(translation: true), translations: ["a": "b"], running: false) }
         #expect(try Data(contentsOf: dir.appendingPathComponent("translations.json")) == before)
-        try FileManager.default.removeItem(at: config.appendingPathExtension("bak"))
+        try FileManager.default.removeItem(at: Backup.path(for: config))
         try AssistanceInstaller.configure(f.project, options: .init(translation: true), translations: ["a": "b"], running: false)
         let saved = try JSONDecoder().decode([String: JSONValue].self, from: Data(contentsOf: config))
         #expect(saved["future"] == .string("keep")); #expect(saved["translation"] == .bool(true))

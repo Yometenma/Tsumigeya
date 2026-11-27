@@ -1,7 +1,6 @@
 // 数据目录解析。
 //
-// 对应 Electron 版：src/main/data-dir.ts（resolveDataDirWithFallback）
-// 契约：docs/M1-实施方案.md §3.1、D4 / D58
+// 契约：D4（环境变量优先）/ D58
 //
 // ===== 这里踩过的坑（Electron 版全踩过，原样保留）=====
 //

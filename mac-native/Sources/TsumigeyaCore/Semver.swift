@@ -1,7 +1,6 @@
 // 版本号比较（正式的、完整的那一份）。
 //
-// 对应 Electron 版：src/main/engines/semver.ts（169 行）
-// 单测：test/engines-semver.test.ts（26 条）+ mac-native 的 P3SemverTests.swift
+// 单测：Tests/TsumigeyaTests/Engines/SemverAndDownloadTests.swift
 //
 // ===== 这个文件替代了什么 =====
 //

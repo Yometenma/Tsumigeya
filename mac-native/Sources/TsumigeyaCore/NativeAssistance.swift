@@ -70,7 +70,10 @@ public enum NativeAssistance {
             var prior = try JSONDecoder().decode([String: JSONValue].self, from: Data(contentsOf: checked("config.json", in: dir)))
             prior.merge(config) { _, new in new }; config = prior
         } else if AssistanceModules.module(for: p.engine).entrySource != nil {
-            for entry in [p.page, p.page.appendingPathExtension("bak"), p.page.deletingPathExtension().appendingPathExtension("rpyc")] {
+            // 入口旁的备份名也认旧后缀：`game.rpy.bak` 是早期版本留下的。
+            let compiled = p.page.deletingPathExtension().appendingPathExtension("rpyc")
+            let guarded = [p.page, compiled] + Backup.backupNames(p.page.path).map { URL(fileURLWithPath: $0) }
+            for entry in guarded {
                 guard entry.path == entry.resolvingSymlinksInPath().path, !fm.fileExists(atPath: entry.path) else { throw AssistanceError.invalid(L10n.string("同名辅助入口已存在，拒绝覆盖。")) }
             }
         }
@@ -95,7 +98,7 @@ public enum NativeAssistance {
             // 先读完并备份全部目标，任何备份失败都不进入写入阶段。
             for (url, _) in writes {
                 if url.pathExtension == "json" { _ = try JSONDecoder().decode(JSONValue.self, from: Data(contentsOf: url)) }
-                let bak = url.appendingPathExtension("bak")
+                let bak = Backup.path(for: url)
                 guard bak.path == bak.resolvingSymlinksInPath().path else { throw AssistanceError.invalid(L10n.string("辅助备份是符号链接。")) }
                 try Data(contentsOf: url).write(to: bak, options: .atomic)
             }
@@ -111,7 +114,7 @@ public enum NativeAssistance {
         for (s,t) in translations { try TranslationTokens.validate(source: s, target: t) }
         let url = try checked("translations.json", in: directory(p))
         _ = try JSONDecoder().decode([String: String].self, from: Data(contentsOf: url))
-        let backup = try checked("translations.json.bak", in: directory(p))
+        let backup = try checked("translations.json" + Backup.suffix, in: directory(p))
         try Data(contentsOf: url).write(to: backup, options: .atomic)
         try JSONEncoder().encode(translations).write(to: url, options: .atomic)
     }
@@ -120,7 +123,9 @@ public enum NativeAssistance {
         _ = try manifest(p)
         let dir = try directory(p), fm = FileManager.default
         let names = scriptFiles(p) + ["config.json", "translations.json", "manifest.json", "missing.json", "state.json", "command.json", "extracted.json"]
-        let allowed = Set(names + names.map { $0 + ".bak" } + ["missing.tmp", "state.tmp", "command.tmp", "extracted.tmp", ".DS_Store"])
+        // 允许清单同时认原名、新后缀备份与旧后缀备份：旧版本写下的 `*.json.bak` 还在目录里。
+        let allowed = Set(names.flatMap(Backup.acceptedNames)
+                          + ["missing.tmp", "state.tmp", "command.tmp", "extracted.tmp", ".DS_Store"])
         for name in try fm.contentsOfDirectory(atPath: dir.path) {
             let url = try checked(name, in: dir)
             guard allowed.contains(name), (try url.resourceValues(forKeys: [.isRegularFileKey])).isRegularFile == true else { throw AssistanceError.invalid(L10n.string("辅助目录含未知文件，未移除任何文件。")) }
@@ -128,7 +133,8 @@ public enum NativeAssistance {
         var targets: [URL] = []
         if AssistanceModules.module(for: p.engine).entrySource != nil {
             let compiled = p.page.deletingPathExtension().appendingPathExtension("rpyc")
-            for url in [compiled, p.page.appendingPathExtension("bak")] where fm.fileExists(atPath: url.path) {
+            let candidates = [compiled] + Backup.backupNames(p.page.path).map { URL(fileURLWithPath: $0) }
+            for url in candidates where fm.fileExists(atPath: url.path) {
                 guard url.path == url.resolvingSymlinksInPath().path, (try url.resourceValues(forKeys: [.isRegularFileKey])).isRegularFile == true else { throw AssistanceError.invalid(L10n.string("辅助编译文件不安全。")) }
                 targets.append(url)
             }

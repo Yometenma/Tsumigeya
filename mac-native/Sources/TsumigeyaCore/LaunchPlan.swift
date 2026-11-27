@@ -1,7 +1,6 @@
 // 启动计划（纯数据 + 一个可选前置动作）。
 //
-// 对应 Electron 版：src/main/launchers/types.ts + nwjs.ts + spawn.ts
-// 契约：docs/M4.0-实施方案.md §3.2，D53 / D54 / D55
+// 契约：D53 / D54 / D55
 //
 // ===== D53：自实现启动，不碰游戏文件 =====
 //

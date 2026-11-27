@@ -1,6 +1,5 @@
 // 「选文件 → 反推游戏目录」的判据（纯函数，唯一来源）。
 //
-// 对应 Electron 版：`src/shared/import-target.ts`（154 行 / 29 条单测）
 // 契约：M5.0 S3（U5）
 //
 // ===== 为什么需要「反推」这一层 =====
@@ -72,7 +71,7 @@ public enum ImportTarget {
 
         // ⚠️ **`maxAscend <= 0` 必须直接返回**（不能写 `1...(max(maxAscend,0))`）：
         //    Swift 的 `1...0` 会**运行时 crash**（`Range requires lowerBound <= upperBound`），
-        //    不是静默跳过。这个坑本鱼实测踩到过一次。
+        //    不是静默跳过。这个坑实测踩到过一次。
         guard maxAscend > 0 else { return out }
 
         for level in 1...maxAscend {

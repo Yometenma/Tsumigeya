@@ -1,7 +1,5 @@
 // 任意 JSON 值。
 //
-// 对应 Electron 版：`Record<string, unknown>` + `src/shared/plain.ts`（toPlain）
-//
 // ===== 为什么需要它 =====
 //
 // 三处必须能装「形状不定的 JSON」：

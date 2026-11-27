@@ -1,6 +1,5 @@
 // 进程存活检查与游戏启动/停止。
 //
-// 对应 Electron 版：`src/main/process-registry.ts` + `launchers/spawn.ts` 的停止部分
 // 契约：D50（进程表只在内存）/ D52（两段式停止）/ D55（进程脱离启动器）
 //
 // ===== 为什么单独一个类型 =====

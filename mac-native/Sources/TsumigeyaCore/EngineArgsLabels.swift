@@ -1,6 +1,5 @@
 // 引擎参数名的中文翻译。
 //
-// 对应 Electron 版：`src/renderer/src/locales/zh-CN.json` 的 `args.<引擎>.<key>`
 // 契约：D62（我们生成的 manifest **刻意不写 labelKey** —— 那是我们自己的字段，
 //       上游只认 `label`，写了会污染兼容 schema）
 //

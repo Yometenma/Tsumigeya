@@ -73,7 +73,7 @@ struct LiveAssistanceView: View {
                 Text(String(format: L("匹配 %@ 条，显示前 100 条；筛选依据每次查找时的数值快照。"), "\(variables.count)")).font(.caption).foregroundStyle(.secondary)
                 ForEach(Array(variables.prefix(100))) { row in
                     HStack {
-                        VStack(alignment: .leading) { Text(row.name); Text(String(format: L("%@ = %@%@"), "\(row.key)", "\(display(row.value))", "\(row.locked ? "（锁定中）" : "")")).font(.caption).textSelection(.enabled) }
+                        VStack(alignment: .leading) { Text(row.name); Text(String(format: L("%@ = %@%@"), "\(row.key)", "\(display(row.value))", "\(row.locked ? L("（锁定中）") : "")")).font(.caption).textSelection(.enabled) }
                         Spacer()
                         Button(L("编辑")) { chosen = row; draft = row.value.stringValue ?? display(row.value); booleanDraft = row.value.boolValue ?? false; action = "set" }
                         if row.locked { Button(L("解除锁定")) { session.sendLive(action: "unlock", key: row.key, value: "null") } }

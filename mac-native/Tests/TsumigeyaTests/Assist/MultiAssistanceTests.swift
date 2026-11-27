@@ -150,7 +150,7 @@ struct MultiAssistanceTests {
         try AssistanceInstaller.configure(f.p, options: .init(cheats: true), running: false)
         let outside = f.root.appendingPathComponent("unrelated")
         let sentinel = Data("keep".utf8); try sentinel.write(to: outside)
-        let backup = AssistanceInstaller.location(f.p).appendingPathComponent("config.json.bak")
+        let backup = AssistanceInstaller.location(f.p).appendingPathComponent("config.json" + Backup.suffix)
         try FileManager.default.createSymbolicLink(at: backup, withDestinationURL: outside)
         #expect(throws: (any Error).self) { try AssistanceInstaller.configure(f.p, options: .init(translation: true), running: false) }
         #expect(try Data(contentsOf: outside) == sentinel)

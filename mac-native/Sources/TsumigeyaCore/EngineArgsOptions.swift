@@ -3,7 +3,7 @@
 // ===== 为什么需要这一层 =====
 //
 // manifest 里 `gameArgs` 的形状是 `{ type, label, default }` —— **没有 options**。
-// 所以 `type: "dropdown"` 的参数在界面上会回落成文本框（本鱼原来的实现）。
+// 所以 `type: "dropdown"` 的参数在界面上会回落成文本框（早期实现）。
 //
 // 但有些参数**语义是固定的枚举**（比如 `rgssVersion` 只能是 1/2/3 或自动），
 // 让用户手打数字既容易错、又不知道 1/2/3 是什么意思。
@@ -32,7 +32,7 @@ public enum EngineArgsOptions {
 
     /// 内置选项表：引擎 folder → 参数名 → 选项。
     ///
-    /// ## ⚠️ `rgssVersion` 的语义（本鱼实测核对过）
+    /// ## ⚠️ `rgssVersion` 的语义（已实测核对）
     ///
     /// `MkxpzConfig.resolveRtp` 的判据是：
     ///
@@ -80,7 +80,7 @@ public enum EngineArgsOptions {
 
     /// 把 gameArgs 里的值统一转成「选项值字符串」。
     ///
-    /// ⚠️⚠️ **这是本鱼踩到的一个真 bug（用户截图报「还是显示 0」）**：
+    /// ⚠️⚠️ **这是一个真实存在的 bug（症状是界面一直显示 0）**：
     ///
     /// `gameArgs["rgssVersion"]` 的**存储类型是 int**（manifest 的 `default` 是 `"0"`，
     /// 但用户真机上存的是数字 `0`，因为它原本就是从 ini 推断后写回去的整数）。

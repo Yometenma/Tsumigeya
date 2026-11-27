@@ -97,7 +97,7 @@ struct LibraryClassificationTests {
         let url = root.appendingPathComponent("library-meta.json")
         try #require(GameMetaStore.save(dataDir: root.path, gameId: "1", meta: classificationMeta()) == nil)
         let before = try Data(contentsOf: url)
-        try FileManager.default.createDirectory(at: url.appendingPathExtension("bak"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: Backup.path(for: url), withIntermediateDirectories: true)
         #expect(GameMetaStore.save(dataDir: root.path, gameId: "1", meta: classificationMeta("ADV")) != nil)
         #expect(try Data(contentsOf: url) == before)
         let broken = Data("{broken".utf8); try broken.write(to: url)
@@ -113,7 +113,7 @@ struct LibraryClassificationTests {
         let before = try Data(contentsOf: url)
         _ = try LibraryClassification.change(.reconcile(gameIDs: ["1"]), dataDir: root.path)
         #expect(try Data(contentsOf: url) == before)
-        #expect(!FileManager.default.fileExists(atPath: url.appendingPathExtension("bak").path))
+        #expect(!FileManager.default.fileExists(atPath: Backup.path(for: url).path))
     }
 }
 
@@ -166,7 +166,7 @@ struct GameLibraryManagementTests {
             default: return store.setSaveDirectoryOverride(gameId: "1", path: root.path)
             }
         }
-        try FileManager.default.createDirectory(at: url.appendingPathExtension("bak"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: Backup.path(for: url), withIntermediateDirectories: true)
         #expect(!run()); #expect(store.games == [old]); #expect(try Data(contentsOf: url) == original)
         let broken = Data("{broken".utf8); try broken.write(to: url)
         #expect(!run()); #expect(store.games == [old]); #expect(try Data(contentsOf: url) == broken)
@@ -208,7 +208,7 @@ struct GameLibraryManagementTests {
         #expect(store.updateMeta(gameId: "1", meta: classificationMeta()))
         let stats = root.appendingPathComponent("play-stats.json")
         #expect(JSONStore.save(["1": JSONValue.int(10), "future": .bool(true)], to: stats) == nil)
-        let backup = root.appendingPathComponent(blocked).appendingPathExtension("bak")
+        let backup = Backup.path(for: root.appendingPathComponent(blocked))
         if FileManager.default.fileExists(atPath: backup.path) { try FileManager.default.removeItem(at: backup) }
         try FileManager.default.createDirectory(at: backup, withIntermediateDirectories: true)
         store.deleteGame(id: "1")
@@ -287,7 +287,7 @@ struct GameLibraryManagementTests {
         var waiterStarted = false
         let task = Task { waiterStarted = true; await store.metadata.waitForFetch(gameId: "1") }
         while !waiterStarted { await Task.yield() }
-        try FileManager.default.createDirectory(at: root.appendingPathComponent("games.json.bak"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("games.json" + Backup.suffix), withIntermediateDirectories: true)
         store.deleteGame(id: "1")
         await transport.release(); await task.value
         #expect(store.games.count == 1)
@@ -308,7 +308,7 @@ struct GameLibraryManagementTests {
         let deadline = ContinuousClock.now.advanced(by: .seconds(3))
         while !(await transport.started), ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(5)) }
         try #require(await transport.started)
-        let backup = root.appendingPathComponent("games.json.bak")
+        let backup = root.appendingPathComponent("games.json" + Backup.suffix)
         try FileManager.default.removeItem(at: backup)
         try FileManager.default.createDirectory(at: backup, withIntermediateDirectories: true)
         store.deleteGame(id: "2")

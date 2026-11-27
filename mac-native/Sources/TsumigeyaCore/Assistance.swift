@@ -118,7 +118,7 @@ public enum AssistanceInstaller {
     private static func safeWrite(_ data: Data, to url: URL) throws {
         guard url.resolvingSymlinksInPath().path == url.path else { throw AssistanceError.invalid(L10n.string("目标文件是符号链接，拒绝写入。")) }
         if FileManager.default.fileExists(atPath: url.path) {
-            let backup = url.appendingPathExtension("bak")
+            let backup = Backup.path(for: url)
             guard backup.resolvingSymlinksInPath().path == backup.path else { throw AssistanceError.invalid(L10n.string("备份文件是符号链接，拒绝写入。")) }
             let old = try Data(contentsOf: url)
             if url.pathExtension == "json" { _ = try JSONDecoder().decode(JSONValue.self, from: old) }
@@ -151,7 +151,7 @@ public enum AssistanceInstaller {
             updates.append((dir.appendingPathComponent("translations.json"), try JSONEncoder().encode(translations ?? existingTranslations)))
             updates.append((dir.appendingPathComponent("config.json"), try JSONEncoder().encode(config)))
             for (url, _) in updates {
-                let backup = url.appendingPathExtension("bak")
+                let backup = Backup.path(for: url)
                 guard backup.resolvingSymlinksInPath().path == backup.path else { throw AssistanceError.invalid(L10n.string("备份是符号链接。")) }
                 try Data(contentsOf: url).write(to: backup, options: .atomic)
             }
@@ -216,13 +216,18 @@ public enum AssistanceInstaller {
         guard !running, try !AssistanceProcesses.isRunning(project) else { throw AssistanceError.invalid(L10n.string("请先关闭游戏，再恢复原始入口。")) }
         _ = try manifest(project)
         let dir = try checkedDirectory(project)
-        let allowed = Set(files(project) + files(project).map { $0 + ".bak" } + ["manifest.json", "original.html", "config.json", "config.json.bak", "translations.json", "translations.json.bak", "missing.json", "missing.tmp", ".DS_Store"])
+        // 允许清单同时认原名、新后缀备份与旧后缀备份：旧版本写下的 `*.json.bak` 还在目录里。
+        let owned = files(project) + ["manifest.json", "original.html", "config.json", "translations.json", "missing.json"]
+        let allowed = Set(owned.flatMap(Backup.acceptedNames) + ["missing.tmp", ".DS_Store"])
         let names = try FileManager.default.contentsOfDirectory(atPath: dir.path)
-        guard names.allSatisfy({ name in
+        let unexpected = names.filter { name in
             var isDirectory: ObjCBool = false
             _ = FileManager.default.fileExists(atPath: dir.appendingPathComponent(name).path, isDirectory: &isDirectory)
-            return allowed.contains(name) && !isDirectory.boolValue
-        }) else { throw AssistanceError.invalid(L10n.string("辅助目录包含未识别文件，已保留全部文件。请先移走自添文件再恢复。")) }
+            return !allowed.contains(name) || isDirectory.boolValue
+        }
+        guard unexpected.isEmpty else {
+            throw AssistanceError.invalid(String(format: L10n.string("辅助目录包含未识别文件：%@。已保留全部文件，请先移走自添文件再恢复。"), "\(unexpected.sorted().joined(separator: "、"))"))
+        }
         let original = try Data(contentsOf: dir.appendingPathComponent("original.html"))
         try original.write(to: project.page, options: .atomic)
         do { try FileManager.default.removeItem(at: dir) }

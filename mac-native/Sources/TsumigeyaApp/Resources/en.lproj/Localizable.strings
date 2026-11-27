@@ -702,3 +702,9 @@
 "已替换 %@ 行，写回编码 %@。备份在同目录 .tsumigeya-bak。" = "Replaced %@ lines, written as %@. Backup is beside it as .tsumigeya-bak.";
 "⚠️ 原编码装不下这些译文，已改用 %@；请把引擎参数里的脚本编码改成同一项，否则游戏内仍是乱码。" = "⚠️ The original encoding cannot hold these translations, so %@ was used; change the engine's script encoding argument to match, or the game will still show garbled text.";
 "RPG Maker 2000／2003 数据库当前只读，不能写回。" = "The RPG Maker 2000／2003 database is currently read-only.";
+
+/* 离线改写：会话失效与运行中写回 */
+"游戏已移除或路径已改变，已停止读取。" = "The game was removed or its path changed; stopped reading.";
+"游戏正在运行，请先关掉游戏再写回。运行中的引擎会把内存里的脚本重新写盘。" = "The game is running. Quit it before writing back: a running engine rewrites the script from memory.";
+"写回期间游戏记录已改变，请重新读取后核对文件。" = "The game record changed during the write-back. Read again and check the file.";
+"（锁定中）" = " (locked)";

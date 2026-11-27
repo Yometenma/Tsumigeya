@@ -135,7 +135,7 @@ struct AppStoreReliabilityTests {
         let store = AppStore()
         await store.load(dataDirectory: dir.path)
         #expect(!store.settingBool(.deletionConfirmation))
-        try FileManager.default.createDirectory(at: url.appendingPathExtension("bak"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: Backup.path(for: url), withIntermediateDirectories: true)
         store.setSetting(.deletionConfirmation, .bool(true))
         #expect(!store.settingBool(.deletionConfirmation))
         #expect(store.operationError != nil)

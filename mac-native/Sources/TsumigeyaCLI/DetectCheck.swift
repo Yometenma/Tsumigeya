@@ -125,7 +125,7 @@ func runSaveCheck() -> Int {
         let listing = SaveStore.list(gamePath: game.gamePath, engine: game.gameEngine)
 
         guard let saveDir = listing.dir else {
-            // ⚠️ **`nil` 有两种含义，文案必须分开**（本鱼第一版混成一句，
+            // ⚠️ **`nil` 有两种含义，文案必须分开**（早期实现混成一句，
             //    CLI 实测时把「这个游戏还没存过档」误报成「引擎未实现」）：
             //
             //    · 引擎的**探测逻辑没实现**（tyrano / kirikiri）→ 那是我们的活没做完

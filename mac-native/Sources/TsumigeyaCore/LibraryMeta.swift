@@ -1,6 +1,5 @@
 // 分类与元数据的独立存储（`library-meta.json`）。
 //
-// 对应 Electron 版：`src/main/library-meta.ts`（278 行）+ `category-store.ts`
 // 契约：D18（元数据旁挂）/ D31（绝不动用户数据）/ D84
 //
 // ===== 这个文件有两个「必须守住」的点 =====

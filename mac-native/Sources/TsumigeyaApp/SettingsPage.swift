@@ -1,6 +1,5 @@
 // 设置页。
 //
-// 对应 Electron 版：`pages/SettingsPage.vue`（325 行）
 // 契约：M5.0 S9（U9 分组化）/ D30（不再询问做设置开关）/ D83（存档同步只有 none/manual）
 //
 // ===== 分组是「数据」，不是 13 个并排的 Form =====
@@ -109,16 +108,15 @@ struct SettingRow: View {
         VStack(alignment: .leading, spacing: 3) {
             // ⚠️ **还没接上的设置要标出来**。
             //
-            //    这是本鱼自己查出来的问题：设置页 12 项里**只有 1 项真的生效**。
+            //    现状：设置页 12 项里**只有 1 项真的生效**。
             //    「能改、能存、但不生效」比「改不了」更糟 ——
             //    用户改了主题看不出变化，会怀疑软件坏了，而不会想到「这功能还没做完」。
             //
             //    所以：**没实现的前面挂一个「未启用」标记**，说清它现在没作用。
             //    这不是甩锅，是让用户能区分「坏了」和「还没做」。
-            // ⚠️⚠️ **标注的两种语义必须分开**（用户 2026-11-06 报：
-            //    「开关开着的时候为什么还是显示未启用」）。
+            // ⚠️⚠️ **标注的两种语义必须分开**（曾出现过开关开着却显示「未启用」）。
             //
-            //    本鱼原来只有一个 `pendingNote` 字符串，**一律渲染成「未启用」胶囊**。
+            //    早期只有一个 `pendingNote` 字符串，**一律渲染成「未启用」胶囊**。
             //    于是 `saveSyncMode`（manual 模式**明明能用**）也挂上了「未启用」——
             //    自己写的说明「只有手动模式能用」被自己的标签否定掉了。
             //
@@ -222,8 +220,9 @@ struct SettingRow: View {
                 )) {
                     Text(L("跟随系统")).tag(InterfaceLanguage.system.settingValue)
                     Text(L("简体中文")).tag(InterfaceLanguage.simplifiedChinese.settingValue)
+                    // 语言名用各自的语言写，不走译文表：谁选它，谁就看懂。
                     Text("English").tag(InterfaceLanguage.english.settingValue)
-                    Text(L("日本語")).tag(InterfaceLanguage.japanese.settingValue)
+                    Text("日本語").tag(InterfaceLanguage.japanese.settingValue)
                 }
                 .pickerStyle(.segmented)
                 .frame(maxWidth: 420)
@@ -371,12 +370,15 @@ struct InfoRows: View {
     }
 
     /// 安装包使用 Info.plist；SwiftPM 开发入口没有版本信息，回退值与打包脚本同步。
+    ///
+    /// 这里不是界面文案，别走 `L()`：版本号不该按界面语言变，混进译文表只会让
+    /// 每次发版都要在三张表里改同一个数字。
     private var appVersion: String {
         if let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
            !v.isEmpty {
             return v
         }
-        return L("3.1.0（开发构建，未打包）")
+        return "3.1.0"
     }
 
     private var platformString: String {
