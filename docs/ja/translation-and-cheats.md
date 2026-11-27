@@ -64,6 +64,17 @@
 
 ゲームの動作はランチャーの存続に依存しません。ただしランチャーを閉じると、RGSS／Ren'Py の状態編集画面と、全エンジンのゲームに追従しての追訳は停止し、ゲームは読み込み済みのアシストと既存の辞書を保持します。
 
+## オフライン補助
+
+ゲームのランタイムに注入せず、ゲーム自身のファイルを直接読み書きします。書き込み前に同じディレクトリへ `.tsumigeya-bak` を作成し、既存のバックアップは上書きしません。
+
+- **NScripter**：`0.txt` / `00.txt` / `nscript.dat`（末尾は 1 バイトごとに XOR 0x84）を読み、引用符で始まる行の本文だけを置換します。コマンド行、コメント、`*label` は変更せず、各行の改行コードも維持します。書き戻しは元の文字コードを使い、中国語を格納できない場合は UTF-8 に切り替えて報告します。その場合ゲームの `--enc` 引数も同じ文字コードに変更する必要があります。
+- **RPG Maker MZ**：`save/*.rmmzsave` は `LZString.compressToBase64(JsonEx.stringify(...))` です。`JsonEx` の 8 文字のハッシュ接頭辞はそのまま残し、JSON 内のスカラー値だけを変更します。型が一致しない置換は拒否します。
+- **RPG Maker XP / VX / VX Ace**：`.rvdata2` / `.rxdata` は Ruby Marshal です。再シリアライズすると共有参照が複製に展開されるため行わず、各スカラーのバイト範囲だけをその場で置換します。`@n` 参照を含む他のバイトは変更しません。変更できるのは数値、真偽値、文字列のみです。
+- **RPG Maker 2000 / 2003**：`RPG_RT.ldb` は LCF コンテナです。アクター、スキル、アイテム、敵、地形、状態、コモンイベント、スイッチ、変数の名前と説明を抽出できます。**読み取り専用**で、書き戻しには chunk ツリー全体の再構築と各長さの再計算が必要です。
+
+検証範囲：NScripter は平文・暗号化・3 種類の文字コードを確認済み。MZ と RGSS は生成したサンプルのみで検証しており、**実作のセーブデータは未確認**です。EasyRPG の `.lsd` セーブと吉里吉里の `.xp3` は未対応です。
+
 ## CLI 検証
 
 ```bash
@@ -73,6 +84,11 @@ swift run tsumigeya-cli assist install <game-dir> --translation --cheats
 swift run tsumigeya-cli assist state <RGSS-or-RenPy-dir>
 swift run tsumigeya-cli assist command <RGSS-or-RenPy-dir> set <var-key> <json-value>
 swift run tsumigeya-cli assist restore <game-dir>
+swift run tsumigeya-cli offline script-inspect <game-dir>
+swift run tsumigeya-cli offline script-apply <game-dir> <dictionary.json>
+swift run tsumigeya-cli offline save-inspect <save-path>
+swift run tsumigeya-cli offline save-set <save-path> party._gold 4200
+swift run tsumigeya-cli offline ldb-inspect <RPG_RT.ldb>
 node --test Tests/TsumigeyaTests/Assist/runtime.test.cjs
 python3 Tests/TsumigeyaTests/Assist/renpy_runtime_test.py
 ruby Tests/TsumigeyaTests/Assist/rgss_runtime_test.rb

@@ -64,6 +64,17 @@ Before applying, the game identity, the scripts it owns, and the original entry 
 
 The game keeps running without the launcher being alive; but once the launcher is closed, the RGSS / Ren'Py state editing view and live in-game translation for every engine stop, while the game keeps the assist already loaded and the dictionary it has.
 
+## Offline assistance
+
+Reads and writes the game's own files instead of injecting into its runtime. A `.tsumigeya-bak` backup is written alongside first; an existing backup is never overwritten.
+
+- **NScripter**: reads `0.txt` / `00.txt` / `nscript.dat` (the last is XOR 0x84 per byte) and replaces only lines that start with a quote character; commands, comments, and `*label` lines are untouched, and each line keeps its original line ending. Output reuses the original encoding; when it cannot hold Chinese the file falls back to UTF-8 and reports it, and the game's `--enc` argument must be changed to match.
+- **RPG Maker MZ**: `save/*.rmmzsave` is `LZString.compressToBase64(JsonEx.stringify(...))`. The 8-character `JsonEx` hash prefix is preserved and only scalars inside the JSON are changed; a replacement of the wrong type is refused.
+- **RPG Maker XP / VX / VX Ace**: `.rvdata2` / `.rxdata` is Ruby Marshal. Rather than re-serializing (which would expand shared references into duplicates), only the byte range of each scalar is rewritten in place and every other byte, including all `@n` references, is left alone. Only numbers, booleans, and strings can be changed.
+- **RPG Maker 2000 / 2003**: `RPG_RT.ldb` is an LCF container. Names and descriptions of actors, skills, items, enemies, terrains, states, common events, switches, and variables can be extracted. **Read-only**: writing back would require rebuilding the whole chunk tree and recomputing every length.
+
+Validation scope: NScripter covers plaintext, encrypted, and three encodings; MZ and RGSS are only verified against generated samples, **with no real game saves**. EasyRPG `.lsd` saves and KiriKiri `.xp3` are not implemented.
+
 ## CLI acceptance
 
 ```bash
@@ -73,6 +84,11 @@ swift run tsumigeya-cli assist install <game-dir> --translation --cheats
 swift run tsumigeya-cli assist state <RGSS-or-RenPy-dir>
 swift run tsumigeya-cli assist command <RGSS-or-RenPy-dir> set <var-key> <json-value>
 swift run tsumigeya-cli assist restore <game-dir>
+swift run tsumigeya-cli offline script-inspect <game-dir>
+swift run tsumigeya-cli offline script-apply <game-dir> <dictionary.json>
+swift run tsumigeya-cli offline save-inspect <save-path>
+swift run tsumigeya-cli offline save-set <save-path> party._gold 4200
+swift run tsumigeya-cli offline ldb-inspect <RPG_RT.ldb>
 node --test Tests/TsumigeyaTests/Assist/runtime.test.cjs
 python3 Tests/TsumigeyaTests/Assist/renpy_runtime_test.py
 ruby Tests/TsumigeyaTests/Assist/rgss_runtime_test.rb
