@@ -9,8 +9,7 @@
 //
 // `BER` 是**大端 7 位**变长整数：`value = (value << 7) | (b & 0x7F)`，直到某字节高位为 0。
 //
-// ⚠️ 这里只做「读」：写回需要重建整个 chunk 树并重算每层长度，比读复杂得多，
-//    没有真实存档样本时不值得冒写坏文件的风险。
+// ⚠️ 只读。写回要重建整棵 chunk 树并逐层重算长度，没有真实存档可回归就做不了。
 import Foundation
 
 public struct LCFChunk: Sendable, Equatable {

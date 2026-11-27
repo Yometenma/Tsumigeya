@@ -7,8 +7,8 @@
 // 而 `JsonEx.stringify` 的产物是 **8 位 hash 前缀 + JSON**（hash 由循环引用表算出，
 // 但引擎的 `parse` 只是跳过它、不校验），所以这里把前缀原样留着，只改 JSON 部分。
 //
-// ⚠️ 为什么不去掉 hash：万一以后要跟引擎自己的 `parse` 对齐，留着前缀是最保守的做法；
-//    改存档的人没有理由动它。
+// ⚠️ hash 前缀原样留着：引擎自己的 `parse` 只是跳过它、不校验，
+//    但去掉它等于在做一个没人要求的格式变更。
 import Foundation
 
 public struct RMStoreDocument: Sendable {

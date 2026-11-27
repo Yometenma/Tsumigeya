@@ -152,7 +152,7 @@
         api.locks().forEach(function (entry) { map[entry.key] = entry.value; });
         return map;
     }
-    // 主从布局：左侧密集列表、右侧详情，与 MTool 的物品页一致。
+    // 左列密集条目、右列详情；选中不离开列表就能改值。
     function masterDetail(parent) {
         var box = el('div', undefined, parent); box.className = 'mm';
         var list = el('div', undefined, box); list.className = 'mm-list';
