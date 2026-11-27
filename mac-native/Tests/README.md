@@ -50,8 +50,11 @@ Swift 测试由同一个 `TsumigeyaTests` target 递归收集；移动到功能�
 
 ```bash
 node --test Tests/TsumigeyaTests/Assist/runtime.test.cjs
+node --test Tests/TsumigeyaTests/Assist/panel.test.cjs
 python3 Tests/TsumigeyaTests/Assist/renpy_runtime_test.py
 ruby Tests/TsumigeyaTests/Assist/rgss_runtime_test.rb
 ```
+
+`panel.test.cjs` 用最小 DOM 桩驱动真实的 `panel.js`，只证明面板能按当前入口构建、分栏切换、渲染条目和写入锁定；它不代替真实游戏里的观感与交互验收。
 
 这里的脚本测试使用模拟宿主，不代替真实作品验收。不要将接口密钥、商业游戏或私人存档加入夹具。

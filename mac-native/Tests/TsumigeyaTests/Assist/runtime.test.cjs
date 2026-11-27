@@ -216,3 +216,86 @@ test('Tyrano script and HTML text tags are never translated or captured',()=>{
  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(dir,'missing.json'),'utf8')),['待补译']);
  fs.rmSync(dir,{recursive:true,force:true});
 });
+
+test('item catalog keeps descriptions, per-kind tabs and engine caps for the master-detail panel', () => {
+    const g = game(); g.load('cheats.js'); const api = g.c.TsumigeyaAssist.cheats;
+    g.c.$dataItems.push(
+        { id: 2, name: 'ポーション', description: 'HP を 500 回復する。', itypeId: 1 },
+        { id: 3, name: '鍵', description: '扉を開ける。', itypeId: 2 });
+    g.c.$dataArmors = [null, { id: 1, name: '旅人の服', description: '', etypeId: 3 }, { id: 2, name: '兜', etypeId: 2 }];
+    g.c.$dataWeapons = [null, { id: 1, name: '銅の剣', wtypeId: 1 }];
+    g.c.$dataSystem.armorTypes = ['', '', '头', '身体'];
+    g.c.$dataSystem.weaponTypes = ['', '剑'];
+
+    assert.deepEqual(Array.from(api.itemTabs().map(t => t.title)), ['物品', '头', '身体', '剑', '关键物品']);
+    assert.deepEqual(Array.from(api.itemTabs().map(t => t.kind + ':' + t.sub)), ['items:1', 'armors:2', 'armors:3', 'weapons:1', 'items:2']);
+
+    const rows = api.catalog('items', 1);
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].name, 'ポーション');
+    assert.equal(rows[0].desc, 'HP を 500 回復する。');
+    assert.equal(rows[0].max, 99);
+    assert.equal(rows[0].key, 'item:items:2');
+
+    api.nudge('items', 2, 100); assert.equal(api.get('item:items:2'), 99);
+    api.nudge('items', 2, -100); assert.equal(api.get('item:items:2'), 0);
+    assert.throws(() => api.nudge('items', 2, 1.5));
+
+    api.setAll('items', 1, 20); assert.equal(api.get('item:items:2'), 20);
+    api.setAll('items', 1, 500); assert.equal(api.get('item:items:2'), 99);
+
+    api.lock('item:items:2', 30);
+    assert.equal(api.catalog('items', 1)[0].locked, true);
+    api.inventory('items', 2, 5); g.tick(); assert.equal(api.get('item:items:2'), 30);
+    api.unlock('item:items:2');
+    assert.equal(api.catalog('items', 1)[0].locked, false);
+});
+
+test('reflection reads bounded trees and writes scalars while refusing prototype paths', () => {
+    const g = game(); g.load('cheats.js'); const api = g.c.TsumigeyaAssist.cheats;
+    g.c.$gameParty._gold = 50;
+
+    const tree = api.probe('$gameParty', 1);
+    assert.equal(tree.type, 'object');
+    assert(tree.children.some(c => c.key === '_gold' && c.value.value === 50));
+    assert.equal(api.assign('$gameParty._gold', 120), 120);
+    assert.equal(g.c.$gameParty._gold, 120);
+
+    assert.throws(() => api.probe('window.location'), /属性路径/);
+    assert.throws(() => api.probe('$gameParty.__proto__'), /原型链/);
+    assert.throws(() => api.assign('$gameParty.__proto__.polluted', 1), /原型链/);
+    assert.equal({}.polluted, undefined);
+    assert.throws(() => api.assign('$gameParty._gold', { a: 1 }), /有限数字/);
+    g.c.$gameParty._deep = { inner: 1 };
+    assert.throws(() => api.assign('$gameParty._deep', 1), /标量/);
+    assert.equal(api.assign('$gameParty._deep.inner', 7), 7);
+
+    g.c.$gameParty._self = g.c.$gameParty;
+    assert(JSON.stringify(api.probe('$gameParty', 2)).includes('circular'));
+});
+
+test('equipment slots are switched directly, so inventory is never consumed', () => {
+    const g = game(); g.load('cheats.js'); const api = g.c.TsumigeyaAssist.cheats;
+    g.c.$dataWeapons = [null, { id: 1, name: '銅の剣', wtypeId: 1 }, { id: 2, name: '鉄の剣', wtypeId: 1 }];
+    g.c.$dataArmors = [null, { id: 1, name: '旅人の服', etypeId: 3 }];
+    g.c.$dataSystem.equipTypes = ['', '武器', '', '身体'];
+    const a = g.actor;
+    a.equipSlots = () => [1, 3];
+    a._equips = [
+        { _itemId: 1, setObject(o) { this._itemId = o ? o.id : 0; } },
+        { _itemId: 1, setObject(o) { this._itemId = o ? o.id : 0; } }
+    ];
+    a.canEquip = item => !!item && item.etypeId !== 99;
+    a.refresh = () => {};
+
+    const slots = api.equips(1);
+    assert.deepEqual(slots.map(s => s.slot), ['武器', '身体']);
+    assert.deepEqual(slots.map(s => s.name), ['銅の剣', '旅人の服']);
+
+    api.equip(1, 0, 'weapons', 2);
+    assert.equal(a._equips[0]._itemId, 2);
+    assert.equal(api.get('item:weapons:2'), 0);
+    api.equip(1, 0, 'weapons', 0);
+    assert.equal(a._equips[0]._itemId, 0);
+    assert.equal(api.equips(1)[0].name, '（空）');
+});

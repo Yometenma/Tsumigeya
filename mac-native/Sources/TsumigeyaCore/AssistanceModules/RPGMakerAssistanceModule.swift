@@ -4,7 +4,7 @@ struct RPGMakerAssistanceModule: AssistanceEngineModule {
     let info = AssistanceModuleInfo(id: .rpgMaker, runtime: "nwjs", title: "RPG Maker MV/MZ", transport: .webPanel,
         translation: L10n.string("仅已确认的 RPG Maker MV/MZ"), cheats: L10n.string("MV/MZ 引擎状态与游戏内面板"),
         installationNote: L10n.string("两项独立启用。应用前需退出游戏；会备份原始页面，仅添加辅助加载入口，不替换 main.js。译文修订完成后也需重新应用。"),
-        cheatInstructions: L10n.string("启用后启动游戏，在游戏右上角点击「游戏辅助」或按 ⇧F8。进入游戏或读档后可操作，不需要启动器保持开启。\n• 金钱、物品、防具、武器、角色属性和恢复\n• 变量／开关搜索与编辑、持续锁定与解除\n• 已知／未知数值查找，按增加、减少、改变和未改变逐次筛选\n• 游戏／移动速度、随机遇敌控制、穿墙\n• 地图搜索与坐标传送、地图事件和公共事件查看及执行"))
+        cheatInstructions: L10n.string("启用后启动游戏，在游戏右上角点击「游戏辅助」或按 ⇧F8。进入游戏或读档后可操作，不需要启动器保持开启。\n• 物品、防具、武器按数据库自动分栏，显示描述与数量；行首方框勾上即锁定，可 ±1／±100 步进和整栏批量设置\n• 变量／开关搜索、编辑与持续锁定\n• 角色属性、装备槽更换与全队恢复\n• 已知／未知数值查找，按增加、减少、改变和未改变逐次筛选\n• 对象浏览：按 $ 开头的属性路径查看对象，并写入标量字段\n• 游戏／移动速度、随机遇敌控制、穿墙\n• 地图搜索与坐标传送、地图事件和公共事件查看及执行"))
     let scripts = ["loader.js", "translation.js", "cheats.js", "panel.js"].map { AssistanceScript(filename: $0, resource: $0) }
     func detect(_ root: URL) throws -> AssistanceProject? {
         guard let entry = try WebAssistanceEntry.load(root) else { return nil }

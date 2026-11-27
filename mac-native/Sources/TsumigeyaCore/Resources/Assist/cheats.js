@@ -21,6 +21,49 @@
         if (!list) throw new Error('物品类型无效。');
         var i = list[integer(id, 1, list.length - 1)]; if (!i) throw new Error('物品不存在。'); return i;
     }
+    function tableOf(kind) {
+        var list = kind === 'items' ? window.$dataItems : kind === 'weapons' ? window.$dataWeapons : kind === 'armors' ? window.$dataArmors : null;
+        if (!list) throw new Error('物品类型无效。');
+        return list;
+    }
+    function itemKey(kind, id) { return 'item:' + kind + ':' + id; }
+    // 分栏来自数据库自己的类型表，标题跟随游戏术语，不硬编码。
+    api.itemTabs = function () {
+        ready();
+        var sys = window.$dataSystem || {}, tabs = [{ kind: 'items', sub: 1, title: '物品' }];
+        var seen = Object.create(null);
+        (window.$dataArmors || []).forEach(function (a) { if (a && a.etypeId > 0) seen['armors:' + a.etypeId] = a.etypeId; });
+        (window.$dataWeapons || []).forEach(function (w) { if (w && w.wtypeId > 0) seen['weapons:' + w.wtypeId] = w.wtypeId; });
+        Object.keys(seen).sort().forEach(function (id) {
+            var kind = id.split(':')[0], n = seen[id];
+            var title = kind === 'armors' ? ((sys.armorTypes && sys.armorTypes[n]) || '防具 ' + n)
+                                          : ((sys.weaponTypes && sys.weaponTypes[n]) || '武器 ' + n);
+            tabs.push({ kind: kind, sub: n, title: title });
+        });
+        tabs.push({ kind: 'items', sub: 2, title: '关键物品' });
+        return tabs;
+    };
+    api.catalog = function (kind, sub) {
+        ready();
+        var list = tableOf(kind), mode = sub === undefined || sub === null ? null : Number(sub);
+        return list.filter(function (entry) {
+            if (!entry) return false;
+            if (mode === null) return true;
+            if (kind === 'items') return entry.itypeId === mode;
+            if (kind === 'armors') return entry.etypeId === mode;
+            return entry.wtypeId === mode;
+        }).map(function (entry) {
+            var key = itemKey(kind, entry.id);
+            return {
+                id: entry.id, key: key,
+                name: entry.name || '未命名',
+                desc: entry.description || '',
+                value: $gameParty.numItems(entry),
+                max: $gameParty.maxItems(entry),
+                locked: locks[key] !== undefined
+            };
+        });
+    };
     api.list = function (kind) {
         ready();
         if (kind === 'variables' || kind === 'switches') {
@@ -37,6 +80,7 @@
     api.get = function (key) {
         ready(); var p = key.split(':'), id = Number(p[1]);
         if (key === 'gold') return $gameParty.gold();
+        if (p[0] === 'item') return $gameParty.numItems(item(p[1], Number(p[2])));
         if (p[0] === 'variables') return $gameVariables.value(integer(id, 1, $dataSystem.variables.length - 1));
         if (p[0] === 'switches') return $gameSwitches.value(integer(id, 1, $dataSystem.switches.length - 1));
         if (p[0] === 'actor') {
@@ -49,6 +93,12 @@
     api.set = function (key, value) {
         ready(); var p = key.split(':'), id = Number(p[1]);
         if (key === 'gold') { var gold = integer(value, 0, $gameParty.maxGold()); $gameParty.gainGold(gold - $gameParty.gold()); return; }
+        if (p[0] === 'item') {
+            var held = item(p[1], Number(p[2])), cap = $gameParty.maxItems(held);
+            var want = integer(value, 0, cap);
+            $gameParty.gainItem(held, want - $gameParty.numItems(held));
+            return;
+        }
         if (p[0] === 'variables') { scalar(value); if (typeof value === 'number' && Math.floor(value) !== value) throw new Error('此引擎的数值变量只保存整数。'); $gameVariables.setValue(integer(id, 1, $dataSystem.variables.length - 1), value); return; }
         if (p[0] === 'switches') { if (typeof value !== 'boolean') throw new Error('开关只能设为 true 或 false。'); $gameSwitches.setValue(integer(id, 1, $dataSystem.switches.length - 1), value); return; }
         if (p[0] === 'actor') {
@@ -80,6 +130,49 @@
     api.unlock = function (key) { delete locks[key]; };
     api.locks = function () { return Object.keys(locks).map(function (key) { return { key: key, value: locks[key].value }; }); };
     api.inventory = function (kind, id, count) { ready(); var i = item(kind, id); $gameParty.gainItem(i, integer(count, 0, $gameParty.maxItems(i)) - $gameParty.numItems(i)); };
+    api.nudge = function (kind, id, delta) {
+        ready();
+        var i = item(kind, id), cap = $gameParty.maxItems(i);
+        var next = Math.max(0, Math.min(cap, $gameParty.numItems(i) + integer(delta, -999999, 999999)));
+        $gameParty.gainItem(i, next - $gameParty.numItems(i));
+        return next;
+    };
+    api.setAll = function (kind, sub, value) {
+        ready();
+        var target = integer(value, 0, 999999), changed = 0;
+        api.catalog(kind, sub).forEach(function (row) {
+            var i = item(kind, row.id), want = Math.min(target, $gameParty.maxItems(i));
+            $gameParty.gainItem(i, want - $gameParty.numItems(i));
+            changed++;
+        });
+        return changed;
+    };
+    // 装备直接写槽位：走 changeEquip 会从背包里扣掉一件装备。
+    api.equips = function (actorID) {
+        ready();
+        var a = actor(actorID), slots = typeof a.equipSlots === 'function' ? a.equipSlots() : [];
+        var types = (window.$dataSystem && $dataSystem.equipTypes) || [];
+        return slots.map(function (etypeId, index) {
+            var held = a._equips && a._equips[index], id = held && held._itemId ? held._itemId : 0;
+            var kind = etypeId === 1 ? 'weapons' : 'armors';
+            var table = kind === 'weapons' ? window.$dataWeapons : window.$dataArmors;
+            return {
+                index: index, etypeId: etypeId, kind: kind, id: id,
+                slot: etypeId === 1 ? '武器' : (types[etypeId] || '装备槽 ' + etypeId),
+                name: id && table && table[id] ? table[id].name : '（空）'
+            };
+        });
+    };
+    api.equip = function (actorID, index, kind, itemID) {
+        ready();
+        var a = actor(actorID), slot = integer(index, 0, 9), n = Number(itemID) || 0;
+        if (!a._equips || !a._equips[slot] || typeof a._equips[slot].setObject !== 'function') throw new Error('当前引擎不支持直接更换装备。');
+        var entry = n ? item(kind, n) : null;
+        if (entry && typeof a.canEquip === 'function' && !a.canEquip(entry)) throw new Error('该角色不能装备这件装备。');
+        a._equips[slot].setObject(entry);
+        if (typeof a.refresh === 'function') a.refresh();
+        return api.equips(actorID);
+    };
     api.recover = function () { ready(); $gameParty.members().forEach(function (a) { a.recoverAll(); }); };
     api.battle = function (mode) {
         ready(); if (!$gameParty.inBattle()) throw new Error('当前不在战斗中。');
@@ -154,6 +247,64 @@
     api.reset = function () {
         if (movement && window.$gamePlayer === movement.player) movement.player.setMoveSpeed(movement.original);
         resetRevision++; movement = null; locks = Object.create(null); scan = null; noClip = false; noEncounter = false; speed = 1;
+    };
+    // 反射层：只接受 $ 开头的属性路径，拒绝原型链，写入只允许标量。
+    var PATH_RE = /^\$[A-Za-z_$][\w$]*(\.[A-Za-z_$][\w$]*|\[\d{1,6}\])*$/;
+    var BLOCKED = ['__proto__', 'constructor', 'prototype'];
+    function pathValue(path) {
+        var text = String(path === null || path === undefined ? '' : path).trim();
+        if (!PATH_RE.test(text)) throw new Error('只接受 $ 开头的属性路径，例如 $gameParty._gold。');
+        if (/(^|[.[\]])(__proto__|constructor|prototype)([.[\]]|$)/.test(text)) throw new Error('不允许访问原型链。');
+        return Function('return (' + text + ')')();
+    }
+    api.probe = function (path, depth) {
+        ready();
+        var root = pathValue(path);
+        var limit = Math.min(Math.max(Number(depth) || 3, 1), 6), budget = 4000;
+        var seen = typeof WeakSet === 'function' ? new WeakSet() : null;
+        function walk(value, level) {
+            if (--budget < 0) return { type: 'truncated' };
+            var t = typeof value;
+            if (value === null) return { type: 'null' };
+            if (t === 'number' || t === 'boolean') return { type: t, value: value };
+            if (t === 'string') return { type: 'string', value: value.length > 500 ? value.slice(0, 500) + '…' : value };
+            if (t === 'function') return { type: 'function', value: value.name || '(未命名)' };
+            if (t === 'undefined') return { type: 'undefined' };
+            if (seen && seen.has(value)) return { type: 'circular' };
+            if (seen) seen.add(value);
+            var isArray = Object.prototype.toString.call(value) === '[object Array]';
+            var keys = isArray ? null : Object.keys(value);
+            var total = isArray ? value.length : keys.length;
+            var node = { type: isArray ? 'array' : 'object', size: total };
+            if (level >= limit || total === 0) return node;
+            node.children = [];
+            for (var i = 0; i < Math.min(total, 200); i++) {
+                var k = isArray ? i : keys[i], child;
+                try { child = walk(value[k], level + 1); } catch (e) { child = { type: 'error', value: e.message }; }
+                node.children.push({ key: String(k), value: child });
+            }
+            if (total > 200) node.truncated = total - 200;
+            return node;
+        }
+        return walk(root, 0);
+    };
+    api.assign = function (path, value) {
+        ready();
+        var text = String(path === null || path === undefined ? '' : path).trim();
+        var bracket = /\[(\d{1,6})\]$/.exec(text), parentPath, key;
+        if (bracket) { parentPath = text.slice(0, bracket.index); key = Number(bracket[1]); }
+        else {
+            var cut = text.lastIndexOf('.');
+            if (cut < 0) throw new Error('不能替换全局对象。');
+            parentPath = text.slice(0, cut); key = text.slice(cut + 1);
+        }
+        if (BLOCKED.indexOf(String(key)) >= 0) throw new Error('不允许修改原型链。');
+        var parent = pathValue(parentPath);
+        if (!parent || typeof parent !== 'object') throw new Error('父对象不存在。');
+        var current = parent[key];
+        if (current !== null && typeof current === 'object') throw new Error('目标不是标量，请进入下一层再改。');
+        parent[key] = scalar(value);
+        return parent[key];
     };
     function install() {
         if (!window.Game_Player || !window.Scene_Map || !window.SceneManager || !window.DataManager) return false;
