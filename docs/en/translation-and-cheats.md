@@ -66,7 +66,9 @@ The game keeps running without the launcher being alive; but once the launcher i
 
 ## Offline assistance
 
-Reads and writes the game's own files instead of injecting into its runtime. A `.tsumigeya-bak` backup is written alongside first; an existing backup is never overwritten.
+The offline rewrite block in the Assistance tab appears **only for NScripter and RPG Maker 2000/2003**: both are C++ interpreters with no injectable script layer, so editing files is the only option. Other engines use the in-game injected panel and never show this block.
+
+A `.tsumigeya-bak` backup is written alongside first; an existing backup is never overwritten, and writing is refused while the game is running.
 
 - **NScripter**: reads `0.txt` / `00.txt` / `nscript.dat` (the last is XOR 0x84 per byte) and replaces only lines that start with a quote character; commands, comments, and `*label` lines are untouched, and each line keeps its original line ending. Output reuses the original encoding; when it cannot hold Chinese the file falls back to UTF-8 and reports it, and the game's `--enc` argument must be changed to match.
 - **RPG Maker MZ**: `save/*.rmmzsave` is `LZString.compressToBase64(JsonEx.stringify(...))`. The 8-character `JsonEx` hash prefix is preserved and only scalars inside the JSON are changed; a replacement of the wrong type is refused.

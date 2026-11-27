@@ -267,6 +267,14 @@ extension AppStore {
         assistanceSessions[game.id] = session
         return session
     }
+
+    /// 注入不了运行时的引擎（NScripter、RPG Maker 2000/2003）走这条：只改文件。
+    func offlineSession(for game: GameRecord) -> OfflineSession {
+        if let session = offlineSessions[game.id], session.game.gamePath == game.gamePath, session.game.gameEngine == game.gameEngine { return session }
+        let session = OfflineSession(game: game, store: self)
+        offlineSessions[game.id] = session
+        return session
+    }
 }
 
 private enum TranslationCredential {

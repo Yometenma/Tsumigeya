@@ -8,6 +8,8 @@ import TsumigeyaCore
 @MainActor
 final class AppStore: ObservableObject {
     var assistanceSessions: [String: AssistanceSession] = [:]
+    /// 只能改文件的引擎（NScripter、RPG Maker 2000/2003）用它，与注入会话分开。
+    var offlineSessions: [String: OfflineSession] = [:]
     var translateAssistanceText: @Sendable (TranslationService, String) async throws -> String = { service, source in
         try await service.translate(source)
     }
@@ -136,6 +138,7 @@ final class AppStore: ObservableObject {
         saveSessions.removeAll()
         assistanceSessions.values.forEach { $0.invalidate() }
         assistanceSessions.removeAll()
+        offlineSessions.removeAll()
         isLoading = true
 
         let resolution = DataDir.resolve()
@@ -452,6 +455,7 @@ final class AppStore: ObservableObject {
         metadata.forget(gameId: id)
         saveSessions.removeValue(forKey: id)?.invalidate()
         assistanceSessions.removeValue(forKey: id)?.invalidate()
+        offlineSessions.removeValue(forKey: id)
     }
 
     private func saveLibraryChange(_ operation: () throws -> Void) -> Bool {

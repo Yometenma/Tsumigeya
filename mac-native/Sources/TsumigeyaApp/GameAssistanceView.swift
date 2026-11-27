@@ -15,12 +15,22 @@ struct GameAssistanceView: View {
         self.mode = mode
     }
     @State private var session: AssistanceSession?
+    @State private var offline: OfflineSession?
     var body: some View {
         Group {
-            if let session { AssistanceContent(session: session, mode: mode) }
+            if let offline, mode == .assistance {
+                // 这个引擎注入不了运行时，只给文件改写入口。
+                ScrollView { OfflineAssistanceView(session: offline).padding(22) }
+            } else if let session { AssistanceContent(session: session, mode: mode) }
             else { ProgressView(L("读取辅助配置……")) }
         }
-        .task(id: "\(store.dataDir)\0\(game.id)\0\(game.gamePath)") { session = store.assistanceSession(for: game) }
+        .task(id: "\(store.dataDir)\0\(game.id)\0\(game.gamePath)") {
+            guard OfflineTarget.supports(game.gameEngine) else {
+                offline = nil; session = store.assistanceSession(for: game); return
+            }
+            session = nil
+            offline = store.offlineSession(for: game)
+        }
     }
 }
 
