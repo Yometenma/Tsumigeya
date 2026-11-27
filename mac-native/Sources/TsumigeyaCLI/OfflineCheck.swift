@@ -13,6 +13,8 @@ private let usage = """
   offline script-apply   <游戏目录> <字典.json>   写入译文（自动备份）
   offline save-inspect   <存档路径>              列出可改字段
   offline save-set       <存档路径> <路径> <值>   改一个标量，路径用 . 分隔
+  offline ldb-inspect    <RPG_RT.ldb>            列出 2000/2003 数据库条目
+  offline ldb-extract    <RPG_RT.ldb> <输出.json> 导出 {名称: "", 说明: ""}
 """
 
 func runOfflineCommand(_ args: [String]) -> Int32 {
@@ -35,6 +37,12 @@ func runOfflineCommand(_ args: [String]) -> Int32 {
         case "save-set":
             guard rest.count == 3 else { print(usage); return 2 }
             return try saveSet(path: rest[0], path: rest[1], raw: rest[2])
+        case "ldb-inspect":
+            guard let path = rest.first else { print(usage); return 2 }
+            return try ldbInspect(path: path)
+        case "ldb-extract":
+            guard rest.count == 2 else { print(usage); return 2 }
+            return try ldbExtract(path: rest[0], output: rest[1])
         default:
             print(usage); return 2
         }
@@ -149,6 +157,31 @@ private func saveSet(path: String, path dotted: String, raw: String) throws -> I
         print("不认识的存档扩展名：\(url.pathExtension)")
         return 1
     }
+}
+
+private func ldbInspect(path: String) throws -> Int32 {
+    let rows = try RPG2000Database.texts(URL(fileURLWithPath: path))
+    var counts: [String: Int] = [:]
+    for row in rows { counts[row.section, default: 0] += 1 }
+    print("RPG2000 数据库条目：\(rows.count)")
+    for (section, count) in counts.sorted(by: { $0.key < $1.key }) { print("  \(section)\t\(count)") }
+    for row in rows.prefix(15) {
+        let detail = row.description.isEmpty ? row.name : "\(row.name) — \(row.description.prefix(30))"
+        print("  \(row.label)\t\(detail)")
+    }
+    return 0
+}
+
+private func ldbExtract(path: String, output: String) throws -> Int32 {
+    let rows = try RPG2000Database.texts(URL(fileURLWithPath: path))
+    var dictionary: [String: String] = [:]
+    for row in rows {
+        if !row.name.isEmpty { dictionary[row.name] = "" }
+        if !row.description.isEmpty { dictionary[row.description] = "" }
+    }
+    try JSONEncoder().encode(dictionary).write(to: URL(fileURLWithPath: output), options: .atomic)
+    print("已导出 \(dictionary.count) 条到 \(output)")
+    return 0
 }
 
 private func parseScalar(_ raw: String) -> JSONValue {
