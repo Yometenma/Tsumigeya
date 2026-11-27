@@ -154,6 +154,9 @@ final class AssistanceSession: ObservableObject {
         if followGame && (!installed || !options.translation) { error = L("请先启用文字翻译并应用到游戏。"); return }
         let service = TranslationService(settings: service, key: key)
         let translateText = store?.translateAssistanceText ?? { service, source in try await service.translate(source) }
+        let translateMany = store?.translateAssistanceBatch
+        // 12 条一批：再大协议越容易被模型改坏，回退代价也越高。
+        let batch = 12
         var pending = catalog.entries.filter { $0.target.isEmpty && (!onlyFailures || $0.failure != nil) }.map(\.source)
         guard !pending.isEmpty || followGame else { message = L("没有需要翻译的条目。"); return }
         busy = true; error = nil
@@ -180,27 +183,56 @@ final class AssistanceSession: ObservableObject {
                         break
                     }
                 }
-                let source = pending[position]; position += 1; attempted.insert(source)
-                self.message = String(format: L("正在翻译 %@ / %@；每条成功后立即保存。"), "\(position)", "\(pending.count)")
-                var result: String?, failure: String?, stopForService = false
-                for attempt in 0..<3 {
-                    do { result = try await translateText(service, source); failure = nil; break }
-                    catch {
-                        failure = error.localizedDescription
-                        if let http = error as? TranslationHTTPFailure, !http.retryable { stopForService = true; break }
-                        if Task.isCancelled { break }
-                        if attempt < 2 { try? await Task.sleep(for: .seconds(attempt + 1)) }
+                let slice = Array(pending[position..<min(position + batch, pending.count)])
+                position += slice.count
+                for source in slice { attempted.insert(source) }
+                self.message = String(format: L("正在翻译 %@ / %@；每批完成后保存。"), "\(position)", "\(pending.count)")
+                var targets = [String?](repeating: nil, count: slice.count)
+                var failures = [String?](repeating: nil, count: slice.count)
+                var stopForService = false
+                if slice.count > 1, let translateMany {
+                    do {
+                        let translated = try await translateMany(service, slice)
+                        if translated.count == slice.count {
+                            for (i, text) in translated.enumerated() {
+                                do { try TranslationTokens.validate(source: slice[i], target: text); targets[i] = text }
+                                catch { failures[i] = error.localizedDescription }
+                            }
+                        }
+                    } catch {
+                        // 批量只是提速通道：接口不接受数组、条数不符或占位符被改都退回逐条，
+                        // 由逐条通道的真实回执决定是否停止队列，避免误判成服务拒绝。
+                    }
+                }
+                if !stopForService {
+                    for i in slice.indices where targets[i] == nil {
+                        var result: String?, failure: String?
+                        for attempt in 0..<3 {
+                            do { result = try await translateText(service, slice[i]); failure = nil; break }
+                            catch {
+                                failure = error.localizedDescription
+                                if let http = error as? TranslationHTTPFailure, !http.retryable { stopForService = true; break }
+                                if Task.isCancelled { break }
+                                if attempt < 2 { try? await Task.sleep(for: .seconds(attempt + 1)) }
+                            }
+                        }
+                        targets[i] = result; failures[i] = failure
+                        if stopForService { break }
                     }
                 }
                 guard self.isCurrent, !Task.isCancelled else { break }
-                guard var next = self.catalog, let index = next.entries.firstIndex(where: { $0.source == source }) else { break }
-                next.entries[index].target = result ?? ""; next.entries[index].failure = failure
+                guard var next = self.catalog else { break }
+                for (i, source) in slice.enumerated() {
+                    guard let index = next.entries.firstIndex(where: { $0.source == source }) else { continue }
+                    next.entries[index].target = targets[i] ?? ""; next.entries[index].failure = failures[i]
+                }
                 do {
                     try self.persist(next)
                     if followGame, let project = self.project { try AssistanceInstaller.updateTranslations(project, translations: next.dictionary) }
                 } catch { self.error = String(format: L("已停止翻译：%@"), "\(error.localizedDescription)"); break }
                 if stopForService { self.error = L("翻译服务拒绝请求，已停止队列。请检查地址、模型、余额或密钥后重试。"); break }
-                try? await Task.sleep(for: .milliseconds(800))
+                // 批量已经把请求数摊薄，批间只留很短间隔；单条回退时保留原来的节流。
+                try? await Task.sleep(for: .milliseconds(slice.count > 1 ? 200 : 800))
             }
             guard let self, self.isCurrent else { return }
             self.busy = false

@@ -299,3 +299,39 @@ test('equipment slots are switched directly, so inventory is never consumed', ()
     assert.equal(a._equips[0]._itemId, 0);
     assert.equal(api.equips(1)[0].name, '（空）');
 });
+
+test('engine-assembled sentences fall back to %n templates and keep their arguments', () => {
+    const g = game();
+    g.c.TsumigeyaAssist.read = () => ({
+        '%1の攻撃': '%1的攻击',
+        '%1は%2を使った': '%1使用了%2',
+        '%1の攻撃': '%1的攻击',
+        勇者の攻撃: '勇者的攻击'
+    });
+    g.load('translation.js');
+    const a = g.c.TsumigeyaAssist;
+    assert.equal(a.translate('勇者の攻撃'), '勇者的攻击');
+    assert.equal(a.translate('魔物の攻撃'), '魔物的攻击');
+    assert.equal(a.translate('勇者はポーションを使った'), '勇者使用了ポーション');
+    assert.equal(a.translate('まったく未知の文'), 'まったく未知の文');
+});
+
+test('font scale shrinks window text after the engine applies its own size', () => {
+    const g = game();
+    g.c.Window_Base.prototype.resetFontSettings = function () { this.contents = { fontSize: 26 }; };
+    g.c.TsumigeyaAssist.read = () => ({});
+    g.c.TsumigeyaAssist.options = { fontScale: 0.5 };
+    g.load('translation.js');
+    const window = new g.c.Window_Base();
+    window.resetFontSettings();
+    assert.equal(window.contents.fontSize, 13);
+
+    const plain = game();
+    plain.c.Window_Base.prototype.resetFontSettings = function () { this.contents = { fontSize: 26 }; };
+    plain.c.TsumigeyaAssist.read = () => ({});
+    plain.c.TsumigeyaAssist.options = { fontScale: 1 };
+    plain.load('translation.js');
+    const untouched = new plain.c.Window_Base();
+    untouched.resetFontSettings();
+    assert.equal(untouched.contents.fontSize, 26);
+});

@@ -51,7 +51,8 @@ public enum NativeAssistance {
         guard FileManager.default.fileExists(atPath: dir.path) else { return nil }
         _ = try manifest(p)
         let json = try JSONDecoder().decode([String: JSONValue].self, from: Data(contentsOf: checked("config.json", in: dir)))
-        return .init(translation: json["translation"]?.boolValue ?? false, cheats: json["cheats"]?.boolValue ?? false)
+        return .init(translation: json["translation"]?.boolValue ?? false, cheats: json["cheats"]?.boolValue ?? false,
+                     fontScale: json["fontScale"]?.doubleValue ?? 0.92)
     }
     static func configure(_ p: AssistanceProject, options: AssistanceOptions, translations: [String: String]?, running: Bool) throws {
         guard try AssistanceProject.detect(folder: p.root.path) == p else { throw AssistanceError.invalid(L10n.string("游戏身份已改变。")) }

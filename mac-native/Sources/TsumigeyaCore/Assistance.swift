@@ -33,8 +33,14 @@ public enum AssistanceEngine: String, Codable, CaseIterable, Sendable {
 public struct AssistanceOptions: Sendable, Equatable {
     public var translation = false
     public var cheats = false
-    public init(translation: Bool = false, cheats: Bool = false) { self.translation = translation; self.cheats = cheats }
-    public var json: [String: JSONValue] { ["translation": .bool(translation), "cheats": .bool(cheats)] }
+    /// 译文字号系数。1 表示不改动游戏字号，0.92 是对中文行高的补偿；只影响已启用的翻译。
+    public var fontScale: Double = 0.92
+    public init(translation: Bool = false, cheats: Bool = false, fontScale: Double = 0.92) {
+        self.translation = translation; self.cheats = cheats; self.fontScale = fontScale
+    }
+    public var json: [String: JSONValue] {
+        ["translation": .bool(translation), "cheats": .bool(cheats), "fontScale": .double(fontScale)]
+    }
 }
 
 public enum AssistanceProcesses {
@@ -88,7 +94,8 @@ public enum AssistanceInstaller {
         guard FileManager.default.fileExists(atPath: dir.path) else { return nil }
         _ = try manifest(project)
         let data = try JSONDecoder().decode([String: JSONValue].self, from: Data(contentsOf: dir.appendingPathComponent("config.json")))
-        return .init(translation: data["translation"]?.boolValue ?? false, cheats: data["cheats"]?.boolValue ?? false)
+        return .init(translation: data["translation"]?.boolValue ?? false, cheats: data["cheats"]?.boolValue ?? false,
+                     fontScale: data["fontScale"]?.doubleValue ?? 0.92)
     }
 
     private static func manifest(_ project: RPGMakerProject) throws -> [String: JSONValue] {

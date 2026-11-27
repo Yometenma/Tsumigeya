@@ -192,6 +192,34 @@ struct TranslationServiceTests {
             await #expect(throws: (any Error).self) { try await service.translate("名前\\V[1]") }
         }
     }
+
+    @Test("批量请求用 JSON 数组传输，占位符按行号隔离后还原")
+    func batchRequest() async throws {
+        var settings = TranslationServiceSettings(); settings.endpoint = "https://example.com/v1/chat/completions"; settings.model = "m"
+        let service = TranslationService(settings: settings, key: "", transport: { request in
+            let body = try JSONDecoder().decode(JSONValue.self, from: request.httpBody!)
+            let content = body.objectValue?["messages"]?.arrayValue?.last?.objectValue?["content"]?.stringValue ?? ""
+            let input = try JSONDecoder().decode([String].self, from: Data(content.utf8))
+            #expect(input == ["名前⟦TSMG_0_0⟧", "場所⟦TSMG_1_0⟧"])
+            let translated = try JSONEncoder().encode(["名字⟦TSMG_0_0⟧", "地点⟦TSMG_1_0⟧"])
+            let payload: JSONValue = .object(["choices": .array([.object(["message": .object(["content": .string(String(decoding: translated, as: UTF8.self))])])])])
+            return (try JSONEncoder().encode(payload), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        })
+        let results = try await service.translateBatch(["名前%1", "場所%1"])
+        #expect(results == ["名字%1", "地点%1"])
+    }
+
+    @Test("批量条数不符或占位符被改时整批失败，交给调用方回退逐条")
+    func batchRejectsBadReplies() async throws {
+        var settings = TranslationServiceSettings(); settings.endpoint = "https://example.com/x"; settings.model = "m"
+        for reply in ["[\"只有一条\"]", "[\"甲\",\"乙\"]", "不是数组"] {
+            let service = TranslationService(settings: settings, key: "", transport: { request in
+                let payload: JSONValue = .object(["choices": .array([.object(["message": .object(["content": .string(reply)])])])])
+                return (try JSONEncoder().encode(payload), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+            })
+            await #expect(throws: (any Error).self) { try await service.translateBatch(["甲%1", "乙%2"]) }
+        }
+    }
 }
 @testable import TsumigeyaApp
 
@@ -205,6 +233,8 @@ struct AssistanceStoreTests {
         #expect(JSONStore.save(GameMap(games: ["1": record]), to: data.appendingPathComponent("games.json")) == nil)
         #expect(JSONStore.save(["endpoint": "https://example.com/translate", "model": "test", "targetLanguage": "简体中文"], to: data.appendingPathComponent("translation-service.json")) == nil)
         let store = AppStore(); await store.load(dataDirectory: data.path)
+        // 这些用例验证逐条语义与停止条件；批量通道默认会发真实请求，在这里关掉。
+        store.translateAssistanceBatch = nil
         return (store, record)
     }
     private func wait(_ session: AssistanceSession) async throws {
@@ -249,6 +279,17 @@ struct AssistanceStoreTests {
         #expect(session.error != nil)
         #expect(session.catalog?.entries.filter { $0.failure != nil }.count == 1)
         #expect(session.catalog?.completed == 0)
+    }
+    @Test("批量通道一次覆盖整批，逐条通道不再被调用")
+    func batchChannelTranslatesWholeSlice() async throws {
+        let f = try AssistFixture(); defer { f.clean() }
+        let (store, record) = try await store(f); let session = store.assistanceSession(for: record)
+        session.catalog = TranslationCatalog(identity: f.project.identity, entries: [.init(source: "一"), .init(source: "二")])
+        store.translateAssistanceBatch = { _, sources in sources.map { "译:" + $0 } }
+        store.translateAssistanceText = { _, _ in throw AssistanceError.invalid("不该走单条") }
+        session.translate(); try await wait(session)
+        #expect(session.catalog?.entries.allSatisfy { $0.failure == nil } == true)
+        #expect(session.catalog?.dictionary == ["一": "译:一", "二": "译:二"])
     }
     @Test("移除游戏和复用编号后旧翻译不能回写")
     func deletion() async throws {

@@ -11,6 +11,10 @@ final class AppStore: ObservableObject {
     var translateAssistanceText: @Sendable (TranslationService, String) async throws -> String = { service, source in
         try await service.translate(source)
     }
+    /// 批量通道；nil 表示退回逐条。整批不可用时驱动层仍会逐条重试，不会少翻。
+    var translateAssistanceBatch: (@Sendable (TranslationService, [String]) async throws -> [String])? = { service, sources in
+        try await service.translateBatch(sources)
+    }
     let library = GameLibraryState()
     let metadata: LibraryMetadataStore
     let batchMetadata: BatchMetadataCoordinator

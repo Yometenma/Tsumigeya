@@ -645,7 +645,7 @@
 "本地信息已保存；%@" = "Local info saved; %@";
 "检测到 RJ 号 %@。点「查找作品」可预览并关联作品信息。" = "Detected RJ code %@. Click \"Find Work\" to preview and link game info.";
 "正在下载 %@" = "Downloading %@";
-"正在翻译 %@ / %@；每条成功后立即保存。" = "Translating %@ / %@; each entry is saved as soon as it succeeds.";
+"正在翻译 %@ / %@；每批完成后保存。" = "Translating %@ / %@; each batch is saved when it finishes.";
 "正在解压 %@" = "Extracting %@";
 "此游戏使用 %@。如果启动异常，可以检查下方的启动参数。" = "This game uses %@. If it misbehaves after launch, check the launch arguments below.";
 "此目录已入库（游戏 %@）" = "This folder is already in the library (game %@)";
@@ -674,3 +674,9 @@
 "请先停止游戏，再安装运行时。" = "Stop the running game before installing a runtime.";
 "%@ 似乎没能启动。可以换一个 NW.js 版本再试：" = "%@ seems to have failed to start. Try another NW.js version:";
 "改用 %@ 启动" = "Launch with %@";
+"译文字号" = "Translation font size";
+"标准（1.0）" = "Standard (1.0)";
+"略小（0.94）" = "Slightly smaller (0.94)";
+"推荐（0.92）" = "Recommended (0.92)";
+"更小（0.88）" = "Smaller (0.88)";
+"按中文行高补偿游戏字号；改动需重新「应用到游戏」。" = "Compensates the game font size for Chinese line height; re-apply to the game after changing it.";

@@ -99,6 +99,15 @@ private struct AssistanceContent: View {
     private var translation: some View {
         GroupBox(L("游戏翻译")) {
             VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    Picker(L("译文字号"), selection: $session.options.fontScale) {
+                        Text(L("标准（1.0）")).tag(1.0)
+                        Text(L("略小（0.94）")).tag(0.94)
+                        Text(L("推荐（0.92）")).tag(0.92)
+                        Text(L("更小（0.88）")).tag(0.88)
+                    }.pickerStyle(.menu).frame(maxWidth: 220)
+                    Text(L("按中文行高补偿游戏字号；改动需重新「应用到游戏」。")).font(.caption).foregroundStyle(.secondary)
+                }
                 DisclosureGroup(L("翻译服务设置")) {
                     VStack(alignment: .leading, spacing: 10) {
                         TextField(L("兼容聊天补全接口的完整地址"), text: $session.service.endpoint)
