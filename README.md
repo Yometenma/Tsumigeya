@@ -52,13 +52,14 @@ Add a game you have already downloaded and extracted to your library, and it ide
 
 ## ✦ Recent updates
 
-**v3.1.7**
+**v3.1.8**
 
-- The cheat panel is now a list-and-detail layout: items, armor, and weapons are tabbed straight from the game database, ticking a row locks it, counts step by ±1／±100 or bulk-set per tab, and a new object browser inspects and edits values by path.
-- Translation now runs in batches of 12, cutting a 2000-entry job from hours to minutes; a hot path that made cutscenes stutter is fixed.
-- Offline assistance: without injecting into the game, NScripter scripts can be extracted and rewritten (keeping the original encoding), and RPG Maker MZ／XP／VX／VX Ace saves can be edited, with automatic backups. RPG Maker 2000／2003 database text can be extracted but not yet written back.
+- Fixed the Translation tab for NScripter and RPG Maker 2000／2003 games, which always sat on "reading assistance config" — these engines have no injectable script layer, so there is no injection session at all, and the UI mistook that for still loading. Both tabs now open the offline editor directly.
+- Offline write-back now refuses while the game is running (a running engine rewrites the script from memory) and refuses stale game records, so it can't write into a reused game id. Previously only the button was disabled.
+- Backup files are now uniformly `.tsumigeya-bak`; the older `*.bak` names are still recognised so restoring and cleanup won't be blocked by "unrecognised files".
+- Filled in the missing English and Japanese strings for Ruby Marshal parsing, NScripter offline rewriting, the RPG Maker 2000／2003 database, offline saves, and the write-back guards.
 
-[Download v3.1.7 and read the release notes](https://github.com/Yometenma/Tsumigeya/releases/tag/v3.1.7) · [Getting game info](docs/en/game-info.md) · [Full changelog](更新日志.md)
+[Download v3.1.8 and read the release notes](https://github.com/Yometenma/Tsumigeya/releases/tag/v3.1.8) · [Getting game info](docs/en/game-info.md) · [Full changelog](更新日志.md)
 
 <a id="features"></a>
 
